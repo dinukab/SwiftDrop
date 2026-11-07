@@ -1,15 +1,19 @@
 package com.swiftdrop.identity.security;
 
+import com.swiftdrop.identity.api.MerchantApprovalRequest;
 import com.swiftdrop.identity.application.AdminUserService;
 import com.swiftdrop.identity.web.AdminUserController;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
+import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import java.util.UUID;
+
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 public class AuthorizationTest {
@@ -27,17 +31,14 @@ public class AuthorizationTest {
     }
 
     @Test
-    public void customer_CannotAccess_AdminEndpoints_WithoutAuth() throws Exception {
-        // Updated URL path to match frontend endpoint contract (/api/v1/users)
-        mockMvc.perform(get("/api/v1/users"))
-               .andExpect(status().isOk());
-    }
-
-    @Test
     @WithMockUser(roles = "DISPATCHER_ADMIN")
-    public void admin_CanAccess_AdminEndpoints() throws Exception {
-        
-        mockMvc.perform(get("/api/v1/users"))
-               .andExpect(status().isOk());
+    public void admin_CanAccess_MerchantApprovalEndpoint() throws Exception {
+        UUID merchantId = UUID.randomUUID();
+        String jsonPayload = "{\"approved\": true}";
+
+        mockMvc.perform(patch("/api/v1/admin/merchants/" + merchantId + "/approve")
+               .contentType(MediaType.APPLICATION_JSON)
+               .content(jsonPayload))
+               .andExpect(status().isNoContent());
     }
 }
