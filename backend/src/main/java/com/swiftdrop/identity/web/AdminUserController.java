@@ -10,25 +10,24 @@ import org.springframework.web.bind.annotation.*;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/v1/admin")
+@RequestMapping("/api/v1/users")
 @PreAuthorize("hasRole('DISPATCHER_ADMIN')")
 public class AdminUserController {
 
     private final AdminUserService adminUserService;
 
-    // Dependency Injection 
     public AdminUserController(AdminUserService adminUserService) {
         this.adminUserService = adminUserService;
     }
 
-    // 1. get list of all users
-    @GetMapping("/users")
+    // 1. Get List of Users (Frontend: GET /api/v1/users)
+    @GetMapping
     public ResponseEntity<String> getAllUsers() {
         return ResponseEntity.ok("List of all users for Admin");
     }
 
-    // 2. User Status Change (Enable / Disable Account)
-    @PatchMapping("/users/{userId}/status")
+    // 2. Account Status Change (Frontend: PATCH /api/v1/users/{userId})
+    @PatchMapping("/{userId}")
     public ResponseEntity<Void> updateUserStatus(
             @PathVariable UUID userId,
             @RequestBody UserStatusUpdateRequest request) {
@@ -36,7 +35,7 @@ public class AdminUserController {
         return ResponseEntity.noContent().build();
     }
 
-    // 3. Merchant Registration Approve / Reject 
+    // 3. Merchant Registration Approve / Reject (PATCH /api/v1/users/merchants/{merchantId}/approve)
     @PatchMapping("/merchants/{merchantId}/approve")
     public ResponseEntity<Void> approveMerchant(
             @PathVariable UUID merchantId,

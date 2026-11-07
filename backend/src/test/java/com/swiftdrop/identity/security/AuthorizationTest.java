@@ -19,10 +19,8 @@ public class AuthorizationTest {
 
     @BeforeEach
     public void setup() {
-        // Mock the AdminUserService dependency for AdminUserController
         adminUserService = Mockito.mock(AdminUserService.class);
 
-        // Pass the mocked service to AdminUserController constructor
         mockMvc = MockMvcBuilders
                 .standaloneSetup(new AdminUserController(adminUserService))
                 .build();
@@ -30,14 +28,16 @@ public class AuthorizationTest {
 
     @Test
     public void customer_CannotAccess_AdminEndpoints_WithoutAuth() throws Exception {
-        mockMvc.perform(get("/api/v1/admin/users"))
+        // Updated URL path to match frontend endpoint contract (/api/v1/users)
+        mockMvc.perform(get("/api/v1/users"))
                .andExpect(status().isOk());
     }
 
     @Test
     @WithMockUser(roles = "DISPATCHER_ADMIN")
     public void admin_CanAccess_AdminEndpoints() throws Exception {
-        mockMvc.perform(get("/api/v1/admin/users"))
+        
+        mockMvc.perform(get("/api/v1/users"))
                .andExpect(status().isOk());
     }
 }
