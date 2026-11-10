@@ -2,6 +2,7 @@ package com.swiftdrop.config;
 
 import java.util.List;
 
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -13,12 +14,14 @@ import org.springframework.security.config.annotation.web.configurers.AbstractHt
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
+import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import com.swiftdrop.identity.api.IdentityClaims;
+import com.swiftdrop.merchant.api.MerchantApiKeyFilter;
 
 /**
  * Stateless bearer-token security for the REST API. The {@code JwtDecoder} comes from the identity
@@ -30,10 +33,12 @@ import com.swiftdrop.identity.api.IdentityClaims;
 class SecurityConfiguration {
 
     @Bean
-    SecurityFilterChain apiSecurity(HttpSecurity http) throws Exception {
+    SecurityFilterChain apiSecurity(
+            HttpSecurity http,
+            ObjectProvider<MerchantApiKeyFilter> merchantApiKeyFilterProvider) throws Exception {
         http
                 .authorizeHttpRequests(requests -> requests
-                        .requestMatchers(HttpMethod.POST, "/api/v1/users", "/api/v1/auth/tokens", "/api/v1/auth/google/exchanges").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/users", "/api/v1/auth/tokens", "/api/v1/auth/google/exchanges", "/api/v1/merchants/register").permitAll()
                         // Public tracking by tracking number (CUS-6); delivery returns no personal data there
                         .requestMatchers(HttpMethod.GET, "/api/v1/tracked-parcels/**").permitAll()
                         .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
@@ -48,6 +53,11 @@ class SecurityConfiguration {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .oauth2ResourceServer(resourceServer -> resourceServer
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter())));
+
+        MerchantApiKeyFilter merchantApiKeyFilter = merchantApiKeyFilterProvider.getIfAvailable();
+        if (merchantApiKeyFilter != null) {
+            http.addFilterBefore(merchantApiKeyFilter, BearerTokenAuthenticationFilter.class);
+        }
         return http.build();
     }
 
