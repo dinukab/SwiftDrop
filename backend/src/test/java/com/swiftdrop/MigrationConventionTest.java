@@ -131,6 +131,10 @@ class MigrationConventionTest {
                         tuple(
                                 "202611031030",
                                 "delivery create parcel outbox events",
-                                "delivery/V202611031030__delivery_create_parcel_outbox_events.sql"));
+                                "delivery/V202611031030__delivery_create_parcel_outbox_events.sql"),
+                        tuple(
+                                "202611112100",
+                                "dispatch create couriers",
+                                "dispatch/V202611112100__dispatch_create_couriers.sql"));
     }
 }
