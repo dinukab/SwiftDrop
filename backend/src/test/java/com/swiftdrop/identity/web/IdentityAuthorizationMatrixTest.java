@@ -40,6 +40,7 @@ import com.swiftdrop.identity.domain.User;
 import com.swiftdrop.identity.domain.UserRepository;
 import com.swiftdrop.pricing.api.FeeCalculator;
 import com.swiftdrop.pricing.domain.PricingRuleRepository;
+import com.swiftdrop.merchant.domain.MerchantRepository;
 import com.swiftdrop.pricing.domain.ZoneRepository;
 import com.swiftdrop.test.security.AuthorizationMatrixExecutor;
 import com.swiftdrop.test.security.AuthorizationMatrixRow;
@@ -108,6 +109,9 @@ class IdentityAuthorizationMatrixTest {
 
     @MockitoBean
     private PricingRuleRepository pricingRules;
+
+    @MockitoBean
+    private MerchantRepository merchants;
 
     private final Map<String, GoogleLoginCode> storedCodes = new HashMap<>();
     private String validExchangeCode;

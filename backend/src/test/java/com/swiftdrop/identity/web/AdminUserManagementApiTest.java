@@ -30,6 +30,7 @@ import com.swiftdrop.identity.domain.User;
 import com.swiftdrop.identity.domain.UserRepository;
 import com.swiftdrop.pricing.api.FeeCalculator;
 import com.swiftdrop.pricing.domain.PricingRuleRepository;
+import com.swiftdrop.merchant.domain.MerchantRepository;
 import com.swiftdrop.pricing.domain.ZoneRepository;
 import com.swiftdrop.test.security.TestPrincipal;
 
@@ -95,6 +96,9 @@ class AdminUserManagementApiTest {
 
     @MockitoBean
     private PricingRuleRepository pricingRules;
+
+    @MockitoBean
+    private MerchantRepository merchants;
 
     private User adminUser;
     private User targetUser;

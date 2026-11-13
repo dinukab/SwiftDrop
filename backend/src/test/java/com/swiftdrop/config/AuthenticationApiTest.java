@@ -57,6 +57,7 @@ import com.swiftdrop.identity.domain.ExternalIdentityRepository;
 import com.swiftdrop.identity.domain.UserRepository;
 import com.swiftdrop.pricing.api.FeeCalculator;
 import com.swiftdrop.pricing.domain.PricingRuleRepository;
+import com.swiftdrop.merchant.domain.MerchantRepository;
 import com.swiftdrop.pricing.domain.ZoneRepository;
 
 /**
@@ -100,6 +101,9 @@ class AuthenticationApiTest {
     private ZoneRepository zones;
     @MockitoBean
     private PricingRuleRepository pricingRules;
+
+    @MockitoBean
+    private MerchantRepository merchants;
 
     @BeforeEach
     void setUp() {
@@ -160,6 +164,28 @@ class AuthenticationApiTest {
     }
 
     // Login and tokens
+
+    @Test
+void everyUserRoleCanLoginAndReceivesTheCorrectRoleInItsToken() throws Exception {
+    for (Role role : Role.values()) {
+        User account = withId(user(passwordEncoder.encode("correct horse"), role));
+        when(users.findByEmail("alice@example.com")).thenReturn(Optional.of(account));
+        when(users.findById(account.getId())).thenReturn(Optional.of(account));
+
+        String body = login("alice@example.com", "correct horse")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tokenType").value("Bearer"))
+                .andReturn().getResponse().getContentAsString();
+
+        String token = JsonPath.read(body, "$.accessToken");
+
+        mvc.perform(get("/api/v1/users/me")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(account.getId().toString()))
+                .andExpect(jsonPath("$.roles", contains(role.name())));
+    }
+}
 
     @Test
     void loginIssuesTokenThatAuthenticatesTheUser() throws Exception {
