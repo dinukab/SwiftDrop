@@ -34,6 +34,7 @@ class MerchantOnboardingServiceTest {
 
     @Mock
     private MerchantRepository merchants;
+
     @Mock
     private UserDirectory userDirectory;
 

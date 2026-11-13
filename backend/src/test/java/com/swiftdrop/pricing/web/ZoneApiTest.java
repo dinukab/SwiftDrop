@@ -25,6 +25,7 @@ import com.swiftdrop.identity.domain.GoogleLoginCodeRepository;
 import com.swiftdrop.identity.domain.UserRepository;
 import com.swiftdrop.pricing.domain.PricingRuleRepository;
 import com.swiftdrop.merchant.domain.MerchantRepository;
+import com.swiftdrop.identity.domain.CourierApprovalRepository;
 import com.swiftdrop.pricing.domain.Zone;
 import com.swiftdrop.pricing.domain.ZoneRepository;
 import com.swiftdrop.test.security.TestPrincipal;
@@ -56,7 +57,9 @@ class ZoneApiTest {
 
     @MockitoBean
     private MerchantRepository merchants;
+
     @MockitoBean
+    private CourierApprovalRepository courierApprovals;    @MockitoBean
     private ParcelRepository parcels;
     @MockitoBean
     private ParcelStatusHistoryRepository parcelHistory;

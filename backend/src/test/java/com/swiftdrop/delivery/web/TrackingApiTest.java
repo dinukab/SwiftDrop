@@ -32,6 +32,7 @@ import com.swiftdrop.identity.domain.UserRepository;
 import com.swiftdrop.pricing.api.FeeCalculator;
 import com.swiftdrop.pricing.domain.PricingRuleRepository;
 import com.swiftdrop.merchant.domain.MerchantRepository;
+import com.swiftdrop.identity.domain.CourierApprovalRepository;
 import com.swiftdrop.pricing.domain.ZoneRepository;
 import com.swiftdrop.test.security.TestPrincipal;
 
@@ -78,6 +79,8 @@ class TrackingApiTest {
     @MockitoBean
     private MerchantRepository merchants;
 
+    @MockitoBean
+    private CourierApprovalRepository courierApprovals;
     @Test
     void anyoneCanTrackWithoutLoggingIn() throws Exception {
         when(queries.findPublicTrackingView("sd7k3m9q2xwb")).thenReturn(Optional.of(new PublicTrackingView(

@@ -44,6 +44,7 @@ import com.swiftdrop.identity.domain.UserRepository;
 import com.swiftdrop.pricing.api.FeeCalculator;
 import com.swiftdrop.pricing.domain.PricingRuleRepository;
 import com.swiftdrop.merchant.domain.MerchantRepository;
+import com.swiftdrop.identity.domain.CourierApprovalRepository;
 import com.swiftdrop.pricing.domain.ZoneRepository;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -95,6 +96,8 @@ class AuthorizationMatrixHarnessTest {
     @MockitoBean
     private MerchantRepository merchants;
 
+    @MockitoBean
+    private CourierApprovalRepository courierApprovals;
     @TestFactory
     Stream<DynamicTest> authorizationMatrixDynamicTests() {
         return AuthorizationMatrixExecutor.toDynamicTests(mvc, matrixRows());

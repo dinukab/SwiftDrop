@@ -3,7 +3,7 @@
 import React, { Suspense, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { api, ApiError, formatApiError, type MerchantResponse, type UserResponse } from "@/lib/api";
+import { api, ApiError, formatApiError, type CourierApprovalResponse, type MerchantResponse, type UserResponse } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -13,10 +13,14 @@ import { Eye, EyeOff } from "lucide-react";
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_PASSWORD_BYTES = 72;
 
-type AccountType = "customer" | "merchant";
+type AccountType = "customer" | "merchant" | "courier";
 
 function initialAccountType(typeParam: string | null): AccountType {
-  return typeParam?.trim().toLowerCase() === "merchant" ? "merchant" : "customer";
+  const normalized = typeParam?.trim().toLowerCase();
+  if (normalized === "merchant" || normalized === "courier") {
+    return normalized;
+  }
+  return "customer";
 }
 
 function SignupForm() {
@@ -37,7 +41,7 @@ function SignupForm() {
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isConflict, setIsConflict] = useState(false);
-  const [merchantSubmitted, setMerchantSubmitted] = useState(false);
+  const [submittedAs, setSubmittedAs] = useState<AccountType | null>(null);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -116,14 +120,24 @@ function SignupForm() {
         return;
       }
 
-      await api.post<MerchantResponse>("/api/v1/merchants", {
+      if (accountType === "merchant") {
+        await api.post<MerchantResponse>("/api/v1/merchants", {
+          fullName: trimmedName,
+          email: trimmedEmail,
+          password,
+          businessName: trimmedBusinessName,
+          ...(trimmedPhone ? { contactPhone: trimmedPhone } : {}),
+        });
+        setSubmittedAs("merchant");
+        return;
+      }
+
+      await api.post<CourierApprovalResponse>("/api/v1/courier-registrations", {
         fullName: trimmedName,
         email: trimmedEmail,
         password,
-        businessName: trimmedBusinessName,
-        ...(trimmedPhone ? { contactPhone: trimmedPhone } : {}),
       });
-      setMerchantSubmitted(true);
+      setSubmittedAs("courier");
     } catch (err: unknown) {
       if (err instanceof ApiError && err.status === 409) {
         setIsConflict(true);
@@ -138,7 +152,7 @@ function SignupForm() {
     }
   }
 
-  if (merchantSubmitted) {
+  if (submittedAs) {
     return (
       <main className="container mx-auto flex-1 flex items-center justify-center px-4 py-12 min-h-[calc(100vh-3.5rem)]">
         <Card className="w-full max-w-md rounded-xl bg-card border-border shadow-xs">
@@ -151,8 +165,9 @@ function SignupForm() {
               Application received
             </CardTitle>
             <CardDescription className="text-sm text-muted-foreground">
-              Merchant registration submitted! Your account will be activated once an Administrator
-              approves your application.
+              {submittedAs === "courier"
+                ? "Courier registration submitted! Your account will be activated once an Administrator approves your application."
+                : "Merchant registration submitted! Your account will be activated once an Administrator approves your application."}
             </CardDescription>
           </CardHeader>
           <CardFooter className="flex flex-col gap-2 pt-2 border-t border-border/60 text-center text-xs text-muted-foreground">
@@ -178,7 +193,11 @@ function SignupForm() {
         <CardHeader className="space-y-1 text-center">
           <div className="inline-flex items-center justify-center gap-1.5 mx-auto mb-2 text-xs font-semibold uppercase tracking-wider text-primary">
             <span className="size-1.5 rounded-full bg-primary" />
-            {accountType === "merchant" ? "Merchant Registration" : "Customer Registration"}
+            {accountType === "merchant"
+              ? "Merchant Registration"
+              : accountType === "courier"
+                ? "Courier Registration"
+                : "Customer Registration"}
           </div>
           <CardTitle className="text-2xl font-bold tracking-tight text-foreground">
             Create an account
@@ -186,7 +205,9 @@ function SignupForm() {
           <CardDescription className="text-sm text-muted-foreground">
             {accountType === "merchant"
               ? "Register your business. Access starts after an administrator approves your application."
-              : "Get started with SwiftDrop parcel bookings and live delivery tracking."}
+              : accountType === "courier"
+                ? "Register as a courier. Access starts after an administrator approves your application."
+                : "Get started with SwiftDrop parcel bookings and live delivery tracking."}
           </CardDescription>
         </CardHeader>
 
@@ -197,7 +218,7 @@ function SignupForm() {
               <div
                 role="tablist"
                 aria-labelledby="account-type-label"
-                className="grid grid-cols-2 gap-2 rounded-lg border border-border bg-muted/40 p-1"
+                className="grid grid-cols-3 gap-2 rounded-lg border border-border bg-muted/40 p-1"
               >
                 <button
                   type="button"
@@ -226,6 +247,20 @@ function SignupForm() {
                   }`}
                 >
                   Merchant (Business)
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={accountType === "courier"}
+                  onClick={() => setAccountType("courier")}
+                  disabled={isLoading}
+                  className={`rounded-md px-3 py-2 text-xs font-semibold transition-colors ${
+                    accountType === "courier"
+                      ? "bg-card text-foreground shadow-xs"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  Courier
                 </button>
               </div>
             </div>
@@ -379,7 +414,9 @@ function SignupForm() {
                 ? "Submitting..."
                 : accountType === "merchant"
                   ? "Submit merchant application"
-                  : "Create customer account"}
+                  : accountType === "courier"
+                    ? "Submit courier application"
+                    : "Create customer account"}
             </Button>
           </CardContent>
 

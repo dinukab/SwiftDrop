@@ -139,6 +139,10 @@ class MigrationConventionTest {
                         tuple(
                                 "202611130901",
                                 "merchant create merchants",
-                                "merchant/V202611130901__merchant_create_merchants.sql"));
+                                "merchant/V202611130901__merchant_create_merchants.sql"),
+                        tuple(
+                                "202611131000",
+                                "identity create courier approvals",
+                                "identity/V202611131000__identity_create_courier_approvals.sql"));
     }
 }
