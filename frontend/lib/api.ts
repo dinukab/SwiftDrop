@@ -45,6 +45,32 @@ export interface AccessTokenResponse {
   expiresIn: number;
 }
 
+export type MerchantStatus = "PENDING" | "APPROVED" | "REJECTED" | "SUSPENDED";
+
+export interface MerchantResponse {
+  id: string;
+  userId: string;
+  businessName: string;
+  contactPhone: string | null;
+  status: MerchantStatus;
+  rejectionReason: string | null;
+  createdAt: string;
+  reviewedAt: string | null;
+  reviewedBy: string | null;
+}
+
+export interface RegisterMerchantRequest {
+  fullName: string;
+  email: string;
+  password: string;
+  businessName: string;
+  contactPhone?: string;
+}
+
+export interface RejectMerchantRequest {
+  reason: string;
+}
+
 export class ApiError extends Error {
   readonly status: number;
   readonly problem?: ProblemDetail;
