@@ -1,6 +1,9 @@
 package com.swiftdrop.identity.application;
 
-public class InvalidPasswordException extends RuntimeException {
+import com.swiftdrop.identity.api.PasswordRejectedException;
+
+/** Identity-internal password rejection; also a {@link PasswordRejectedException} for other modules. */
+public class InvalidPasswordException extends PasswordRejectedException {
 
     InvalidPasswordException(String message) {
         super(message);
