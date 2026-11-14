@@ -66,6 +66,7 @@ import com.swiftdrop.test.security.TestPrincipal;
 })
 @AutoConfigureMockMvc
 @Testcontainers
+@SuppressWarnings("deprecation")
 class ParcelAuthorizationMatrixIT {
 
     @Container

@@ -55,6 +55,7 @@ import com.swiftdrop.pricing.api.ParcelSize;
         "swiftdrop.identity.bootstrap.admin-password="
 })
 @Testcontainers
+@SuppressWarnings("deprecation")
 class LiveTrackingIT {
 
     @Container

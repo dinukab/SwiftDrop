@@ -58,6 +58,7 @@ import com.swiftdrop.pricing.api.ParcelSize;
 })
 @Testcontainers
 @Import(ParcelStatusChangeIT.CommittedEvents.class)
+@SuppressWarnings("deprecation")
 class ParcelStatusChangeIT {
 
     @Container

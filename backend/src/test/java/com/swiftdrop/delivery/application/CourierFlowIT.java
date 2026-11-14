@@ -50,6 +50,7 @@ import com.swiftdrop.pricing.api.FeeQuote;
         "swiftdrop.identity.bootstrap.admin-password="
 })
 @Testcontainers
+@SuppressWarnings("deprecation")
 class CourierFlowIT {
 
     @Container

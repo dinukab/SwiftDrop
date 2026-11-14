@@ -44,6 +44,7 @@ import com.swiftdrop.pricing.api.FeeCalculator;
         "swiftdrop.security.google.client-id="
 })
 @Testcontainers
+@SuppressWarnings("deprecation")
 class DatabaseMigrationIT {
 
     @Container

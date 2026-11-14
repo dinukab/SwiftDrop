@@ -42,6 +42,7 @@ import com.swiftdrop.pricing.api.ParcelSize;
 })
 @Testcontainers
 @Transactional
+@SuppressWarnings("deprecation")
 class DeliveryPersistenceIT {
 
     @Container
