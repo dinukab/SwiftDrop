@@ -129,6 +129,8 @@ class MigrationConventionTest {
                         tuple("202611140902", "notification ordered inbox",
                                 "notification/V202611140902__notification_ordered_inbox.sql"),
                         tuple("202611140903", "notification mock messages",
-                                "notification/V202611140903__notification_mock_messages.sql"));
+                                "notification/V202611140903__notification_mock_messages.sql"),
+                        tuple("202611141600", "merchant webhooks",
+                                "merchant/V202611141600__merchant_webhooks.sql"));
     }
 }

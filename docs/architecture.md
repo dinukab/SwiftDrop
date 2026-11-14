@@ -188,8 +188,9 @@ tracking     → delivery
   Configuration tests are Docker-free; `RabbitMessagingIT` exercises an isolated RabbitMQ 4.3
   container under the integration profile. Broker verification is pending in this workspace
   (Docker unavailable). Stage 3 adds an opt-in outbox relay, ordered durable inboxes,
-  notification effects and merchant event retention pending the Stage 4 webhook-job adapter.
-  Webhook signing and HTTP delivery remain unimplemented.
+  notification effects and merchant event retention. Stage 4 connects merchant events to durable
+  webhook jobs, encrypted secrets, owner-scoped management APIs and a signed SSRF-protected sender.
+  See [Stage 4 secure webhooks](messaging-stage-4.md) for activation and verification limits.
   See [Stage 3 processing and recovery](messaging-stage-3.md).
   See [Stage 2 setup and verification](messaging-stage-2.md).
 - **Decided (ADR 0003):** `delivery` is the only publisher of status-change events;
@@ -215,7 +216,7 @@ tracking     → delivery
   - **Webhooks:** database-driven delivery records per event and endpoint with bounded exponential
     backoff; HMAC-SHA256 signatures with timestamp; secrets encrypted with AES-256-GCM and
     environment-supplied keys; SSRF protection with checks before every attempt and Apache
-    HttpClient 5 with a validating DNS resolver (approved dependency, not yet added); merchants see
+    HttpClient 5 with a validating DNS resolver (implemented in Stage 4); merchants see
     only their own records; audited, bounded manual redelivery.
   - **Notifications:** a mock SMS channel stored by `notification`; the owning customer of a
     customer-created parcel is notified on `PICKED_UP`, `OUT_FOR_DELIVERY`, `DELIVERED` and

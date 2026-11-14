@@ -4,6 +4,9 @@ Stage 3 connects the existing delivery outbox to RabbitMQ and adds durable consu
 It follows [ADR 0004](adr/0004-messaging-and-integration-reliability.md) and builds on
 [Stage 2](messaging-stage-2.md).
 
+Stage 4 now supplies this adapter when webhooks are enabled; see
+[secure merchant webhooks](messaging-stage-4.md). The behavior below describes Stage 3 in isolation.
+
 ## Implemented behavior
 
 - Outbox polling takes a PostgreSQL transaction-scoped advisory lock. One relay publishes at a time.
