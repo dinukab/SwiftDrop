@@ -63,6 +63,7 @@ import com.swiftdrop.delivery.domain.DeliveryProofRepository;
 import com.swiftdrop.delivery.domain.OutboxEventRepository;
 import com.swiftdrop.delivery.domain.ParcelRepository;
 import com.swiftdrop.delivery.domain.ParcelStatusHistoryRepository;
+import com.swiftdrop.dispatch.domain.CourierProfileRepository;
 import com.swiftdrop.identity.domain.ExternalIdentity;
 import com.swiftdrop.identity.domain.ExternalIdentityRepository;
 import com.swiftdrop.identity.domain.GoogleLoginCode;
@@ -73,6 +74,8 @@ import com.swiftdrop.identity.domain.User;
 import com.swiftdrop.identity.domain.UserRepository;
 import com.swiftdrop.pricing.api.FeeCalculator;
 import com.swiftdrop.pricing.domain.PricingRuleRepository;
+import com.swiftdrop.merchant.domain.MerchantRepository;
+import com.swiftdrop.identity.domain.CourierApprovalRepository;
 import com.swiftdrop.pricing.domain.ZoneRepository;
 
 /**
@@ -123,7 +126,14 @@ class GoogleLoginApiTest {
     private ZoneRepository zones;
     @MockitoBean
     private PricingRuleRepository pricingRules;
+    @MockitoBean
+    private CourierProfileRepository courierProfiles;
 
+    @MockitoBean
+    private MerchantRepository merchants;
+
+    @MockitoBean
+    private CourierApprovalRepository courierApprovals;
     private final Map<String, GoogleLoginCode> storedCodes = new HashMap<>();
 
     @BeforeEach

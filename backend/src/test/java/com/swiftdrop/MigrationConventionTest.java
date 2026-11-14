@@ -100,38 +100,30 @@ class MigrationConventionTest {
                         ResolvedMigration::getDescription,
                         ResolvedMigration::getScript)
                 .containsExactly(
-                        tuple(
-                                "202610251600",
-                                "identity create users and roles",
+                        tuple("202610251600", "identity create users and roles",
                                 "identity/V202610251600__identity_create_users_and_roles.sql"),
-                        tuple(
-                                "202610251700",
-                                "identity create external identities",
+                        tuple("202610251700", "identity create external identities",
                                 "identity/V202610251700__identity_create_external_identities.sql"),
-                        tuple(
-                                "202610261800",
-                                "identity create google login codes",
+                        tuple("202610261800", "identity create google login codes",
                                 "identity/V202610261800__identity_create_google_login_codes.sql"),
-                        tuple(
-                                "202611021200",
-                                "pricing create zones and pricing rules",
+                        tuple("202611021200", "pricing create zones and pricing rules",
                                 "pricing/V202611021200__pricing_create_zones_and_pricing_rules.sql"),
-                        tuple(
-                                "202611031000",
-                                "delivery create parcels",
+                        tuple("202611031000", "delivery create parcels",
                                 "delivery/V202611031000__delivery_create_parcels.sql"),
-                        tuple(
-                                "202611031010",
-                                "delivery create parcel status history",
+                        tuple("202611031010", "delivery create parcel status history",
                                 "delivery/V202611031010__delivery_create_parcel_status_history.sql"),
-                        tuple(
-                                "202611031020",
-                                "delivery create delivery proofs",
+                        tuple("202611031020", "delivery create delivery proofs",
                                 "delivery/V202611031020__delivery_create_delivery_proofs.sql"),
-                        tuple(
-                                "202611031030",
-                                "delivery create parcel outbox events",
+                        tuple("202611031030", "delivery create parcel outbox events",
                                 "delivery/V202611031030__delivery_create_parcel_outbox_events.sql"),
+                        tuple("202611112100", "dispatch create couriers",
+                                "dispatch/V202611112100__dispatch_create_couriers.sql"),
+                        tuple("202611130900", "merchant create applications",
+                                "merchant/V202611130900__merchant_create_applications.sql"),
+                        tuple("202611130901", "merchant create merchants",
+                                "merchant/V202611130901__merchant_create_merchants.sql"),
+                        tuple("202611131000", "identity create courier approvals",
+                                "identity/V202611131000__identity_create_courier_approvals.sql"),
                         tuple("202611140901", "merchant ordered inbox",
                                 "merchant/V202611140901__merchant_ordered_inbox.sql"),
                         tuple("202611140902", "notification ordered inbox",

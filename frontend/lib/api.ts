@@ -45,6 +45,57 @@ export interface AccessTokenResponse {
   expiresIn: number;
 }
 
+// Courier API types
+export type ParcelStatus = "CREATED" | "PICKED_UP" | "IN_TRANSIT" | "OUT_FOR_DELIVERY" | "DELIVERED" | "FAILED";
+
+export type FailureReason = "RECIPIENT_UNAVAILABLE" | "ADDRESS_NOT_FOUND" | "REFUSED" | "DAMAGED" | "OTHER";
+
+export type ParcelSize = "SMALL" | "MEDIUM" | "LARGE";
+
+export interface AddressResponse {
+  contactName: string;
+  phone: string;
+  line1: string;
+  line2: string | null;
+  city: string;
+  zoneId: string;
+  postalCode: string | null;
+}
+
+export interface CourierParcelResponse {
+  id: string;
+  trackingNumber: string;
+  status: ParcelStatus;
+  nextStatuses: ParcelStatus[];
+  pickup: AddressResponse;
+  dropoff: AddressResponse;
+  size: ParcelSize;
+  weightGrams: number;
+  description: string | null;
+  proofCaptured: boolean;
+  assignedAt: string | null;
+  updatedAt: string;
+}
+
+export interface StatusChangeRequest {
+  toStatus: ParcelStatus;
+  failureReason?: string;
+  note?: string;
+}
+
+// Proof of Delivery API types
+export interface ProofResponse {
+  parcelId: string;
+  recipientName: string;
+  hasPhoto: boolean;
+  photoSizeBytes: number | null;
+  capturedAt: string;
+}
+
+type UnauthorizedHandler = () => void;
+
+let unauthorizedHandler: UnauthorizedHandler | null = null;
+
 export class ApiError extends Error {
   readonly status: number;
   readonly problem?: ProblemDetail;
@@ -57,14 +108,123 @@ export class ApiError extends Error {
   }
 }
 
+// Multipart file upload helper
+export async function uploadProof(parcelId: string, recipientName: string, photoFile: File | null, token: string): Promise<ProofResponse> {
+  const formData = new FormData();
+  formData.append("recipientName", recipientName);
+  if (photoFile) {
+    formData.append("photo", photoFile);
+  }
+
+  const baseUrl = getApiBaseUrl().replace(/\/+$/, "");
+  const url = `${baseUrl}/api/v1/parcels/${parcelId}/proof`;
+
+  const headers = new Headers();
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
+  const response = await fetch(url, {
+    method: "PUT",
+    headers,
+    body: formData,
+  });
+
+  if (!response.ok) {
+    if (response.status === 401 && unauthorizedHandler) {
+      unauthorizedHandler();
+    }
+
+    let problem: ProblemDetail | undefined;
+    const contentType = response.headers.get("content-type") || "";
+
+    if (contentType.includes("json")) {
+      try {
+        problem = (await response.json()) as ProblemDetail;
+      } catch {
+        // Fall back to status text if JSON parsing fails
+      }
+    }
+
+    const message = problem?.detail || problem?.title || `Request failed with status ${response.status}`;
+    throw new ApiError(response.status, message, problem);
+  }
+
+  return (await response.json()) as ProofResponse;
+}
+
+// Get proof photo as blob
+export async function getProofPhoto(parcelId: string, token: string): Promise<Blob> {
+  const baseUrl = getApiBaseUrl().replace(/\/+$/, "");
+  const url = `${baseUrl}/api/v1/parcels/${parcelId}/proof/photo`;
+
+  const headers = new Headers();
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
+  const response = await fetch(url, {
+    method: "GET",
+    headers,
+  });
+
+  if (!response.ok) {
+    if (response.status === 401 && unauthorizedHandler) {
+      unauthorizedHandler();
+    }
+    throw new ApiError(response.status, "Failed to fetch proof photo");
+  }
+
+  return await response.blob();
+}
+
+export type MerchantStatus = "PENDING" | "APPROVED" | "REJECTED" | "SUSPENDED";
+
+export interface MerchantResponse {
+  id: string;
+  userId: string;
+  businessName: string;
+  contactPhone: string | null;
+  status: MerchantStatus;
+  rejectionReason: string | null;
+  createdAt: string;
+  reviewedAt: string | null;
+  reviewedBy: string | null;
+}
+
+export interface RegisterMerchantRequest {
+  fullName: string;
+  email: string;
+  password: string;
+  businessName: string;
+  contactPhone?: string;
+}
+
+export interface RejectMerchantRequest {
+  reason: string;
+}
+
+export type CourierApprovalStatus = "PENDING" | "APPROVED" | "REJECTED";
+
+export interface CourierApprovalResponse {
+  userId: string;
+  email: string;
+  fullName: string;
+  status: CourierApprovalStatus;
+  rejectionReason: string | null;
+  createdAt: string;
+  reviewedAt: string | null;
+  reviewedBy: string | null;
+}
+
+export interface RejectCourierRequest {
+  reason: string;
+}
+
 export interface RequestOptions extends Omit<RequestInit, "body"> {
   token?: string | null;
   body?: unknown;
 }
-
-type UnauthorizedHandler = () => void;
-
-let unauthorizedHandler: UnauthorizedHandler | null = null;
 
 export function onUnauthorized(handler: UnauthorizedHandler): () => void {
   unauthorizedHandler = handler;

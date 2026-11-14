@@ -4,7 +4,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-const PORTALS = [
+const PORTALS: Array<{
+  title: string;
+  role: string;
+  description: string;
+  href: string;
+  action: string;
+  signupHref?: string;
+  signupAction?: string;
+}> = [
   {
     title: "Customer Portal",
     role: "CUSTOMER",
@@ -18,6 +26,8 @@ const PORTALS = [
     description: "Bulk shipment booking, cash on delivery (COD) settlements, and store integration.",
     href: "/merchant",
     action: "Access Merchant Portal",
+    signupHref: "/signup?type=merchant",
+    signupAction: "Sign up as Merchant",
   },
   {
     title: "Courier Portal",
@@ -110,7 +120,7 @@ export default function Home() {
                   {portal.description}
                 </CardDescription>
               </CardHeader>
-              <CardContent className="pt-0">
+              <CardContent className="pt-0 space-y-2">
                 <Link
                   href={portal.href}
                   className={
@@ -120,6 +130,17 @@ export default function Home() {
                 >
                   {portal.action}
                 </Link>
+                {portal.signupHref && portal.signupAction && (
+                  <Link
+                    href={portal.signupHref}
+                    className={
+                      buttonVariants({ variant: "default", size: "sm" }) +
+                      " w-full font-semibold shadow-xs"
+                    }
+                  >
+                    {portal.signupAction}
+                  </Link>
+                )}
               </CardContent>
             </Card>
           ))}

@@ -23,6 +23,7 @@ import com.swiftdrop.delivery.domain.DeliveryProofRepository;
 import com.swiftdrop.delivery.domain.OutboxEventRepository;
 import com.swiftdrop.delivery.domain.ParcelRepository;
 import com.swiftdrop.delivery.domain.ParcelStatusHistoryRepository;
+import com.swiftdrop.dispatch.domain.CourierProfileRepository;
 import com.swiftdrop.identity.domain.ExternalIdentityRepository;
 import com.swiftdrop.identity.domain.GoogleLoginCodeRepository;
 import com.swiftdrop.identity.domain.Role;
@@ -30,6 +31,8 @@ import com.swiftdrop.identity.domain.User;
 import com.swiftdrop.identity.domain.UserRepository;
 import com.swiftdrop.pricing.api.FeeCalculator;
 import com.swiftdrop.pricing.domain.PricingRuleRepository;
+import com.swiftdrop.merchant.domain.MerchantRepository;
+import com.swiftdrop.identity.domain.CourierApprovalRepository;
 import com.swiftdrop.pricing.domain.ZoneRepository;
 import com.swiftdrop.test.security.TestPrincipal;
 
@@ -95,6 +98,15 @@ class AdminUserManagementApiTest {
 
     @MockitoBean
     private PricingRuleRepository pricingRules;
+
+    @MockitoBean
+    private MerchantRepository merchants;
+
+    @MockitoBean
+    private CourierApprovalRepository courierApprovals;
+
+    @MockitoBean
+    private CourierProfileRepository courierProfiles;
 
     private User adminUser;
     private User targetUser;
