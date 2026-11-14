@@ -36,13 +36,16 @@ its code.** Every member writes and can explain their own code (DEM-6). Requirem
 
 ### 1.2 Step-by-step process for **every** sub-part
 
-1. **Pick** your next ⬜ sub-part whose "Depends on" items are ✅. Set it to 🟡, add your
-   branch name and today's date in this file, and commit that one-line change first.
-2. **Sync and branch:**
+1. **Pick** your next ⬜ sub-part whose dependencies are ✅. Set it to 🟡 and add today's date in
+   this file, and commit that one-line change first.
+2. **Sync and switch to your area branch.** The team already uses one long-lived branch per area
+   (see [1.5 Branch map](#15-branch-map)). Do **not** create a new branch per sub-part:
    ```bash
-   git switch dev && git pull
-   git switch -c feat/m<member>-<id>-<short-name>    # e.g. feat/m7-7.2-assignment
+   git switch feature/<your-area> && git pull
+   git merge origin/DEV          # bring in other members' merged work; resolve conflicts here
    ```
+   Every sub-part is a separate series of commits **tagged with its ID** (step 4). That tag is
+   what keeps sub-parts separate inside a shared branch.
 3. **Read before coding.** Read the relevant ADR, the contract section and the "How to implement"
    steps for your sub-part below.
 4. **Implement in small commits.** Use one commit per layer, in this order where it applies:
@@ -63,14 +66,19 @@ its code.** Every member writes and can explain their own code (DEM-6). Requirem
 6. **Update this file in the same branch.** Set the status to 🔵, fill in the PR number, and add a
    line to the [change log](#4-change-log).
    Commit: `docs(progress): update <id> status [<id>]`.
-7. **Push and open a PR into `dev`.** Put the sub-part ID in the title, for example
-   `feat(dispatch): unassigned parcels and assignment [7.2]`.
-8. **After review and merge,** set the status to ✅, add the merge date, and update the
-   [summary](#2-summary) counts.
+7. **Push your area branch.** Open a PR into `DEV` when one or more sub-parts are finished. List
+   the sub-part IDs in the title, for example
+   `feat(dispatch): unassigned parcels and assignment [7.2, 7.3]`. Don't wait for the whole
+   area to be finished; merge after each finished sub-part (or small group) so branches don't
+   drift apart.
+8. **After review and merge into `DEV`,** set each merged sub-part to ✅, add the merge date, and
+   update the [summary](#2-summary) counts.
+9. **Releases:** the team lead merges `DEV` into `main` when the build is green. Nobody commits
+   to `main` or `DEV` directly.
 
 ### 1.3 Pull request checklist
 
-- [ ] Title contains the sub-part ID, e.g. `[7.2]`
+- [ ] Title lists the sub-part IDs, e.g. `[7.2]` or `[7.2, 7.3]`; commits are tagged the same way
 - [ ] Only files of my module, or files agreed with their owner, are changed
 - [ ] `mvnw clean verify` passes; `npm run lint` and `npm run build` pass if the frontend changed
 - [ ] Tests added for the new behaviour, including authorization (401/403/404) where relevant
@@ -78,7 +86,44 @@ its code.** Every member writes and can explain their own code (DEM-6). Requirem
 - [ ] `docs/PROGRESS.md` row and change log updated
 - [ ] `docs/architecture.md` status labels updated if something became **Implemented**
 
-### 1.4 Module boundaries (do not break them)
+### 1.4 Rules for sharing a branch
+
+- A branch can have several authors (for example `feature/courier-module`). Before you push,
+  run `git pull --rebase` so you don't overwrite a teammate's commits. Never force-push a shared
+  branch.
+- Keep one sub-part per commit series. Don't mix two sub-parts in one commit, so
+  `git log --grep "\[7.2\]"` shows exactly the work for 7.2.
+- Edit `docs/PROGRESS.md` only on **your own member's rows** and the change log. This keeps merge
+  conflicts in this file small. If a conflict happens, keep both sides' rows.
+
+### 1.5 Branch map
+
+Existing branches on `origin`, mapped to members. The "Branch" column in the workstream tables
+uses these names. **Confirm the Member column with the team**: it is inferred from commit authors
+and branch names, so it may be wrong.
+
+| Branch | Area | Member | State on 2026-11-14 |
+|---|---|---|---|
+| `main` | stable / release | team lead | updated only from `DEV` |
+| `DEV` | integration | team lead | all PRs merge here; CI must be green |
+| `DEV_2` | second integration line | team lead | 19 commits ahead of `main`, has courier work merged in; decide whether it merges into `DEV` or is retired |
+| `feature/rbac-user-management` | Identity, users, RBAC | M1 | active (12 commits) |
+| `feature/authentication` | Login, sign-up, Google | M1 | no commits yet |
+| `feature/delivery-request-pricing` | Booking and pricing | M2 / M8 | no commits yet |
+| `feature/customer_history` | History and receipt | M2 | no commits yet |
+| `feature/courier-module` | Courier operations | M6 | active (18 commits) |
+| `feature/dispatcher` | Dispatch | M7 | active (2 commits) |
+| `feature/merchant` | Merchant registration, API keys, orders | M4 / M5 | 1 commit |
+| `feature/messaging-and-webhook` | RabbitMQ, notifications, webhook delivery | M9 / M5 | 1 commit |
+| `feature/tracking-realtime` | SSE tracking | M10 | 1 commit |
+
+In the workstream tables, leave the Branch column empty until you start a sub-part, then enter
+your area branch from this map.
+
+Areas without a branch yet (delivery core M3, containers and demo M10, pricing admin and
+reports M8) get one of the same form, `feature/<area>`, created from the latest `DEV`.
+
+### 1.6 Module boundaries (do not break them)
 
 From [ADR 0003](adr/0003-backend-modules-and-boundaries.md). `ModuleBoundaryTest` enforces them.
 
