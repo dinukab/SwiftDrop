@@ -44,7 +44,7 @@ Application Development group project for a courier company operating island-wid
 | Frontend | Next.js App Router, React, TypeScript, Tailwind CSS, shadcn/ui on Base UI, npm | Implemented |
 | Backend | Java 21, Spring Boot 4.1 (Spring MVC), Maven Wrapper | Implemented |
 | Persistence | PostgreSQL 18, Spring Data JPA / Hibernate, Flyway | Implemented (identity tables only) |
-| Messaging | RabbitMQ 4.3, Spring AMQP | Implemented (identity tables only) |
+| Messaging | RabbitMQ 4.3, Spring AMQP | Implemented (connection, topology declarations, confirms/returns; broker tests pending) |
 | Security | Spring Security; OAuth2 client and resource-server starters | Implemented (defaults only, see section 9) |
 | API docs | springdoc-openapi | Implemented (default endpoints) |
 | Local infrastructure | Docker Compose (`compose.yaml`) | Implemented (database and broker only, see section 13) |
@@ -181,15 +181,19 @@ tracking     → delivery
   events (SYS-5); merchant webhooks with retry on failure (IMP-4).
 - **Decided:** RabbitMQ through Spring AMQP carries asynchronous work. Classic or quorum queues only;
   classic mirrored queues were removed in RabbitMQ 4.
-- **Implemented:** connection settings (`SWIFTDROP_RABBITMQ_*`) and the Actuator health check
-  only. **No exchanges, queues, producers or consumers exist.** A connection smoke test against
-  RabbitMQ 4.3 succeeded in Stage 5.
+- **Implemented:** connection settings (`SWIFTDROP_RABBITMQ_*`), the Actuator health check,
+  module-owned exchange/queue/binding declarations, correlated publisher confirms, returns and
+  mandatory publishing. Durable quorum source queues have bounded delivery counts, a maximum
+  length, reject-publish overflow and at-least-once dead-lettering into isolated quorum DLQs.
+  Configuration tests are Docker-free; `RabbitMessagingIT` exercises an isolated RabbitMQ 4.3
+  container under the integration profile. Broker verification is pending in this workspace
+  (Docker unavailable). No outbox relay, processing listeners or webhook sender is implemented.
+  See [Stage 2 setup and verification](messaging-stage-2.md).
 - **Decided (ADR 0003):** `delivery` is the only publisher of status-change events;
   `notification` and `merchant` consume them through RabbitMQ; `tracking` may receive them
   in-process. Side effects never block or roll back the status change.
 - **Decided ([ADR 0004](adr/0004-messaging-and-integration-reliability.md), Accepted).**
-  **None of it is implemented yet**, and the decision is not an authorization to implement it
-  without an approved task:
+  **Partially implemented as described above**. The remaining design requires its own approved task:
   - **Guarantee:** at-least-once delivery of committed status changes; no exactly-once promise.
     Duplicates are normal and absorbed by event IDs and per-parcel sequence numbers.
   - **Event:** `parcel.status-changed`, a versioned JSON envelope with event ID and per-parcel
@@ -346,6 +350,9 @@ whether springdoc and Actuator details are exposed outside local development.
     tests via Maven Failsafe and Boot-managed Testcontainers (PostgreSQL 18). `DatabaseMigrationIT`
     verifies that Flyway applies all migrations and Hibernate schema validation passes against an
     isolated PostgreSQL 18 container without touching development or persistent databases.
+  - Messaging topology and publisher settings have 9 Docker-free configuration test cases.
+    RabbitMessagingIT compiles under the existing integration profile, but its broker checks
+    have not run in this workspace because Docker is unavailable.
   - The frontend has lint and type checking (`npm run lint`, `npm run build`) and no tests.
   - CI (`.github/workflows/ci.yml`) runs the frontend lint/build and the Docker-free backend
     `clean verify` on pull requests targeting `dev` or `main` and on pushes to them
@@ -357,9 +364,8 @@ whether springdoc and Actuator details are exposed outside local development.
   SSRF, signatures, secret encryption, retries and merchant isolation). Unit and component tests
   stay Docker-free.
 - **Open (before the related implementation):** the coverage tool (JaCoCo, for example, is not
-  managed by Spring Boot, so it would need a change to ADR 0002's version policy); RabbitMQ
-  integration tests under the integration profile; frontend test tooling, end-to-end tests,
-  and running integration tests in CI.
+  managed by Spring Boot, so it would need a change to ADR 0002's version policy); frontend test
+  tooling, end-to-end tests, and running integration tests in CI.
 
 ## 13. Deployment and observability
 

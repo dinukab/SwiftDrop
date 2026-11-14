@@ -1,29 +1,47 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { Suspense, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { api, ApiError, formatApiError, type AccessTokenResponse, type UserResponse } from "@/lib/api";
-import { useAuth } from "@/lib/auth-context";
+import { useRouter, useSearchParams } from "next/navigation";
+import { api, ApiError, formatApiError, type CourierApprovalResponse, type MerchantResponse, type UserResponse } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Eye, EyeOff } from "lucide-react";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_PASSWORD_BYTES = 72;
 
-export default function SignupPage() {
-  const router = useRouter();
-  const { login } = useAuth();
+type AccountType = "customer" | "merchant" | "courier";
 
+function initialAccountType(typeParam: string | null): AccountType {
+  const normalized = typeParam?.trim().toLowerCase();
+  if (normalized === "merchant" || normalized === "courier") {
+    return normalized;
+  }
+  return "customer";
+}
+
+function SignupForm() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  const [accountType, setAccountType] = useState<AccountType>(() =>
+    initialAccountType(searchParams.get("type"))
+  );
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [businessName, setBusinessName] = useState("");
+  const [contactPhone, setContactPhone] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isConflict, setIsConflict] = useState(false);
+  const [submittedAs, setSubmittedAs] = useState<AccountType | null>(null);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -32,9 +50,10 @@ export default function SignupPage() {
     setErrorMessage(null);
     setIsConflict(false);
 
-    // Client-side validations
     const trimmedName = fullName.trim();
     const trimmedEmail = email.trim().toLowerCase();
+    const trimmedBusinessName = businessName.trim();
+    const trimmedPhone = contactPhone.trim();
 
     if (!trimmedName) {
       setErrorMessage("Please enter your full name.");
@@ -52,6 +71,21 @@ export default function SignupPage() {
     if (!EMAIL_REGEX.test(trimmedEmail) || trimmedEmail.length > 320) {
       setErrorMessage("Please enter a valid email address (max 320 characters).");
       return;
+    }
+
+    if (accountType === "merchant") {
+      if (!trimmedBusinessName) {
+        setErrorMessage("Please enter your business / store name.");
+        return;
+      }
+      if (trimmedBusinessName.length > 200) {
+        setErrorMessage("Business / store name must be at most 200 characters.");
+        return;
+      }
+      if (trimmedPhone.length > 20) {
+        setErrorMessage("Contact phone must be at most 20 characters.");
+        return;
+      }
     }
 
     if (!password) {
@@ -76,25 +110,34 @@ export default function SignupPage() {
     setIsLoading(true);
 
     try {
-      // 1. Register customer account (strictly no role field)
-      await api.post<UserResponse>("/api/v1/users", {
+      if (accountType === "customer") {
+        await api.post<UserResponse>("/api/v1/users", {
+          fullName: trimmedName,
+          email: trimmedEmail,
+          password,
+        });
+        router.push("/login?registered=true");
+        return;
+      }
+
+      if (accountType === "merchant") {
+        await api.post<MerchantResponse>("/api/v1/merchants", {
+          fullName: trimmedName,
+          email: trimmedEmail,
+          password,
+          businessName: trimmedBusinessName,
+          ...(trimmedPhone ? { contactPhone: trimmedPhone } : {}),
+        });
+        setSubmittedAs("merchant");
+        return;
+      }
+
+      await api.post<CourierApprovalResponse>("/api/v1/courier-registrations", {
         fullName: trimmedName,
         email: trimmedEmail,
         password,
       });
-
-      // 2. Auto-authenticate on successful registration for seamless UX
-      try {
-        const tokenRes = await api.post<AccessTokenResponse>("/api/v1/auth/tokens", {
-          email: trimmedEmail,
-          password,
-        });
-        await login(tokenRes.accessToken);
-        router.push("/customer");
-      } catch {
-        // Fallback to login page with registered banner
-        router.push("/login?registered=true");
-      }
+      setSubmittedAs("courier");
     } catch (err: unknown) {
       if (err instanceof ApiError && err.status === 409) {
         setIsConflict(true);
@@ -109,24 +152,119 @@ export default function SignupPage() {
     }
   }
 
+  if (submittedAs) {
+    return (
+      <main className="container mx-auto flex-1 flex items-center justify-center px-4 py-12 min-h-[calc(100vh-3.5rem)]">
+        <Card className="w-full max-w-md rounded-xl bg-card border-border shadow-xs">
+          <CardHeader className="space-y-1 text-center">
+            <div className="inline-flex items-center justify-center gap-1.5 mx-auto mb-2 text-xs font-semibold uppercase tracking-wider text-primary">
+              <span className="size-1.5 rounded-full bg-primary" />
+              Pending Admin Approval
+            </div>
+            <CardTitle className="text-2xl font-bold tracking-tight text-foreground">
+              Application received
+            </CardTitle>
+            <CardDescription className="text-sm text-muted-foreground">
+              {submittedAs === "courier"
+                ? "Courier registration submitted! Your account will be activated once an Administrator approves your application."
+                : "Merchant registration submitted! Your account will be activated once an Administrator approves your application."}
+            </CardDescription>
+          </CardHeader>
+          <CardFooter className="flex flex-col gap-2 pt-2 border-t border-border/60 text-center text-xs text-muted-foreground">
+            <p>
+              After approval,{" "}
+              <Link
+                href="/login"
+                className="font-semibold text-primary underline-offset-4 hover:underline"
+              >
+                sign in
+              </Link>{" "}
+              to open the merchant portal.
+            </p>
+          </CardFooter>
+        </Card>
+      </main>
+    );
+  }
+
   return (
     <main className="container mx-auto flex-1 flex items-center justify-center px-4 py-12 min-h-[calc(100vh-3.5rem)]">
       <Card className="w-full max-w-md rounded-xl bg-card border-border shadow-xs">
         <CardHeader className="space-y-1 text-center">
           <div className="inline-flex items-center justify-center gap-1.5 mx-auto mb-2 text-xs font-semibold uppercase tracking-wider text-primary">
             <span className="size-1.5 rounded-full bg-primary" />
-            Customer Registration
+            {accountType === "merchant"
+              ? "Merchant Registration"
+              : accountType === "courier"
+                ? "Courier Registration"
+                : "Customer Registration"}
           </div>
           <CardTitle className="text-2xl font-bold tracking-tight text-foreground">
             Create an account
           </CardTitle>
           <CardDescription className="text-sm text-muted-foreground">
-            Get started with SwiftDrop parcel bookings and live delivery tracking.
+            {accountType === "merchant"
+              ? "Register your business. Access starts after an administrator approves your application."
+              : accountType === "courier"
+                ? "Register as a courier. Access starts after an administrator approves your application."
+                : "Get started with SwiftDrop parcel bookings and live delivery tracking."}
           </CardDescription>
         </CardHeader>
 
         <form onSubmit={handleSubmit} noValidate>
           <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label id="account-type-label">Account type</Label>
+              <div
+                role="tablist"
+                aria-labelledby="account-type-label"
+                className="grid grid-cols-3 gap-2 rounded-lg border border-border bg-muted/40 p-1"
+              >
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={accountType === "customer"}
+                  onClick={() => setAccountType("customer")}
+                  disabled={isLoading}
+                  className={`rounded-md px-3 py-2 text-xs font-semibold transition-colors ${
+                    accountType === "customer"
+                      ? "bg-card text-foreground shadow-xs"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  Customer
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={accountType === "merchant"}
+                  onClick={() => setAccountType("merchant")}
+                  disabled={isLoading}
+                  className={`rounded-md px-3 py-2 text-xs font-semibold transition-colors ${
+                    accountType === "merchant"
+                      ? "bg-card text-foreground shadow-xs"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  Merchant (Business)
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={accountType === "courier"}
+                  onClick={() => setAccountType("courier")}
+                  disabled={isLoading}
+                  className={`rounded-md px-3 py-2 text-xs font-semibold transition-colors ${
+                    accountType === "courier"
+                      ? "bg-card text-foreground shadow-xs"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  Courier
+                </button>
+              </div>
+            </div>
+
             {errorMessage && (
               <div
                 role="alert"
@@ -162,6 +300,40 @@ export default function SignupPage() {
               />
             </div>
 
+            {accountType === "merchant" && (
+              <>
+                <div className="space-y-1.5">
+                  <Label htmlFor="signup-business-name">Business / Store Name</Label>
+                  <Input
+                    id="signup-business-name"
+                    type="text"
+                    autoComplete="organization"
+                    placeholder="Ada's Parcel Shop"
+                    value={businessName}
+                    onChange={(e) => setBusinessName(e.target.value)}
+                    disabled={isLoading}
+                    maxLength={200}
+                    required
+                    className="bg-background text-sm"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="signup-contact-phone">Contact phone (optional)</Label>
+                  <Input
+                    id="signup-contact-phone"
+                    type="tel"
+                    autoComplete="tel"
+                    placeholder="+94771234567"
+                    value={contactPhone}
+                    onChange={(e) => setContactPhone(e.target.value)}
+                    disabled={isLoading}
+                    maxLength={20}
+                    className="bg-background text-sm"
+                  />
+                </div>
+              </>
+            )}
+
             <div className="space-y-1.5">
               <Label htmlFor="signup-email">Email address</Label>
               <Input
@@ -180,17 +352,28 @@ export default function SignupPage() {
 
             <div className="space-y-1.5">
               <Label htmlFor="signup-password">Password</Label>
-              <Input
-                id="signup-password"
-                type="password"
-                autoComplete="new-password"
-                placeholder="At least 8 characters"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                disabled={isLoading}
-                required
-                className="bg-background text-sm"
-              />
+              <div className="relative">
+                <Input
+                  id="signup-password"
+                  type={showPassword ? "text" : "password"}
+                  autoComplete="new-password"
+                  placeholder="At least 8 characters"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  disabled={isLoading}
+                  required
+                  className="bg-background text-sm pr-10"
+                />
+                <button
+                  type="button"
+                  className="absolute inset-y-0 right-0 flex items-center px-3 text-muted-foreground hover:text-foreground"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  disabled={isLoading}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                >
+                  {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                </button>
+              </div>
               <p className="text-[11px] text-muted-foreground">
                 Minimum 8 characters, maximum 72 bytes.
               </p>
@@ -198,17 +381,28 @@ export default function SignupPage() {
 
             <div className="space-y-1.5">
               <Label htmlFor="signup-confirm-password">Confirm password</Label>
-              <Input
-                id="signup-confirm-password"
-                type="password"
-                autoComplete="new-password"
-                placeholder="Re-enter your password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                disabled={isLoading}
-                required
-                className="bg-background text-sm"
-              />
+              <div className="relative">
+                <Input
+                  id="signup-confirm-password"
+                  type={showConfirmPassword ? "text" : "password"}
+                  autoComplete="new-password"
+                  placeholder="Re-enter your password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  disabled={isLoading}
+                  required
+                  className="bg-background text-sm pr-10"
+                />
+                <button
+                  type="button"
+                  className="absolute inset-y-0 right-0 flex items-center px-3 text-muted-foreground hover:text-foreground"
+                  onClick={() => setShowConfirmPassword((prev) => !prev)}
+                  disabled={isLoading}
+                  aria-label={showConfirmPassword ? "Hide confirm password" : "Show confirm password"}
+                >
+                  {showConfirmPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                </button>
+              </div>
             </div>
 
             <Button
@@ -216,7 +410,13 @@ export default function SignupPage() {
               disabled={isLoading}
               className="w-full font-semibold shadow-xs mt-2"
             >
-              {isLoading ? "Creating account..." : "Create customer account"}
+              {isLoading
+                ? "Submitting..."
+                : accountType === "merchant"
+                  ? "Submit merchant application"
+                  : accountType === "courier"
+                    ? "Submit courier application"
+                    : "Create customer account"}
             </Button>
           </CardContent>
 
@@ -234,5 +434,19 @@ export default function SignupPage() {
         </form>
       </Card>
     </main>
+  );
+}
+
+export default function SignupPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="container mx-auto flex min-h-[50vh] items-center justify-center px-4 py-12">
+          <p className="text-sm text-muted-foreground">Loading registration...</p>
+        </main>
+      }
+    >
+      <SignupForm />
+    </Suspense>
   );
 }

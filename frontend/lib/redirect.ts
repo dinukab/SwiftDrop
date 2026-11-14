@@ -39,3 +39,41 @@ export function sanitizeInternalRedirect(target: string | null | undefined, fall
     return fallback;
   }
 }
+
+/**
+ * Maps backend roles from GET /api/v1/users/me to the portal home path.
+ * Never trust a role submitted by the client; callers must pass roles returned by the API.
+ * Priority matches the single-role accounts used today, with staff preferred if multiple exist.
+ */
+export function getDashboardPathForRoles(roles: string[] | null | undefined): string {
+  const normalized = new Set(
+    (roles ?? []).map((role) => role.replace(/^ROLE_/, "").toUpperCase())
+  );
+
+  if (normalized.has("DISPATCHER_ADMIN")) {
+    return "/admin";
+  }
+  if (normalized.has("COURIER")) {
+    return "/courier";
+  }
+  if (normalized.has("MERCHANT")) {
+    return "/merchant";
+  }
+  return "/customer";
+}
+
+/**
+ * Chooses the post-login destination: a sanitized explicit redirect when present,
+ * otherwise the role-based dashboard from API-returned roles.
+ */
+export function resolvePostLoginDestination(
+  redirectParam: string | null | undefined,
+  roles: string[] | null | undefined
+): string {
+  const roleHome = getDashboardPathForRoles(roles);
+  if (!redirectParam || redirectParam.trim() === "" || redirectParam.trim() === "/") {
+    return roleHome;
+  }
+  const sanitized = sanitizeInternalRedirect(redirectParam, roleHome);
+  return sanitized === "/" ? roleHome : sanitized;
+}

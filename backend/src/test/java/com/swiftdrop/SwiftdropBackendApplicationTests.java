@@ -12,6 +12,8 @@ import com.swiftdrop.identity.domain.ExternalIdentityRepository;
 import com.swiftdrop.identity.domain.UserRepository;
 import com.swiftdrop.pricing.api.FeeCalculator;
 import com.swiftdrop.pricing.domain.PricingRuleRepository;
+import com.swiftdrop.merchant.domain.MerchantRepository;
+import com.swiftdrop.identity.domain.CourierApprovalRepository;
 import com.swiftdrop.pricing.domain.ZoneRepository;
 
 /**
@@ -48,6 +50,11 @@ class SwiftdropBackendApplicationTests {
     @MockitoBean
     private PricingRuleRepository pricingRules;
 
+    @MockitoBean
+    private MerchantRepository merchants;
+
+    @MockitoBean
+    private CourierApprovalRepository courierApprovals;
     @Test
     void contextLoads() {
     }
