@@ -10,6 +10,8 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
+import com.swiftdrop.delivery.api.ParcelConflictException;
+import com.swiftdrop.delivery.api.ParcelNotFoundException;
 import com.swiftdrop.identity.api.PasswordRejectedException;
 import com.swiftdrop.merchant.application.ApiKeyLimitExceededException;
 import com.swiftdrop.merchant.application.MerchantNotApprovedException;
@@ -41,6 +43,18 @@ class MerchantExceptionHandler {
     @ExceptionHandler(MerchantNotApprovedException.class)
     ProblemDetail notApproved(MerchantNotApprovedException e) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.FORBIDDEN, e.getMessage());
+    }
+
+    /** The order is not the caller's, or does not exist: the same answer, so it cannot be probed. */
+    @ExceptionHandler(ParcelNotFoundException.class)
+    ProblemDetail orderNotFound(ParcelNotFoundException e) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, "Order not found");
+    }
+
+    /** The message names the broken lifecycle rule only, never order data. */
+    @ExceptionHandler(ParcelConflictException.class)
+    ProblemDetail orderConflict(ParcelConflictException e) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, e.getMessage());
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

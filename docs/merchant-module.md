@@ -78,6 +78,12 @@ Three Flyway SQL migrations exist under `backend/src/main/resources/db/migration
 | `POST` | `/api/v1/merchant-api/orders` | `X-API-Key` (`ROLE_MERCHANT_API`) | Create parcel (`201 Created`) or idempotent retry (`200 OK`) |
 | `GET` | `/api/v1/merchants/me/orders` | JWT (`ROLE_MERCHANT`) | Paginated orders with optional `status` filter |
 | `GET` | `/api/v1/merchants/me/orders/{orderReference}` | JWT (`ROLE_MERCHANT`) | Look up order by merchant reference |
+| `POST` | `/api/v1/merchants/me/orders/{orderReference}/holds` | JWT (`ROLE_MERCHANT`, approved) | Pause the order before pickup; optional body `{"reason"}` (max 500, kept in history only). `200` with the updated order, `409` if past `CREATED`, `404` if not this merchant's (ADR 0006 §1A) |
+| `DELETE` | `/api/v1/merchants/me/orders/{orderReference}/holds` | JWT (`ROLE_MERCHANT`, approved) | Release a hold (`PAUSED` to `CREATED`); `409` unless paused |
+| `POST` | `/api/v1/merchants/me/orders/{orderReference}/cancellations` | JWT (`ROLE_MERCHANT`, approved) | Cancel before pickup (final); `409` once picked up or already cancelled |
+| `GET` | `/api/v1/merchant-api/orders/{merchantOrderReference}` | `X-API-Key` (`ROLE_MERCHANT_API`) | Store-facing status: current status, `lastSequence` and the full sequenced history (IDs, codes and times only, no recipient details). Only the key's own merchant's orders; others are `404`. Not reachable with a login token |
+
+The order list and detail responses carry `allowedActions` (`PAUSE`, `RESUME`, `CANCEL`) so a client never has to know the lifecycle rules. `PAUSED` and `CANCELLED` are new order statuses; a courier can neither set nor leave them.
 | `GET` | `/api/v1/merchants/me/webhooks` | JWT (`ROLE_MERCHANT`) | List active webhook subscriptions |
 | `POST` | `/api/v1/merchants/me/webhooks` | JWT (`ROLE_MERCHANT`) | Register webhook URL + secret |
 | `DELETE` | `/api/v1/merchants/me/webhooks/{id}` | JWT (`ROLE_MERCHANT`) | Deactivate a webhook endpoint |
@@ -89,7 +95,7 @@ Three Flyway SQL migrations exist under `backend/src/main/resources/db/migration
 The Merchant Workspace portal routes are wrapped in [layout.tsx](../frontend/app/(merchant)/layout.tsx) using `PortalShell` (`role="MERCHANT"`):
 
 - `/merchant` ([page.tsx](../frontend/app/(merchant)/merchant/page.tsx)): Loads `GET /api/v1/merchants/me`, shows business name, registration number, approval status badge (`APPROVED`, `REJECTED`, `PENDING_APPROVAL`), navigation cards, and a sample `curl` snippet for `POST /api/v1/merchant-api/orders`.
-- `/merchant/orders` ([orders/page.tsx](../frontend/app/(merchant)/merchant/orders/page.tsx)): Fetches `GET /api/v1/merchants/me/orders` with status filter tabs (`ALL`, `CREATED`, `PICKED_UP`, `IN_TRANSIT`, `OUT_FOR_DELIVERY`, `DELIVERED`, `FAILED`) and pagination.
+- `/merchant/orders` ([orders/page.tsx](../frontend/app/(merchant)/merchant/orders/page.tsx)): Fetches `GET /api/v1/merchants/me/orders` with status filter tabs (`ALL`, `CREATED`, `PAUSED` shown as "On hold", `PICKED_UP`, `IN_TRANSIT`, `OUT_FOR_DELIVERY`, `DELIVERED`, `FAILED`, `CANCELLED`) and pagination. Each row has Pause, Resume and Cancel buttons driven by the server's `allowedActions`; Pause and Cancel open a confirm dialog with an optional reason, and the tracking number links to the public tracking page.
 - `/merchant/api-keys` ([api-keys/page.tsx](../frontend/app/(merchant)/merchant/api-keys/page.tsx)): Lists keys via `GET /api/v1/merchants/me/api-keys`, creates keys via `POST`, displays the one-time `rawKey` with a copy button, and revokes keys via `DELETE`.
 - `/merchant/webhooks` ([webhooks/page.tsx](../frontend/app/(merchant)/merchant/webhooks/page.tsx)): Lists endpoints via `GET /api/v1/merchants/me/webhooks`, registers URL + secret via `POST`, and deactivates endpoints via `DELETE`.
 

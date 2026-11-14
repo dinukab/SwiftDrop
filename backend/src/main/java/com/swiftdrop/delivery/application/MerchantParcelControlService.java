@@ -70,11 +70,11 @@ class MerchantParcelControlService implements MerchantParcelControl {
         Objects.requireNonNull(merchantUserId, "merchantUserId");
         String note = cleanReason(reason);
 
-        // Find by the merchant's own reference (another merchant's order is simply not found), then
-        // re-read under the lock before changing it.
-        Parcel found = parcels.findByMerchantIdAndMerchantOrderReference(merchantId, merchantOrderReference.trim())
+        // One locked read by the merchant's own reference (another merchant's order is simply not
+        // found), so a concurrent pickup or assignment finishes before this change starts.
+        Parcel parcel = parcels
+                .findByMerchantIdAndMerchantOrderReferenceForUpdate(merchantId, merchantOrderReference.trim())
                 .orElseThrow(ParcelNotFoundException::new);
-        Parcel parcel = parcels.findByIdForUpdate(found.getId()).orElseThrow(ParcelNotFoundException::new);
 
         ParcelStatus previous = parcel.getStatus();
         Instant now = clock.instant();

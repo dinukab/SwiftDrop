@@ -350,7 +350,7 @@ enabled; public registration and Google sign-in grant only `CUSTOMER`.
 | Resource | Customer | Merchant | Courier | Dispatcher/Admin | Public |
 |---|---|---|---|---|---|
 | Parcel detail / history | own (`customer_id`) | own via dashboard (`merchant_id`) | currently assigned only | all | — |
-| Parcel status change | — | — | currently assigned only, legal transition | none in v1 (**D-06**) | — |
+| Parcel status change | — | hold, release or cancel own parcel before pickup only (ADR 0006 §1A) | currently assigned only, legal transition | none in v1 (**D-06**) | — |
 | Proof photo | own | — | assigned | all | — |
 | Public tracking | — | — | — | — | status + timestamps + zone names only |
 | Merchant profile, keys, endpoint, webhook records | — | own only (other merchant's → 404) | — | view all, approve, disable endpoint; never read secrets | — |
@@ -477,7 +477,7 @@ team approval recorded in `architecture.md` is enough.
 | D-03 | Merchant API authentication | API keys (hashed, prefix lookup), no OAuth client credentials | Yes (architecture §9 open) | SD-403–405 |
 | D-04 | Staff account creation | Env-bootstrapped first admin; admin creates couriers/admins | No | SD-101, SD-102 |
 | D-05 | Tracking-number format | `SD` + 10 random Crockford base32 chars (no I, L, O, U), unique, retry on collision | No | SD-205 |
-| D-06 | Open lifecycle rules | Table in §7: `FAILED` from `PICKED_UP`..`OUT_FOR_DELIVERY`; proof required for `DELIVERED`; reassignment only in `CREATED`; no cancel/retry/override | Yes (extends ADR 0003 §4) | SD-301, SD-306 |
+| D-06 | Open lifecycle rules | Table in §7: `FAILED` from `PICKED_UP`..`OUT_FOR_DELIVERY`; proof required for `DELIVERED`; reassignment only in `CREATED`; no retry/override. **Amended 2026-11-15 (ADR 0006 §1A):** the owning merchant may hold (`PAUSED`), release or cancel (`CANCELLED`, final) its own parcel before pickup; couriers and dispatchers cannot; no customer cancel | Yes (extends ADR 0003 §4) | SD-301, SD-306 |
 | D-07 | Fee formula, zones, currency | Zone-pair rules (§5.2), LKR, user picks zone per address (no geocoding) | No (brief silent) | SD-201, SD-202 |
 | D-08 | Report definitions | Deliveries per day = parcels created per business day; outcome rate = `DELIVERED / (DELIVERED + FAILED)` by terminal date; `Asia/Colombo` | No | SD-314 |
 | D-09 | "Assigned deliveries for the day" | Non-terminal parcels assigned to the courier + those that became terminal today | No | SD-309 |

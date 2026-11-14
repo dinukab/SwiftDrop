@@ -55,9 +55,8 @@ class MerchantParcelControlServiceTest {
         parcel = Parcel.forMerchant("SD7K3M9Q2XWB", MERCHANT_ID, REFERENCE, address, address, ParcelSize.SMALL, 1000,
                 null, new Parcel.Fee(new BigDecimal("650.00"), "LKR", UUID.randomUUID()), NOW.minusSeconds(60));
         ReflectionTestUtils.setField(parcel, "id", PARCEL_ID);
-        when(parcels.findByMerchantIdAndMerchantOrderReference(MERCHANT_ID, REFERENCE))
+        when(parcels.findByMerchantIdAndMerchantOrderReferenceForUpdate(MERCHANT_ID, REFERENCE))
                 .thenReturn(Optional.of(parcel));
-        when(parcels.findByIdForUpdate(PARCEL_ID)).thenReturn(Optional.of(parcel));
     }
 
     @Test
@@ -67,7 +66,7 @@ class MerchantParcelControlServiceTest {
         assertThat(status).isEqualTo(ParcelStatus.PAUSED);
         assertThat(parcel.getStatus()).isEqualTo(ParcelStatus.PAUSED);
         assertThat(parcel.getLastSequence()).isEqualTo(2);
-        verify(parcels).findByIdForUpdate(PARCEL_ID);
+        verify(parcels).findByMerchantIdAndMerchantOrderReferenceForUpdate(MERCHANT_ID, REFERENCE);
         verify(recorder).record(parcel, ParcelStatus.CREATED, ACTOR, "Still packing", null, NOW);
     }
 
@@ -101,7 +100,8 @@ class MerchantParcelControlServiceTest {
 
     @Test
     void unknownOrReferenceOfAnotherMerchantIsNotFoundAndNothingIsRecorded() {
-        when(parcels.findByMerchantIdAndMerchantOrderReference(any(), eq("ORD-OTHER"))).thenReturn(Optional.empty());
+        when(parcels.findByMerchantIdAndMerchantOrderReferenceForUpdate(any(), eq("ORD-OTHER")))
+                .thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.cancel(MERCHANT_ID, "ORD-OTHER", MERCHANT_USER_ID, null))
                 .isInstanceOf(ParcelNotFoundException.class);
