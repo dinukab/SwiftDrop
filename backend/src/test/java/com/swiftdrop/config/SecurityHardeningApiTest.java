@@ -87,6 +87,8 @@ class SecurityHardeningApiTest {
     private PricingRuleRepository pricingRules;
     @MockitoBean
     private MerchantRepository merchants;
+    @MockitoBean
+    private com.swiftdrop.dispatch.domain.CourierProfileRepository courierProfiles;
 
     private User admin;
 
