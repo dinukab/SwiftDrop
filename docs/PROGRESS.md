@@ -390,7 +390,7 @@ step. Also leads the security review, the test report and the contribution sheet
 
 | ID | Sub-part | SD | Status | Branch | PR | Date |
 |---|---|---|---|---|---|---|
-| 7.1 | Courier profiles: schema, service, admin API | SD-305 | 🟡 | `feature/dispatcher` | | 2026-11-11 |
+| 7.1 | Courier profiles: schema, service, admin API | SD-305 | ✅ | `feature/dispatcher` | | 2026-11-14 |
 | 7.2 | Unassigned parcels and courier assignment | SD-306 | ⬜ | | | |
 | 7.3 | Courier workload view | SD-307 | ⬜ | | | |
 | 7.4 | Assignment history per parcel (needs 3.7) | — | ⬜ | | | |

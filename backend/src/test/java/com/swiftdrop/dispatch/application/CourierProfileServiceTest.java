@@ -211,6 +211,19 @@ class CourierProfileServiceTest {
     }
 
     @Test
+    void partialUpdateKeepsOmittedFields() {
+        CourierProfile existing = new CourierProfile(USER_ID, "+94771234567", VehicleType.BIKE, NOW.minusSeconds(60));
+        when(profiles.findById(PROFILE_ID)).thenReturn(Optional.of(existing));
+
+        CourierProfile updated = service.updateProfile(PROFILE_ID, null, VehicleType.CAR, false);
+
+        assertThat(updated.getPhone()).isEqualTo("+94771234567");
+        assertThat(updated.getVehicleType()).isEqualTo(VehicleType.CAR);
+        assertThat(updated.isActive()).isFalse();
+        assertThat(updated.getUpdatedAt()).isEqualTo(NOW);
+    }
+
+    @Test
     void setActiveThrowsWhenProfileMissing() {
         when(profiles.findById(PROFILE_ID)).thenReturn(Optional.empty());
 

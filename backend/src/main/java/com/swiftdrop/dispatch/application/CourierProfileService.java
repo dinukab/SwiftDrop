@@ -1,6 +1,7 @@
 package com.swiftdrop.dispatch.application;
 
 import java.time.Clock;
+import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -121,6 +122,29 @@ public class CourierProfileService {
         CourierProfile profile = getProfile(profileId);
         profile.updateDetails(phone, vehicleType, clock.instant());
         log.info("Courier profile {} details updated", profileId);
+        return profile;
+    }
+
+    /**
+     * Partial update in one transaction: a null argument keeps the current value.
+     *
+     * @throws CourierProfileNotFoundException if no profile has {@code profileId}
+     * @throws IllegalArgumentException if a supplied phone is invalid (nothing is saved)
+     */
+    @Transactional
+    public CourierProfile updateProfile(UUID profileId, String phone, VehicleType vehicleType, Boolean active) {
+        CourierProfile profile = getProfile(profileId);
+        Instant now = clock.instant();
+        if (phone != null || vehicleType != null) {
+            profile.updateDetails(
+                    phone != null ? phone : profile.getPhone(),
+                    vehicleType != null ? vehicleType : profile.getVehicleType(),
+                    now);
+        }
+        if (active != null) {
+            profile.setActive(active, now);
+        }
+        log.info("Courier profile {} updated", profileId);
         return profile;
     }
 
