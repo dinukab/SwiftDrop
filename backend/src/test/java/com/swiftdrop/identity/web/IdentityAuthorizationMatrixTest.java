@@ -113,15 +113,13 @@ class IdentityAuthorizationMatrixTest {
     private PricingRuleRepository pricingRules;
 
     @MockitoBean
-<<<<<<< HEAD
     private MerchantRepository merchants;
 
     @MockitoBean
     private CourierApprovalRepository courierApprovals;
-=======
-    private CourierProfileRepository courierProfiles;
 
->>>>>>> 0df2e0fccfe314da496aee2d474e8e7df1a59037
+    @MockitoBean
+    private com.swiftdrop.dispatch.domain.CourierProfileRepository courierProfiles;
     private final Map<String, GoogleLoginCode> storedCodes = new HashMap<>();
     private String validExchangeCode;
 

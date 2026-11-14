@@ -79,11 +79,7 @@ class DatabaseMigrationIT {
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(
                 "SELECT version, description, type, script, success FROM flyway_schema_history ORDER BY installed_rank ASC");
 
-<<<<<<< HEAD
-        assertThat(rows).hasSize(11);
-=======
-        assertThat(rows).hasSize(9);
->>>>>>> 0df2e0fccfe314da496aee2d474e8e7df1a59037
+        assertThat(rows).hasSize(13);
 
         assertThat(rows.get(0))
                 .containsEntry("version", "202610251600")

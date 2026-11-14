@@ -100,6 +100,8 @@ class CourierRegistrationApiTest {
     @MockitoBean
     private CourierApprovalRepository courierApprovals;
     @MockitoBean
+    private com.swiftdrop.dispatch.domain.CourierProfileRepository courierProfiles;
+    @MockitoBean
     private CourierApprovalService courierApprovalService;
 
     private CourierApproval pendingApproval;

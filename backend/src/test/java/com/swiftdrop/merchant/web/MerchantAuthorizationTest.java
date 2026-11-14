@@ -95,6 +95,8 @@ class MerchantAuthorizationTest {
     @MockitoBean
     private com.swiftdrop.identity.domain.CourierApprovalRepository courierApprovals;
     @MockitoBean
+    private com.swiftdrop.dispatch.domain.CourierProfileRepository courierProfiles;
+    @MockitoBean
     private MerchantOnboardingService onboardingService;
 
     @BeforeEach
