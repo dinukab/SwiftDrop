@@ -75,11 +75,15 @@ class DatabaseMigrationIT {
         // Assert PostgreSQL container is running
         assertThat(postgres.isRunning()).isTrue();
 
-        // Assert Flyway schema history recorded identity, pricing and delivery migrations in order
+        // Assert Flyway schema history recorded identity, pricing, delivery and dispatch migrations in order
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(
                 "SELECT version, description, type, script, success FROM flyway_schema_history ORDER BY installed_rank ASC");
 
+<<<<<<< HEAD
         assertThat(rows).hasSize(11);
+=======
+        assertThat(rows).hasSize(9);
+>>>>>>> 0df2e0fccfe314da496aee2d474e8e7df1a59037
 
         assertThat(rows.get(0))
                 .containsEntry("version", "202610251600")
@@ -109,13 +113,14 @@ class DatabaseMigrationIT {
                 .containsEntry("script", "pricing/V202611021200__pricing_create_zones_and_pricing_rules.sql")
                 .containsEntry("success", true);
 
-        assertThat(rows.subList(4, 8))
+        assertThat(rows.subList(4, 9))
                 .extracting(row -> row.get("script"), row -> row.get("success"))
                 .containsExactly(
                         tuple("delivery/V202611031000__delivery_create_parcels.sql", true),
                         tuple("delivery/V202611031010__delivery_create_parcel_status_history.sql", true),
                         tuple("delivery/V202611031020__delivery_create_delivery_proofs.sql", true),
-                        tuple("delivery/V202611031030__delivery_create_parcel_outbox_events.sql", true));
+                        tuple("delivery/V202611031030__delivery_create_parcel_outbox_events.sql", true),
+                        tuple("dispatch/V202611112100__dispatch_create_couriers.sql", true));
 
         assertThat(rows.get(8))
                 .containsEntry("version", "202611130900")
@@ -150,6 +155,9 @@ class DatabaseMigrationIT {
 
         Integer pricingRulesCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM pricing_rules", Integer.class);
         assertThat(pricingRulesCount).isNotNull();
+
+        Integer couriersCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM couriers", Integer.class);
+        assertThat(couriersCount).isNotNull().isEqualTo(0);
 
         // Assert Hibernate EntityManager is active and connected
         assertThat(entityManager.isOpen()).isTrue();

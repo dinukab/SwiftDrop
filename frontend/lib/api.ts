@@ -92,6 +92,22 @@ export interface ProofResponse {
   capturedAt: string;
 }
 
+type UnauthorizedHandler = () => void;
+
+let unauthorizedHandler: UnauthorizedHandler | null = null;
+
+export class ApiError extends Error {
+  readonly status: number;
+  readonly problem?: ProblemDetail;
+
+  constructor(status: number, message: string, problem?: ProblemDetail) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.problem = problem;
+  }
+}
+
 // Multipart file upload helper
 export async function uploadProof(parcelId: string, recipientName: string, photoFile: File | null, token: string): Promise<ProofResponse> {
   const formData = new FormData();
@@ -160,6 +176,8 @@ export async function getProofPhoto(parcelId: string, token: string): Promise<Bl
   }
 
   return await response.blob();
+}
+
 export type MerchantStatus = "PENDING" | "APPROVED" | "REJECTED" | "SUSPENDED";
 
 export interface MerchantResponse {
@@ -203,26 +221,10 @@ export interface RejectCourierRequest {
   reason: string;
 }
 
-export class ApiError extends Error {
-  readonly status: number;
-  readonly problem?: ProblemDetail;
-
-  constructor(status: number, message: string, problem?: ProblemDetail) {
-    super(message);
-    this.name = "ApiError";
-    this.status = status;
-    this.problem = problem;
-  }
-}
-
 export interface RequestOptions extends Omit<RequestInit, "body"> {
   token?: string | null;
   body?: unknown;
 }
-
-type UnauthorizedHandler = () => void;
-
-let unauthorizedHandler: UnauthorizedHandler | null = null;
 
 export function onUnauthorized(handler: UnauthorizedHandler): () => void {
   unauthorizedHandler = handler;
