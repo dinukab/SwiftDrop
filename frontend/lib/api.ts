@@ -46,7 +46,16 @@ export interface AccessTokenResponse {
 }
 
 // Courier API types
-export type ParcelStatus = "CREATED" | "PICKED_UP" | "IN_TRANSIT" | "OUT_FOR_DELIVERY" | "DELIVERED" | "FAILED";
+export type ParcelStatus =
+  | "CREATED"
+  | "PICKED_UP"
+  | "IN_TRANSIT"
+  | "OUT_FOR_DELIVERY"
+  | "DELIVERED"
+  | "FAILED"
+  // A merchant can hold (PAUSED) or cancel (CANCELLED) a parcel before it is picked up.
+  | "PAUSED"
+  | "CANCELLED";
 
 export type FailureReason = "RECIPIENT_UNAVAILABLE" | "ADDRESS_NOT_FOUND" | "REFUSED" | "DAMAGED" | "OTHER";
 
