@@ -54,9 +54,10 @@ class MerchantController {
     MerchantResponse register(@Valid @RequestBody RegisterMerchantRequest request) {
         return MerchantResponse.from(onboarding.register(
                 request.fullName(),
-                request.email(),
+                request.contactEmail(),
                 request.password(),
                 request.businessName(),
+                request.registrationNumber(),
                 request.contactPhone()));
     }
 
