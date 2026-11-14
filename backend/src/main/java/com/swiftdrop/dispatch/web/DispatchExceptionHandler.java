@@ -10,6 +10,9 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
+import com.swiftdrop.delivery.api.ParcelConflictException;
+import com.swiftdrop.delivery.api.ParcelNotFoundException;
+import com.swiftdrop.dispatch.application.CourierNotEligibleException;
 import com.swiftdrop.dispatch.application.CourierProfileNotFoundException;
 import com.swiftdrop.dispatch.application.CourierUserNotEligibleException;
 import com.swiftdrop.dispatch.application.CourierUserNotFoundException;
@@ -23,12 +26,15 @@ import com.swiftdrop.dispatch.application.DuplicateCourierProfileException;
 @Order(Ordered.HIGHEST_PRECEDENCE)
 class DispatchExceptionHandler {
 
-    @ExceptionHandler({CourierProfileNotFoundException.class, CourierUserNotFoundException.class})
+    @ExceptionHandler({CourierProfileNotFoundException.class, CourierUserNotFoundException.class,
+            ParcelNotFoundException.class})
     ProblemDetail notFound(RuntimeException e) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, e.getMessage());
     }
 
-    @ExceptionHandler({DuplicateCourierProfileException.class, CourierUserNotEligibleException.class})
+    /** Messages name the broken rule only, never parcel or user data. */
+    @ExceptionHandler({DuplicateCourierProfileException.class, CourierUserNotEligibleException.class,
+            CourierNotEligibleException.class, ParcelConflictException.class})
     ProblemDetail conflict(RuntimeException e) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, e.getMessage());
     }
