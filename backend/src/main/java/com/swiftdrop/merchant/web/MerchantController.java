@@ -70,7 +70,7 @@ class MerchantController {
 
     /** Admin directory of merchants, optionally filtered by status. */
     @GetMapping
-    @PreAuthorize("hasRole('DISPATCHER_ADMIN')")
+    @PreAuthorize("hasRole('ADMIN')")
     PageResponse<MerchantResponse> list(
             @RequestParam(required = false) Integer page,
             @RequestParam(required = false) Integer size,
@@ -85,9 +85,9 @@ class MerchantController {
         return PageResponse.of(items, merchantPage.getNumber(), pageSize, merchantPage.getTotalElements());
     }
 
-    /** Approves a PENDING merchant. Restricted to DISPATCHER_ADMIN. */
+    /** Approves a PENDING merchant. Restricted to ADMIN. */
     @PostMapping("/{id}/approval")
-    @PreAuthorize("hasRole('DISPATCHER_ADMIN')")
+    @PreAuthorize("hasRole('ADMIN')")
     MerchantResponse approve(
             @PathVariable UUID id,
             @AuthenticationPrincipal Jwt jwt) {
@@ -95,9 +95,9 @@ class MerchantController {
         return MerchantResponse.from(onboarding.approve(id, adminId));
     }
 
-    /** Rejects a PENDING merchant with a reason. Restricted to DISPATCHER_ADMIN. */
+    /** Rejects a PENDING merchant with a reason. Restricted to ADMIN. */
     @PostMapping("/{id}/rejection")
-    @PreAuthorize("hasRole('DISPATCHER_ADMIN')")
+    @PreAuthorize("hasRole('ADMIN')")
     MerchantResponse reject(
             @PathVariable UUID id,
             @Valid @RequestBody RejectMerchantRequest request,

@@ -60,7 +60,7 @@ class AccountServiceTest {
 
         assertThat(user.getEmail()).isEqualTo("admin@example.com");
         assertThat(user.getFullName()).isEqualTo("System Administrator");
-        assertThat(user.getRoles()).containsExactly(Role.DISPATCHER_ADMIN);
+        assertThat(user.getRoles()).containsExactly(Role.ADMIN);
         assertThat(user.getPasswordHash()).doesNotContain("secret-admin-pass").startsWith("{bcrypt}");
         assertThat(encoder.matches("secret-admin-pass", user.getPasswordHash())).isTrue();
         verify(users).findByEmail("admin@example.com");
@@ -231,23 +231,26 @@ class AccountServiceTest {
     }
 
     @Test
-    void registerStaffAllowsCourierAndDispatcherAdmin() {
+    void registerStaffAllowsCourierDispatcherAndAdmin() {
         User courier = service.registerStaff("Courier Bob", "courier@example.com", "password123", Role.COURIER);
         assertThat(courier.getRoles()).containsExactly(Role.COURIER);
 
-        User admin = service.registerStaff("Admin Dave", "admin2@example.com", "password123", Role.DISPATCHER_ADMIN);
-        assertThat(admin.getRoles()).containsExactly(Role.DISPATCHER_ADMIN);
+        User dispatcher = service.registerStaff("Dispatch Erin", "erin@example.com", "password123", Role.DISPATCHER);
+        assertThat(dispatcher.getRoles()).containsExactly(Role.DISPATCHER);
+
+        User admin = service.registerStaff("Admin Dave", "admin2@example.com", "password123", Role.ADMIN);
+        assertThat(admin.getRoles()).containsExactly(Role.ADMIN);
     }
 
     @Test
     void registerStaffRejectsCustomerAndMerchantRoles() {
         assertThatThrownBy(() -> service.registerStaff("Cust", "cust@example.com", "password123", Role.CUSTOMER))
                 .isInstanceOf(InvalidRoleException.class)
-                .hasMessage("Staff account role must be COURIER or DISPATCHER_ADMIN");
+                .hasMessage("Staff account role must be COURIER, DISPATCHER or ADMIN");
 
         assertThatThrownBy(() -> service.registerStaff("Merch", "merch@example.com", "password123", Role.MERCHANT))
                 .isInstanceOf(InvalidRoleException.class)
-                .hasMessage("Staff account role must be COURIER or DISPATCHER_ADMIN");
+                .hasMessage("Staff account role must be COURIER, DISPATCHER or ADMIN");
     }
 
     @Test
@@ -268,7 +271,7 @@ class AccountServiceTest {
     @Test
     void updateUserStatusRejectsAdminDisablingThemself() {
         UUID adminId = UUID.randomUUID();
-        User adminUser = withId(new User("admin@example.com", "hash", "Admin", Set.of(Role.DISPATCHER_ADMIN)));
+        User adminUser = withId(new User("admin@example.com", "hash", "Admin", Set.of(Role.ADMIN)));
         ReflectionTestUtils.setField(adminUser, "id", adminId);
 
         assertThatThrownBy(() -> service.updateUserStatus(adminId, false, adminId))

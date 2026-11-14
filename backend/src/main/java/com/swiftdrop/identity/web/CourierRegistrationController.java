@@ -29,7 +29,7 @@ import com.swiftdrop.shared.web.PageResponse;
 
 /**
  * Public courier registration and admin review. A public registration creates a COURIER user
- * with a PENDING approval; the COURIER authority is granted only after a DISPATCHER_ADMIN
+ * with a PENDING approval; the COURIER authority is granted only after a ADMIN
  * approves. Admin-created couriers have no approval row.
  */
 @RestController
@@ -60,7 +60,7 @@ class CourierRegistrationController {
 
     /** Admin directory of courier registrations, optionally filtered by status. */
     @GetMapping
-    @PreAuthorize("hasRole('DISPATCHER_ADMIN')")
+    @PreAuthorize("hasRole('ADMIN')")
     PageResponse<CourierApprovalResponse> list(
             @RequestParam(required = false) Integer page,
             @RequestParam(required = false) Integer size,
@@ -75,17 +75,17 @@ class CourierRegistrationController {
         return PageResponse.of(items, approvalPage.getNumber(), pageSize, approvalPage.getTotalElements());
     }
 
-    /** Approves a PENDING courier registration. Restricted to DISPATCHER_ADMIN. */
+    /** Approves a PENDING courier registration. Restricted to ADMIN. */
     @PostMapping("/{userId}/approval")
-    @PreAuthorize("hasRole('DISPATCHER_ADMIN')")
+    @PreAuthorize("hasRole('ADMIN')")
     CourierApprovalResponse approve(@PathVariable UUID userId, @AuthenticationPrincipal Jwt jwt) {
         UUID adminId = UUID.fromString(jwt.getSubject());
         return response(approvals.approve(userId, adminId));
     }
 
-    /** Rejects a PENDING courier registration with a reason. Restricted to DISPATCHER_ADMIN. */
+    /** Rejects a PENDING courier registration with a reason. Restricted to ADMIN. */
     @PostMapping("/{userId}/rejection")
-    @PreAuthorize("hasRole('DISPATCHER_ADMIN')")
+    @PreAuthorize("hasRole('ADMIN')")
     CourierApprovalResponse reject(
             @PathVariable UUID userId,
             @Valid @RequestBody RejectCourierRequest request,

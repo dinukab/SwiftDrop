@@ -143,6 +143,10 @@ class MigrationConventionTest {
                         tuple(
                                 "202611131000",
                                 "identity create courier approvals",
-                                "identity/V202611131000__identity_create_courier_approvals.sql"));
+                                "identity/V202611131000__identity_create_courier_approvals.sql"),
+                        tuple(
+                                "202611131100",
+                                "identity split dispatcher admin role",
+                                "identity/V202611131100__identity_split_dispatcher_admin_role.sql"));
     }
 }

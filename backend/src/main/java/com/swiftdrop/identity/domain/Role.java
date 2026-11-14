@@ -7,5 +7,6 @@ public enum Role {
     CUSTOMER,
     MERCHANT,
     COURIER,
-    DISPATCHER_ADMIN
+    DISPATCHER,
+    ADMIN
 }

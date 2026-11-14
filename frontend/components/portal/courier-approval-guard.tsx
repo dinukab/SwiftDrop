@@ -93,7 +93,7 @@ export function CourierApprovalGuard({ children }: { children: React.ReactNode }
           <CardTitle className="text-xl font-bold text-foreground">Courier access pending</CardTitle>
           <CardDescription className="text-sm text-muted-foreground">
             {approval.status === "PENDING"
-              ? "Your courier registration is awaiting administrator approval. Courier features stay locked until a DISPATCHER_ADMIN approves your account."
+              ? "Your courier registration is awaiting administrator approval. Courier features stay locked until a ADMIN approves your account."
               : `Your courier registration was rejected${approval.rejectionReason ? `: ${approval.rejectionReason}` : "."}`}
           </CardDescription>
         </CardHeader>

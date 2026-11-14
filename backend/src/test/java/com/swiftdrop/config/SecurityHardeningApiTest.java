@@ -106,7 +106,7 @@ class SecurityHardeningApiTest {
                 });
 
         admin = new User("admin@example.com", passwordEncoder.encode("correct-horse"),
-                "Admin", Set.of(Role.DISPATCHER_ADMIN));
+                "Admin", Set.of(Role.ADMIN));
         org.springframework.test.util.ReflectionTestUtils.setField(admin, "id", ADMIN_ID);
 
         courier = new User("courier@example.com", passwordEncoder.encode("correct-horse"),
@@ -173,9 +173,9 @@ class SecurityHardeningApiTest {
         when(users.saveAndFlush(any())).thenAnswer(call -> call.getArgument(0));
 
         mvc.perform(patch("/api/v1/users/" + target.getId())
-                        .with(TestPrincipal.dispatcherAdmin(ADMIN_ID).postProcessor())
+                        .with(TestPrincipal.admin(ADMIN_ID).postProcessor())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"enabled\":true,\"role\":\"DISPATCHER_ADMIN\",\"roles\":[\"DISPATCHER_ADMIN\"]}"))
+                        .content("{\"enabled\":true,\"role\":\"ADMIN\",\"roles\":[\"ADMIN\"]}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.roles[0]").value("CUSTOMER"))
                 .andExpect(jsonPath("$.roles.length()").value(1));

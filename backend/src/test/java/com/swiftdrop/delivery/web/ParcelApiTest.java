@@ -165,7 +165,7 @@ class ParcelApiTest {
     @Test
     void onlyCustomersMayBookAndAnonymousIsRejected() throws Exception {
         for (TestPrincipal other : List.of(TestPrincipal.courier(), TestPrincipal.merchant(),
-                TestPrincipal.dispatcherAdmin())) {
+                TestPrincipal.dispatcher())) {
             mvc.perform(post("/api/v1/parcels").with(other.postProcessor())
                             .contentType(MediaType.APPLICATION_JSON).content(bookingJson("+94771234567", 2000)))
                     .andExpect(status().isForbidden());
@@ -199,7 +199,7 @@ class ParcelApiTest {
     void listClampsPageSizeAndRejectsUnknownStatus() throws Exception {
         when(reads.list(any(), any(), eq(0), eq(100))).thenReturn(new PageImpl<>(List.of()));
 
-        mvc.perform(get("/api/v1/parcels?size=500").with(TestPrincipal.dispatcherAdmin().postProcessor()))
+        mvc.perform(get("/api/v1/parcels?size=500").with(TestPrincipal.dispatcher().postProcessor()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.size").value(100));
         mvc.perform(get("/api/v1/parcels?status=LOST").with(TestPrincipal.customer(CUSTOMER_ID).postProcessor()))

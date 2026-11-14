@@ -155,7 +155,7 @@ class AuthorizationMatrixHarnessTest {
                 AuthorizationMatrixRow.row("Merchant access to customer endpoint forbidden",
                         HttpMethod.GET, "/test/harness/customer-only", TestPrincipal.merchant(), HttpStatus.FORBIDDEN),
                 AuthorizationMatrixRow.row("Admin access to customer endpoint forbidden",
-                        HttpMethod.GET, "/test/harness/customer-only", TestPrincipal.dispatcherAdmin(), HttpStatus.FORBIDDEN),
+                        HttpMethod.GET, "/test/harness/customer-only", TestPrincipal.admin(), HttpStatus.FORBIDDEN),
 
                 // Courier-only endpoint
                 AuthorizationMatrixRow.row("Courier access permitted",
@@ -171,7 +171,7 @@ class AuthorizationMatrixHarnessTest {
 
                 // Dispatcher/Admin endpoint
                 AuthorizationMatrixRow.row("Dispatcher/Admin access permitted",
-                        HttpMethod.GET, "/test/harness/admin-only", TestPrincipal.dispatcherAdmin(), HttpStatus.OK),
+                        HttpMethod.GET, "/test/harness/admin-only", TestPrincipal.admin(), HttpStatus.OK),
                 AuthorizationMatrixRow.row("Courier access to admin endpoint forbidden",
                         HttpMethod.GET, "/test/harness/admin-only", TestPrincipal.courier(), HttpStatus.FORBIDDEN),
 
@@ -217,7 +217,7 @@ class AuthorizationMatrixHarnessTest {
         }
 
         @GetMapping("/admin-only")
-        @PreAuthorize("hasRole('DISPATCHER_ADMIN')")
+        @PreAuthorize("hasRole('ADMIN')")
         String adminOnly() {
             return "admin-ok";
         }

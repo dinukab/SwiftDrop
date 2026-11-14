@@ -153,7 +153,7 @@ class CourierApiTest {
     @Test
     void courierEndpointsAreForCouriersOnly() throws Exception {
         for (TestPrincipal other : List.of(TestPrincipal.customer(), TestPrincipal.merchant(),
-                TestPrincipal.dispatcherAdmin())) {
+                TestPrincipal.dispatcher())) {
             mvc.perform(get("/api/v1/courier/parcels").with(other.postProcessor())).andExpect(status().isForbidden());
             mvc.perform(post("/api/v1/parcels/" + PARCEL_ID + "/status-changes").with(other.postProcessor())
                             .contentType(MediaType.APPLICATION_JSON).content("{\"toStatus\":\"PICKED_UP\"}"))

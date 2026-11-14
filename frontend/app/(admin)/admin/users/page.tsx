@@ -40,7 +40,7 @@ import {
 } from "lucide-react";
 
 const PAGE_SIZE = 10;
-const ROLE_FILTERS = ["ALL", "CUSTOMER", "MERCHANT", "COURIER", "DISPATCHER_ADMIN"] as const;
+const ROLE_FILTERS = ["ALL", "CUSTOMER", "MERCHANT", "COURIER", "DISPATCHER", "ADMIN"] as const;
 type RoleFilter = (typeof ROLE_FILTERS)[number];
 
 const STAFF_ROLES = [
@@ -51,9 +51,15 @@ const STAFF_ROLES = [
     icon: Truck,
   },
   {
-    value: "DISPATCHER_ADMIN" as const,
-    label: "Dispatcher & Admin",
-    description: "Full system administration, courier assignment, pricing rules, and monitoring.",
+    value: "DISPATCHER" as const,
+    label: "Dispatcher",
+    description: "Daily delivery operations: parcel assignment, courier workloads, and delivery monitoring.",
+    icon: Truck,
+  },
+  {
+    value: "ADMIN" as const,
+    label: "Administrator",
+    description: "System administration: user management, approvals, pricing, zones, and reports.",
     icon: Shield,
   },
 ];
@@ -193,7 +199,7 @@ export default function AdminUsersPage() {
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
-  // Pending merchant applications (DISPATCHER_ADMIN approval queue)
+  // Pending merchant applications (ADMIN approval queue)
   const [pendingMerchants, setPendingMerchants] = useState<MerchantResponse[]>([]);
   const [pendingMerchantsError, setPendingMerchantsError] = useState<string | null>(null);
   const [isLoadingPendingMerchants, setIsLoadingPendingMerchants] = useState(true);
@@ -203,7 +209,7 @@ export default function AdminUsersPage() {
   const [rejectError, setRejectError] = useState<string | null>(null);
   const [isRejectingMerchant, setIsRejectingMerchant] = useState(false);
 
-  // Pending courier registrations (DISPATCHER_ADMIN approval queue)
+  // Pending courier registrations (ADMIN approval queue)
   const [pendingCouriers, setPendingCouriers] = useState<CourierApprovalResponse[]>([]);
   const [pendingCouriersError, setPendingCouriersError] = useState<string | null>(null);
   const [isLoadingPendingCouriers, setIsLoadingPendingCouriers] = useState(true);
@@ -503,7 +509,7 @@ export default function AdminUsersPage() {
   const [staffFullName, setStaffFullName] = useState("");
   const [staffEmail, setStaffEmail] = useState("");
   const [staffPassword, setStaffPassword] = useState("");
-  const [staffRole, setStaffRole] = useState<"COURIER" | "DISPATCHER_ADMIN">("COURIER");
+  const [staffRole, setStaffRole] = useState<"COURIER" | "DISPATCHER" | "ADMIN">("COURIER");
   const [showPassword, setShowPassword] = useState(false);
   const [staffFormErrors, setStaffFormErrors] = useState<Record<string, string>>({});
   const [staffFormGeneralError, setStaffFormGeneralError] = useState<string | null>(null);
@@ -563,8 +569,8 @@ export default function AdminUsersPage() {
       errors.password = "Password must be at most 72 bytes.";
     }
 
-    if (staffRole !== "COURIER" && staffRole !== "DISPATCHER_ADMIN") {
-      errors.role = "Role must be COURIER or DISPATCHER_ADMIN.";
+    if (staffRole !== "COURIER" && staffRole !== "DISPATCHER" && staffRole !== "ADMIN") {
+      errors.role = "Role must be COURIER, DISPATCHER or ADMIN.";
     }
 
     if (Object.keys(errors).length > 0) {
@@ -790,7 +796,7 @@ export default function AdminUsersPage() {
                 </span>
               </CardTitle>
               <CardDescription className="text-xs text-muted-foreground mt-0.5">
-                Approve business registrations. Only DISPATCHER_ADMIN can activate merchant portal access.
+                Approve business registrations. Only ADMIN can activate merchant portal access.
               </CardDescription>
             </div>
           </div>
@@ -912,7 +918,7 @@ export default function AdminUsersPage() {
               </span>
             </CardTitle>
             <CardDescription className="text-xs text-muted-foreground mt-0.5">
-              Approve courier sign-ups. Only DISPATCHER_ADMIN can grant courier portal access.
+              Approve courier sign-ups. Only ADMIN can grant courier portal access.
             </CardDescription>
           </div>
         </CardHeader>
@@ -1173,7 +1179,7 @@ export default function AdminUsersPage() {
                                   "bg-muted text-muted-foreground border-border";
                                 let Icon = User;
 
-                                if (role === "DISPATCHER_ADMIN") {
+                                if (role === "ADMIN") {
                                   badgeStyle =
                                     "bg-primary/10 text-primary border-primary/20";
                                   Icon = Shield;

@@ -34,7 +34,7 @@ export interface CreateStaffUserRequest {
   fullName: string;
   email: string;
   password: string;
-  role?: "COURIER" | "DISPATCHER_ADMIN";
+  role?: "COURIER" | "DISPATCHER" | "ADMIN";
 }
 
 export interface UpdateUserStatusRequest {

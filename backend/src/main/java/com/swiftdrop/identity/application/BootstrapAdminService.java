@@ -11,7 +11,7 @@ import com.swiftdrop.identity.domain.Role;
 import com.swiftdrop.identity.domain.UserRepository;
 
 /**
- * Creates the initial {@link Role#DISPATCHER_ADMIN} user at application startup if configured
+ * Creates the initial {@link Role#ADMIN} user at application startup if configured
  * via environment variables and no administrator account exists yet.
  */
 @Service
@@ -40,7 +40,7 @@ public class BootstrapAdminService implements ApplicationRunner {
         if (!properties.isConfigured()) {
             return;
         }
-        if (users.existsByRoles(Role.DISPATCHER_ADMIN)) {
+        if (users.existsByRoles(Role.ADMIN)) {
             log.info("Administrator account already exists; skipping bootstrap");
             return;
         }

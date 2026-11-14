@@ -123,7 +123,7 @@ class CourierRegistrationApiTest {
         when(courierApprovals.findByUserId(PENDING_COURIER_ID)).thenReturn(Optional.of(pendingApproval));
         when(courierApprovals.findByUserId(COURIER_ID)).thenReturn(Optional.of(approvedApproval));
 
-        User admin = withId(new User("admin@example.com", "hash", "Admin", Set.of(Role.DISPATCHER_ADMIN)), ADMIN_ID);
+        User admin = withId(new User("admin@example.com", "hash", "Admin", Set.of(Role.ADMIN)), ADMIN_ID);
         when(users.findById(ADMIN_ID)).thenReturn(Optional.of(admin));
     }
 
@@ -180,7 +180,7 @@ class CourierRegistrationApiTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"fullName":"C","email":"c@example.com","password":"correct-horse",
-                                 "role":"DISPATCHER_ADMIN","roles":["DISPATCHER_ADMIN"]}
+                                 "role":"ADMIN","roles":["ADMIN"]}
                                 """))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.status").value("PENDING"));
@@ -221,7 +221,7 @@ class CourierRegistrationApiTest {
         when(courierApprovalService.findUser(COURIER_ID)).thenReturn(
                 withId(new User("c@example.com", "hash", "C", Set.of(Role.COURIER)), COURIER_ID));
         mvc.perform(post("/api/v1/courier-registrations/" + PENDING_COURIER_ID + "/approval")
-                        .with(TestPrincipal.dispatcherAdmin(ADMIN_ID).postProcessor()))
+                        .with(TestPrincipal.admin(ADMIN_ID).postProcessor()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("APPROVED"));
 
@@ -229,7 +229,7 @@ class CourierRegistrationApiTest {
         when(courierApprovalService.findUser(rejectedApproval.getUserId())).thenReturn(
                 withId(new User("r@example.com", "hash", "R", Set.of(Role.COURIER)), rejectedApproval.getUserId()));
         mvc.perform(post("/api/v1/courier-registrations/" + PENDING_COURIER_ID + "/rejection")
-                        .with(TestPrincipal.dispatcherAdmin(ADMIN_ID).postProcessor())
+                        .with(TestPrincipal.admin(ADMIN_ID).postProcessor())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"reason\":\"bad docs\"}"))
                 .andExpect(status().isOk())

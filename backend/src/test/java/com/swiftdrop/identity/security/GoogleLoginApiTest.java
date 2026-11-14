@@ -274,7 +274,7 @@ class GoogleLoginApiTest {
 
     @Test
     void privilegedRoleClaimsFromGoogleAreIgnored() throws Exception {
-        callback(claims -> claims.claim("roles", List.of("DISPATCHER_ADMIN", "MERCHANT", "COURIER")))
+        callback(claims -> claims.claim("roles", List.of("ADMIN", "MERCHANT", "COURIER")))
                 .andExpect(status().is3xxRedirection())
                 .andExpect(header().string(HttpHeaders.LOCATION, startsWith("http://localhost:3000/auth/google/callback?code=")));
 
