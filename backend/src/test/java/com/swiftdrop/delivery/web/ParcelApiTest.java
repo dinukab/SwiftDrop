@@ -56,7 +56,6 @@ import com.swiftdrop.pricing.api.FeeCalculator;
 import com.swiftdrop.pricing.api.ParcelSize;
 import com.swiftdrop.pricing.domain.PricingRuleRepository;
 import com.swiftdrop.merchant.domain.MerchantRepository;
-import com.swiftdrop.identity.domain.CourierApprovalRepository;
 import com.swiftdrop.pricing.domain.ZoneRepository;
 import com.swiftdrop.test.security.TestPrincipal;
 
@@ -109,8 +108,6 @@ class ParcelApiTest {
     @MockitoBean
     private MerchantRepository merchants;
 
-    @MockitoBean
-    private CourierApprovalRepository courierApprovals;
     private Parcel parcel;
 
     @BeforeEach

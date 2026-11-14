@@ -107,8 +107,7 @@ class BootstrapAdminServiceTest {
     void rejectsPasswordExceeding72Bytes() {
         String longPassword = "p".repeat(73);
         BootstrapAdminProperties properties = new BootstrapAdminProperties("admin@swiftdrop.com", longPassword);
-        AccountService realAccounts = new AccountService(users, encoder,
-                mock(com.swiftdrop.identity.domain.CourierApprovalRepository.class));
+        AccountService realAccounts = new AccountService(users, encoder);
         when(users.existsByRoles(Role.ADMIN)).thenReturn(false);
 
         BootstrapAdminService service = new BootstrapAdminService(users, realAccounts, properties);

@@ -18,8 +18,6 @@ export interface UserResponse {
   fullName: string;
   roles: string[];
   enabled: boolean;
-  /** PENDING/APPROVED/REJECTED for publicly registered couriers; null for other accounts. */
-  courierApprovalStatus?: string | null;
 }
 
 export interface PageResponse<T> {
@@ -70,23 +68,6 @@ export interface RegisterMerchantRequest {
 }
 
 export interface RejectMerchantRequest {
-  reason: string;
-}
-
-export type CourierApprovalStatus = "PENDING" | "APPROVED" | "REJECTED";
-
-export interface CourierApprovalResponse {
-  userId: string;
-  email: string;
-  fullName: string;
-  status: CourierApprovalStatus;
-  rejectionReason: string | null;
-  createdAt: string;
-  reviewedAt: string | null;
-  reviewedBy: string | null;
-}
-
-export interface RejectCourierRequest {
   reason: string;
 }
 

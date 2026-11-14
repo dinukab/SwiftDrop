@@ -68,8 +68,7 @@ class RateLimitingFilter extends OncePerRequestFilter {
         if (path.equals("/api/v1/auth/tokens") || path.equals("/api/v1/auth/google/exchanges")) {
             return authLimit;
         }
-        if (path.equals("/api/v1/users") || path.equals("/api/v1/merchants")
-                || path.equals("/api/v1/courier-registrations")) {
+        if (path.equals("/api/v1/users") || path.equals("/api/v1/merchants")) {
             return registrationLimit;
         }
         return null;

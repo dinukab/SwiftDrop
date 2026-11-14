@@ -11,7 +11,6 @@ import {
   type CreateStaffUserRequest,
   type UpdateUserStatusRequest,
   type MerchantResponse,
-  type CourierApprovalResponse,
 } from "@/lib/api";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -209,15 +208,6 @@ export default function AdminUsersPage() {
   const [rejectError, setRejectError] = useState<string | null>(null);
   const [isRejectingMerchant, setIsRejectingMerchant] = useState(false);
 
-  // Pending courier registrations (ADMIN approval queue)
-  const [pendingCouriers, setPendingCouriers] = useState<CourierApprovalResponse[]>([]);
-  const [pendingCouriersError, setPendingCouriersError] = useState<string | null>(null);
-  const [isLoadingPendingCouriers, setIsLoadingPendingCouriers] = useState(true);
-  const [approvingCourierId, setApprovingCourierId] = useState<string | null>(null);
-  const [rejectCourierTarget, setRejectCourierTarget] = useState<CourierApprovalResponse | null>(null);
-  const [rejectCourierReason, setRejectCourierReason] = useState("");
-  const [rejectCourierError, setRejectCourierError] = useState<string | null>(null);
-  const [isRejectingCourier, setIsRejectingCourier] = useState(false);
 
   // Trigger refs for focus restoration
   const createStaffButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -306,100 +296,6 @@ export default function AdminUsersPage() {
     };
   }, [refreshKey]);
 
-  useEffect(() => {
-    let ignore = false;
-
-    async function fetchPendingCouriers() {
-      setIsLoadingPendingCouriers(true);
-      try {
-        const params = new URLSearchParams();
-        params.set("page", "0");
-        params.set("size", "50");
-        params.set("status", "PENDING");
-        const response = await api.get<PageResponse<CourierApprovalResponse>>(
-          `/api/v1/courier-registrations?${params.toString()}`
-        );
-        if (!ignore) {
-          setPendingCouriers(response.items || []);
-          setPendingCouriersError(null);
-          setIsLoadingPendingCouriers(false);
-        }
-      } catch (err: unknown) {
-        if (!ignore) {
-          setPendingCouriersError(formatApiError(err));
-          setIsLoadingPendingCouriers(false);
-        }
-      }
-    }
-
-    fetchPendingCouriers();
-    return () => {
-      ignore = true;
-    };
-  }, [refreshKey]);
-
-  async function handleApproveCourier(courier: CourierApprovalResponse) {
-    if (approvingCourierId || isRejectingCourier) return;
-    setApprovingCourierId(courier.userId);
-    try {
-      await api.post<CourierApprovalResponse>(`/api/v1/courier-registrations/${courier.userId}/approval`);
-      setPendingCouriers((prev) => prev.filter((item) => item.userId !== courier.userId));
-      setNotification({
-        type: "success",
-        message: `${courier.fullName} was approved. The courier can now sign in and access the courier portal.`,
-      });
-      setRefreshKey((k) => k + 1);
-    } catch (err: unknown) {
-      setNotification({ type: "error", message: formatApiError(err) });
-    } finally {
-      setApprovingCourierId(null);
-    }
-  }
-
-  function handleOpenRejectCourier(courier: CourierApprovalResponse) {
-    if (approvingCourierId || isRejectingCourier) return;
-    setRejectCourierTarget(courier);
-    setRejectCourierReason("");
-    setRejectCourierError(null);
-  }
-
-  function handleCloseRejectCourier() {
-    if (isRejectingCourier) return;
-    setRejectCourierTarget(null);
-    setRejectCourierReason("");
-    setRejectCourierError(null);
-  }
-
-  async function handleConfirmRejectCourier(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    if (!rejectCourierTarget || isRejectingCourier) return;
-    const trimmedReason = rejectCourierReason.trim();
-    if (!trimmedReason) {
-      setRejectCourierError("Please enter a rejection reason.");
-      return;
-    }
-    if (trimmedReason.length > 500) {
-      setRejectCourierError("Rejection reason must be at most 500 characters.");
-      return;
-    }
-    setIsRejectingCourier(true);
-    setRejectCourierError(null);
-    try {
-      await api.post<CourierApprovalResponse>(
-        `/api/v1/courier-registrations/${rejectCourierTarget.userId}/rejection`,
-        { reason: trimmedReason }
-      );
-      setPendingCouriers((prev) => prev.filter((item) => item.userId !== rejectCourierTarget.userId));
-      setNotification({ type: "success", message: `${rejectCourierTarget.fullName} was rejected.` });
-      setRejectCourierTarget(null);
-      setRejectCourierReason("");
-      setRefreshKey((k) => k + 1);
-    } catch (err: unknown) {
-      setRejectCourierError(formatApiError(err));
-    } finally {
-      setIsRejectingCourier(false);
-    }
-  }
 
   async function handleApproveMerchant(merchant: MerchantResponse) {
     if (approvingMerchantId || isRejectingMerchant) return;
@@ -907,101 +803,6 @@ export default function AdminUsersPage() {
         </CardContent>
       </Card>
 
-      {/* Pending Courier Registrations */}
-      <Card className="rounded-xl border-border bg-card shadow-xs overflow-hidden">
-        <CardHeader className="border-b border-border/70 pb-4">
-          <div>
-            <CardTitle className="text-lg font-bold text-foreground flex items-center gap-2">
-              Pending Courier Registrations
-              <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20">
-                {pendingCouriers.length} pending
-              </span>
-            </CardTitle>
-            <CardDescription className="text-xs text-muted-foreground mt-0.5">
-              Approve courier sign-ups. Only ADMIN can grant courier portal access.
-            </CardDescription>
-          </div>
-        </CardHeader>
-        <CardContent className="p-0">
-          {isLoadingPendingCouriers && (
-            <div className="p-6 text-sm text-muted-foreground" role="status">
-              Loading pending courier registrations...
-            </div>
-          )}
-          {!isLoadingPendingCouriers && pendingCouriersError && (
-            <div className="p-6 text-sm text-destructive" role="alert">
-              {pendingCouriersError}
-            </div>
-          )}
-          {!isLoadingPendingCouriers && !pendingCouriersError && pendingCouriers.length === 0 && (
-            <div className="p-6 text-sm text-muted-foreground">
-              No courier registrations are waiting for approval.
-            </div>
-          )}
-          {!isLoadingPendingCouriers && !pendingCouriersError && pendingCouriers.length > 0 && (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-sm">
-                <caption className="sr-only">Pending courier registrations awaiting administrator approval</caption>
-                <thead>
-                  <tr className="border-b border-border bg-muted/40 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                    <th scope="col" className="py-3 px-4">Courier</th>
-                    <th scope="col" className="py-3 px-4">Status</th>
-                    <th scope="col" className="py-3 px-4">Submitted</th>
-                    <th scope="col" className="py-3 px-4 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border/60">
-                  {pendingCouriers.map((courier) => (
-                    <tr key={courier.userId} className="transition-colors hover:bg-muted/30">
-                      <td className="py-3.5 px-4">
-                        <div className="font-medium text-foreground flex items-center gap-2">
-                          <Truck className="size-3.5 text-amber-600 dark:text-amber-400" />
-                          {courier.fullName}
-                        </div>
-                        <div className="text-xs text-muted-foreground mt-0.5">{courier.email}</div>
-                      </td>
-                      <td className="py-3.5 px-4">
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20">
-                          <span className="size-1.5 rounded-full bg-amber-500" />
-                          PENDING
-                        </span>
-                      </td>
-                      <td className="py-3.5 px-4 text-xs text-muted-foreground">
-                        {new Date(courier.createdAt).toLocaleString()}
-                      </td>
-                      <td className="py-3.5 px-4 text-right">
-                        <div className="inline-flex flex-wrap items-center justify-end gap-2">
-                          <Button
-                            size="sm"
-                            onClick={() => handleApproveCourier(courier)}
-                            disabled={approvingCourierId === courier.userId || isRejectingCourier}
-                            className="text-xs font-semibold shadow-xs"
-                          >
-                            {approvingCourierId === courier.userId ? (
-                              <><Loader2 className="size-3.5 animate-spin mr-1.5" />Approving...</>
-                            ) : (
-                              <><UserCheck className="size-3.5 mr-1" />Approve</>
-                            )}
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleOpenRejectCourier(courier)}
-                            disabled={approvingCourierId === courier.userId || isRejectingCourier}
-                            className="text-xs font-semibold"
-                          >
-                            <UserX className="size-3.5 mr-1" />Reject
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
 
       {/* Directory Table Card */}
       <Card className="rounded-xl border-border bg-card shadow-xs overflow-hidden">
@@ -1390,73 +1191,6 @@ export default function AdminUsersPage() {
         </form>
       </AccessibleModal>
 
-      {/* Reject Courier Registration Modal */}
-      <AccessibleModal
-        isOpen={Boolean(rejectCourierTarget)}
-        onClose={handleCloseRejectCourier}
-        titleId="reject-courier-modal-title"
-        descriptionId="reject-courier-modal-desc"
-        isSubmitting={isRejectingCourier}
-        maxWidthClass="max-w-md"
-      >
-        <div className="flex items-center justify-between p-5 border-b border-border">
-          <div>
-            <h2 id="reject-courier-modal-title" className="text-lg font-bold text-foreground">
-              Reject courier registration
-            </h2>
-            <p id="reject-courier-modal-desc" className="text-xs text-muted-foreground mt-0.5">
-              {rejectCourierTarget
-                ? `Provide a reason for rejecting ${rejectCourierTarget.fullName}.`
-                : "Provide a rejection reason."}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={handleCloseRejectCourier}
-            disabled={isRejectingCourier}
-            className="text-muted-foreground hover:text-foreground rounded p-1 transition-colors"
-            aria-label="Close modal"
-          >
-            <X className="size-5" />
-          </button>
-        </div>
-        <form onSubmit={handleConfirmRejectCourier} noValidate>
-          <div className="p-5 space-y-4">
-            {rejectCourierError && (
-              <div role="alert" className="p-3 rounded-lg border border-destructive/20 bg-destructive/10 text-destructive text-xs font-medium">
-                {rejectCourierError}
-              </div>
-            )}
-            <div className="space-y-1.5">
-              <Label htmlFor="reject-courier-reason">Rejection reason</Label>
-              <textarea
-                id="reject-courier-reason"
-                value={rejectCourierReason}
-                onChange={(e) => setRejectCourierReason(e.target.value)}
-                disabled={isRejectingCourier}
-                maxLength={500}
-                required
-                rows={4}
-                className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                placeholder="Incomplete documentation, unverifiable details, ..."
-              />
-              <p className="text-[11px] text-muted-foreground">{rejectCourierReason.trim().length}/500</p>
-            </div>
-          </div>
-          <div className="flex justify-end gap-2 p-5 border-t border-border">
-            <Button type="button" variant="outline" onClick={handleCloseRejectCourier} disabled={isRejectingCourier}>
-              Cancel
-            </Button>
-            <Button type="submit" variant="destructive" disabled={isRejectingCourier}>
-              {isRejectingCourier ? (
-                <><Loader2 className="size-3.5 animate-spin mr-1.5" />Rejecting...</>
-              ) : (
-                <><UserX className="size-3.5 mr-1" />Confirm rejection</>
-              )}
-            </Button>
-          </div>
-        </form>
-      </AccessibleModal>
 
       {/* Staff Account Onboarding Modal */}
       <AccessibleModal

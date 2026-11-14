@@ -18,16 +18,6 @@ public interface UserDirectory {
     Optional<UserSummary> findUser(UUID id);
 
     /**
-     * Whether the user may currently exercise courier authority. Publicly registered couriers
-     * require an approved {@code courier_approvals} row; admin-created couriers (no row) and
-     * non-courier users return {@code true} so callers only strip the COURIER authority.
-     *
-     * @param id the user ID
-     * @return {@code false} only when a courier approval row exists and is not APPROVED
-     */
-    boolean isCourierApproved(UUID id);
-
-    /**
      * Creates a new user with the {@code MERCHANT} role.
      *
      * @param fullName the user's full name

@@ -147,6 +147,10 @@ class MigrationConventionTest {
                         tuple(
                                 "202611131100",
                                 "identity split dispatcher admin role",
-                                "identity/V202611131100__identity_split_dispatcher_admin_role.sql"));
+                                "identity/V202611131100__identity_split_dispatcher_admin_role.sql"),
+                        tuple(
+                                "202611131200",
+                                "identity drop courier approvals",
+                                "identity/V202611131200__identity_drop_courier_approvals.sql"));
     }
 }

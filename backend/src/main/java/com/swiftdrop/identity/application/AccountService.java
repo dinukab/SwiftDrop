@@ -22,8 +22,6 @@ import com.swiftdrop.shared.web.PageLimit;
 
 import com.swiftdrop.identity.api.UserDirectory;
 import com.swiftdrop.identity.api.UserSummary;
-import com.swiftdrop.identity.domain.CourierApprovalRepository;
-import com.swiftdrop.identity.domain.CourierApprovalStatus;
 import com.swiftdrop.identity.domain.Role;
 import com.swiftdrop.identity.domain.User;
 import com.swiftdrop.identity.domain.UserRepository;
@@ -37,15 +35,12 @@ public class AccountService implements UserDirectory {
 
     private final UserRepository users;
     private final PasswordEncoder passwordEncoder;
-    private final CourierApprovalRepository courierApprovals;
     /** Checked when the account does not exist, so both cases take similar time. */
     private final String dummyHash;
 
-    AccountService(UserRepository users, PasswordEncoder passwordEncoder,
-            CourierApprovalRepository courierApprovals) {
+    AccountService(UserRepository users, PasswordEncoder passwordEncoder) {
         this.users = users;
         this.passwordEncoder = passwordEncoder;
-        this.courierApprovals = courierApprovals;
         this.dummyHash = passwordEncoder.encode(UUID.randomUUID().toString());
     }
 
@@ -142,13 +137,6 @@ public class AccountService implements UserDirectory {
     @Override
     public Optional<UserSummary> findUser(UUID id) {
         return users.findById(id).map(AccountService::toSummary);
-    }
-
-    @Override
-    public boolean isCourierApproved(UUID id) {
-        return courierApprovals.findByUserId(id)
-                .map(approval -> approval.getStatus() == CourierApprovalStatus.APPROVED)
-                .orElse(true);
     }
 
     private static UserSummary toSummary(User user) {

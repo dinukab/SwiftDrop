@@ -22,9 +22,6 @@ import com.swiftdrop.delivery.domain.DeliveryProofRepository;
 import com.swiftdrop.delivery.domain.OutboxEventRepository;
 import com.swiftdrop.delivery.domain.ParcelRepository;
 import com.swiftdrop.delivery.domain.ParcelStatusHistoryRepository;
-import com.swiftdrop.identity.domain.CourierApproval;
-import com.swiftdrop.identity.domain.CourierApprovalRepository;
-import com.swiftdrop.identity.domain.CourierApprovalStatus;
 import com.swiftdrop.identity.domain.ExternalIdentityRepository;
 import com.swiftdrop.identity.domain.GoogleLoginCodeRepository;
 import com.swiftdrop.identity.domain.Role;
@@ -90,11 +87,8 @@ class SecurityHardeningApiTest {
     private PricingRuleRepository pricingRules;
     @MockitoBean
     private MerchantRepository merchants;
-    @MockitoBean
-    private CourierApprovalRepository courierApprovals;
 
     private User admin;
-    private User courier;
 
     @BeforeEach
     void setUp() {
@@ -109,9 +103,6 @@ class SecurityHardeningApiTest {
                 "Admin", Set.of(Role.ADMIN));
         org.springframework.test.util.ReflectionTestUtils.setField(admin, "id", ADMIN_ID);
 
-        courier = new User("courier@example.com", passwordEncoder.encode("correct-horse"),
-                "Courier", Set.of(Role.COURIER));
-        org.springframework.test.util.ReflectionTestUtils.setField(courier, "id", COURIER_ID);
     }
 
     private String loginToken(User user) throws Exception {
@@ -142,26 +133,6 @@ class SecurityHardeningApiTest {
         mvc.perform(get("/api/v1/users")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
                 .andExpect(status().isOk());
-    }
-
-    @Test
-    void courierApprovalRevocationStripsAuthorityOnNextRequest() throws Exception {
-        // Approved courier logs in and receives a token carrying ROLE_COURIER.
-        CourierApproval approved = new CourierApproval(COURIER_ID);
-        approved.approve(ADMIN_ID);
-        when(courierApprovals.findByUserId(COURIER_ID)).thenReturn(Optional.of(approved));
-        String token = loginToken(courier);
-
-        mvc.perform(get("/api/v1/courier/parcels")
-                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
-                .andExpect(status().isOk());
-
-        // Approval is revoked; the SAME token must lose courier authority on the next request.
-        CourierApproval pending = new CourierApproval(COURIER_ID);
-        when(courierApprovals.findByUserId(COURIER_ID)).thenReturn(Optional.of(pending));
-        mvc.perform(get("/api/v1/courier/parcels")
-                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
-                .andExpect(status().isForbidden());
     }
 
     @Test

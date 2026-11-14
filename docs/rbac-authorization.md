@@ -13,12 +13,12 @@ migration `V202611131100` (existing combined-role users were mapped to `ADMIN`):
 |---|---|---|
 | `CUSTOMER` | Public sign-up | `POST /api/v1/users` (role is never client-settable) |
 | `MERCHANT` | Public sign-up | `POST /api/v1/merchants` → user + `PENDING` merchant row |
-| `COURIER` | Public sign-up **or** admin-created | `POST /api/v1/courier-registrations` (approval required) or staff creation (admin, immediate) |
+| `COURIER` | Admin-created only | staff creation `POST /api/v1/staff-users` or `POST /api/v1/users/staff` with `role: "COURIER"` (immediate, no approval) |
 | `DISPATCHER` | Admin-created only | `POST /api/v1/staff-users` or `POST /api/v1/users/staff` with `role: "DISPATCHER"` |
 | `ADMIN` | Admin-created only | same staff endpoints with `role: "ADMIN"`, or env bootstrap (`BootstrapAdminService`) |
 
 Authorization split: parcel/delivery operational endpoints require `DISPATCHER`;
-user management, staff creation, and merchant/courier approvals require `ADMIN`.
+user management, staff creation, and merchant approvals require `ADMIN`.
 
 ## Token lifecycle
 
@@ -45,23 +45,20 @@ user management, staff creation, and merchant/courier approvals require `ADMIN`.
 
 `permitAll` (no token): `POST /api/v1/users`, `POST /api/v1/auth/tokens`,
 `POST /api/v1/auth/google/exchanges`, `POST /api/v1/merchants`,
-`POST /api/v1/courier-registrations`, `GET /api/v1/tracked-parcels/**` (public tracking by
+`GET /api/v1/tracked-parcels/**` (public tracking by
 design), actuator health, OpenAPI/Swagger, `/error`.
 
 Everything else requires a valid, enabled-account JWT. Method security adds role checks.
 
 | Endpoint | CUSTOMER | MERCHANT | COURIER | DISPATCHER | ADMIN | Anonymous |
 |---|---|---|---|---|---|---|
-| `POST /users`, `/auth/*`, `POST /merchants`, `POST /courier-registrations` | 201 | 201 | 201 | 201 | 201 | allowed |
-| `GET /users/me` | 200 | 200 | 200 (+`courierApprovalStatus`) | 200 | 200 | 401 |
+| `POST /users`, `/auth/*`, `POST /merchants` | 201 | 201 | 201 | 201 | 201 | allowed |
+| `GET /users/me` | 200 | 200 | 200 | 200 | 200 | 401 |
 | `GET /users` (list), `PATCH /users/{id}` | 403 | 403 | 403 | 403 | 200 | 401 |
 | `POST /users/staff`, `POST /staff-users` | 403 | 403 | 403 | 403 | 201 | 401 |
 | `GET /merchants` list, `POST /{id}/approval|rejection` | 403 | 403 | 403 | 403 | 200 | 401 |
 | `GET /merchants/me` | 404 | 200 (pending ok) | 404 | 404 | 404 | 401 |
-| `GET /courier-registrations` (admin list) | 403 | 403 | 403 | 403 | 200 | 401 |
-| `POST /courier-registrations/{userId}/approval|rejection` | 403 | 403 | 403 | 403 | 200 | 401 |
-| `GET /courier-registrations/me` | 404 | 404 | 200/404 | 404 | 404 | 401 |
-| `GET /courier/parcels`, `POST /parcels/{id}/status-changes`, `PUT /parcels/{id}/proof` | 403 | 403 | 200 if approved else 403 | 403 | 403 | 401 |
+| `GET /courier/parcels`, `POST /parcels/{id}/status-changes`, `PUT /parcels/{id}/proof` | 403 | 403 | 200 | 403 | 403 | 401 |
 | Parcel list/detail/receipt/proof (delivery ops) | own only | — | assigned only | 200 | 403 | 401 |
 | Own parcels / delivery booking | own only | — | — | — | — | — |
 
@@ -84,7 +81,7 @@ with an RFC 9457 problem body. In-memory, per application instance.
 | Group | Paths | Default |
 |---|---|---|
 | auth | `POST /api/v1/auth/tokens`, `POST /api/v1/auth/google/exchanges` | 10 req/min/IP |
-| registration | `POST /api/v1/users`, `POST /api/v1/merchants`, `POST /api/v1/courier-registrations` | 5 req/min/IP |
+| registration | `POST /api/v1/users`, `POST /api/v1/merchants` | 5 req/min/IP |
 
 Configure via `SWIFTDROP_RATE_LIMIT_AUTH_PER_MINUTE` and
 `SWIFTDROP_RATE_LIMIT_REGISTRATION_PER_MINUTE` (properties
@@ -92,10 +89,9 @@ Configure via `SWIFTDROP_RATE_LIMIT_AUTH_PER_MINUTE` and
 
 ## Approval states
 
-- `courier_approvals` (identity module): one row per publicly registered courier,
-  `user_id` PK, `PENDING → APPROVED | REJECTED`, optimistic `@Version` locking,
-  `reviewed_by`/`reviewed_at`/`rejection_reason` audit fields. Admin-created couriers have
-  no row and are treated as approved.
+- Courier accounts are created directly by an `ADMIN` via staff endpoints with the
+  `COURIER` role — no approval step. The earlier `courier_approvals` table was dropped by
+  migration `V202611131200`.
 - `merchants` (merchant module): `PENDING → APPROVED | REJECTED | SUSPENDED`;
   capability endpoints call `requireApproved()`.
 - Approval/rejection endpoints are `ADMIN`-only; only `PENDING` rows can
@@ -103,7 +99,6 @@ Configure via `SWIFTDROP_RATE_LIMIT_AUTH_PER_MINUTE` and
 
 ## `/users/me` response
 
-Returns assigned DB `roles` plus `courierApprovalStatus` (`PENDING`/`APPROVED`/`REJECTED`,
-`null` for accounts without a courier approval row). Assigned roles are kept for frontend
-compatibility; effective authority is enforced by the token converter. Merchant approval
+Returns assigned DB `roles` and `enabled`. Effective authority is enforced by the token
+converter (disabled accounts are rejected per request). Merchant approval
 status is exposed by the merchant module's own `GET /api/v1/merchants/me`.
