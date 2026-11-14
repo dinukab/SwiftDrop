@@ -135,6 +135,22 @@ export interface ParcelCreatedResponse {
   createdAt: string;
 }
 
+export type ParcelSource = "CUSTOMER" | "MERCHANT";
+
+export interface ParcelHistoryItem {
+  id: string;
+  trackingNumber: string;
+  status: ParcelStatus;
+  source: ParcelSource;
+  size: ParcelSize;
+  weightGrams: number;
+  pickupCity: string;
+  dropoffCity: string;
+  fee: { amount: string; currency: string };
+  createdAt: string;
+  updatedAt: string;
+}
+
 // Proof of Delivery API types
 export interface ProofResponse {
   parcelId: string;
