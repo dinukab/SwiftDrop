@@ -73,7 +73,7 @@ class ParcelReadServiceTest {
     void ownerAssignedCourierAndAdminSeeDetail() {
         assertThat(service.detail(PARCEL_ID, Viewer.of(OWNER_ID, ActorRole.CUSTOMER)).history()).hasSize(1);
         assertThat(service.detail(PARCEL_ID, Viewer.of(COURIER_ID, ActorRole.COURIER)).parcel()).isSameAs(parcel);
-        assertThat(service.detail(PARCEL_ID, Viewer.of(UUID.randomUUID(), ActorRole.DISPATCHER_ADMIN)).parcel())
+        assertThat(service.detail(PARCEL_ID, Viewer.of(UUID.randomUUID(), ActorRole.DISPATCHER)).parcel())
                 .isSameAs(parcel);
     }
 
@@ -99,14 +99,14 @@ class ParcelReadServiceTest {
     void notesAreVisibleToCourierAndAdminButNotToTheCustomer() {
         assertThat(service.detail(PARCEL_ID, Viewer.of(OWNER_ID, ActorRole.CUSTOMER)).notesVisible()).isFalse();
         assertThat(service.detail(PARCEL_ID, Viewer.of(COURIER_ID, ActorRole.COURIER)).notesVisible()).isTrue();
-        assertThat(service.detail(PARCEL_ID, Viewer.of(UUID.randomUUID(), ActorRole.DISPATCHER_ADMIN)).notesVisible())
+        assertThat(service.detail(PARCEL_ID, Viewer.of(UUID.randomUUID(), ActorRole.DISPATCHER)).notesVisible())
                 .isTrue();
     }
 
     @Test
     void receiptIsForOwnerAndAdminOnly() {
         assertThat(service.receipt(PARCEL_ID, Viewer.of(OWNER_ID, ActorRole.CUSTOMER)).parcel()).isSameAs(parcel);
-        assertThat(service.receipt(PARCEL_ID, Viewer.of(UUID.randomUUID(), ActorRole.DISPATCHER_ADMIN)).parcel())
+        assertThat(service.receipt(PARCEL_ID, Viewer.of(UUID.randomUUID(), ActorRole.DISPATCHER)).parcel())
                 .isSameAs(parcel);
         assertThatThrownBy(() -> service.receipt(PARCEL_ID, Viewer.of(COURIER_ID, ActorRole.COURIER)))
                 .isInstanceOf(ParcelNotFoundException.class);
@@ -145,7 +145,7 @@ class ParcelReadServiceTest {
         when(parcels.findByStatus(eq(ParcelStatus.FAILED), any())).thenReturn(Page.empty());
 
         service.list(Viewer.of(OWNER_ID, ActorRole.CUSTOMER), ParcelStatus.DELIVERED, 0, 20);
-        service.list(Viewer.of(UUID.randomUUID(), ActorRole.DISPATCHER_ADMIN), ParcelStatus.FAILED, 0, 20);
+        service.list(Viewer.of(UUID.randomUUID(), ActorRole.DISPATCHER), ParcelStatus.FAILED, 0, 20);
 
         verify(parcels).findByCustomerIdAndStatus(eq(OWNER_ID), eq(ParcelStatus.DELIVERED), any());
         verify(parcels).findByStatus(eq(ParcelStatus.FAILED), any());
@@ -155,7 +155,7 @@ class ParcelReadServiceTest {
     void adminsListAllParcels() {
         when(parcels.findAll(any(Pageable.class))).thenReturn(Page.empty());
 
-        service.list(Viewer.of(UUID.randomUUID(), ActorRole.DISPATCHER_ADMIN), null, 0, 20);
+        service.list(Viewer.of(UUID.randomUUID(), ActorRole.DISPATCHER), null, 0, 20);
 
         verify(parcels).findAll(any(Pageable.class));
     }

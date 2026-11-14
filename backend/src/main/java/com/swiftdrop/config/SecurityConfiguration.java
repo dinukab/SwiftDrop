@@ -12,6 +12,7 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
@@ -39,6 +40,12 @@ class SecurityConfiguration {
         http
                 .authorizeHttpRequests(requests -> requests
                         .requestMatchers(HttpMethod.POST, "/api/v1/users", "/api/v1/auth/tokens", "/api/v1/auth/google/exchanges", "/api/v1/merchants/register").permitAll()
+    SecurityFilterChain apiSecurity(HttpSecurity http, UserDirectory users,
+            RateLimitingFilter rateLimiting) throws Exception {
+        http
+                .authorizeHttpRequests(requests -> requests
+                        .requestMatchers(HttpMethod.POST, "/api/v1/users", "/api/v1/auth/tokens", "/api/v1/auth/google/exchanges",
+                                "/api/v1/merchants").permitAll()
                         // Public tracking by tracking number (CUS-6); delivery returns no personal data there
                         .requestMatchers(HttpMethod.GET, "/api/v1/tracked-parcels/**").permitAll()
                         .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
@@ -50,14 +57,12 @@ class SecurityConfiguration {
                 // session, so a browser cannot attach credentials to a forged cross-site request.
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(Customizer.withDefaults())
+                .addFilterBefore(rateLimiting,
+                        org.springframework.security.oauth2.server.resource.web.authentication
+                                .BearerTokenAuthenticationFilter.class)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .oauth2ResourceServer(resourceServer -> resourceServer
-                        .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter())));
-
-        MerchantApiKeyFilter merchantApiKeyFilter = merchantApiKeyFilterProvider.getIfAvailable();
-        if (merchantApiKeyFilter != null) {
-            http.addFilterBefore(merchantApiKeyFilter, BearerTokenAuthenticationFilter.class);
-        }
+                        .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter(users))));
         return http.build();
     }
 
@@ -74,12 +79,14 @@ class SecurityConfiguration {
         return source;
     }
 
-    private static JwtAuthenticationConverter jwtAuthenticationConverter() {
+    private static org.springframework.core.convert.converter.Converter<Jwt,
+            org.springframework.security.authentication.AbstractAuthenticationToken>
+            jwtAuthenticationConverter(UserDirectory users) {
         JwtGrantedAuthoritiesConverter authorities = new JwtGrantedAuthoritiesConverter();
         authorities.setAuthoritiesClaimName(IdentityClaims.ROLES);
         authorities.setAuthorityPrefix("ROLE_");
-        JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
-        converter.setJwtGrantedAuthoritiesConverter(authorities);
-        return converter;
+        JwtAuthenticationConverter delegate = new JwtAuthenticationConverter();
+        delegate.setJwtGrantedAuthoritiesConverter(authorities);
+        return new AccountStatusJwtAuthenticationConverter(delegate, users);
     }
 }

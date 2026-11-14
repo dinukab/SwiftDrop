@@ -51,6 +51,10 @@ class MerchantExceptionHandler {
     ProblemDetail typeMismatch(MethodArgumentTypeMismatchException e) {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "Invalid request");
         problem.setProperty("invalidFields", List.of(e.getName()));
+    @ExceptionHandler(PasswordRejectedException.class)
+    ProblemDetail invalidPassword(PasswordRejectedException e) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, e.getMessage());
+        problem.setProperty("invalidFields", List.of("password"));
         return problem;
     }
 }

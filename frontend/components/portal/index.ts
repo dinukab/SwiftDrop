@@ -2,9 +2,12 @@ export { RoleGuard, type RoleGuardProps, type BackendRole } from "./role-guard";
 export {
   PortalShell,
   type PortalShellProps,
-  type PortalNavItem,
-  DISPATCHER_ADMIN_NAV,
 } from "./portal-shell";
+export {
+  type PortalNavItem,
+  ADMIN_NAV,
+  DISPATCHER_NAV,
+} from "./nav";
 export {
   PortalPlaceholderCard,
   type PortalPlaceholderCardProps,

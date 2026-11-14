@@ -12,13 +12,11 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 
 /**
- * Merchant profile aggregate (MER-1, ADR 0003). Stores merchant registration details and
- * approval state.
- *
- * <p>Cross-module reference to the owning user account is by {@code userId} alone; no direct
- * JPA relationship to {@code User} (ADR 0003).
+ * Merchant profile owned by the merchant module. Registration creates a {@link MerchantStatus#PENDING}
+ * row alongside a MERCHANT identity user; capabilities require {@link MerchantStatus#APPROVED} (D-22).
  */
 @Entity
 @Table(name = "merchants")

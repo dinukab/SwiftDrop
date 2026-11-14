@@ -31,6 +31,7 @@ import com.swiftdrop.delivery.domain.DeliveryProofRepository;
 import com.swiftdrop.delivery.domain.OutboxEventRepository;
 import com.swiftdrop.delivery.domain.ParcelRepository;
 import com.swiftdrop.delivery.domain.ParcelStatusHistoryRepository;
+import com.swiftdrop.dispatch.domain.CourierProfileRepository;
 import com.swiftdrop.identity.application.GoogleExchangeService;
 import com.swiftdrop.identity.domain.ExternalIdentityRepository;
 import com.swiftdrop.identity.domain.GoogleLoginCode;
@@ -40,6 +41,7 @@ import com.swiftdrop.identity.domain.User;
 import com.swiftdrop.identity.domain.UserRepository;
 import com.swiftdrop.pricing.api.FeeCalculator;
 import com.swiftdrop.pricing.domain.PricingRuleRepository;
+import com.swiftdrop.merchant.domain.MerchantRepository;
 import com.swiftdrop.pricing.domain.ZoneRepository;
 import com.swiftdrop.test.security.AuthorizationMatrixExecutor;
 import com.swiftdrop.test.security.AuthorizationMatrixRow;
@@ -109,11 +111,25 @@ class IdentityAuthorizationMatrixTest {
     @MockitoBean
     private PricingRuleRepository pricingRules;
 
+    @MockitoBean
+    private MerchantRepository merchants;
+
+    @MockitoBean
+    private com.swiftdrop.dispatch.domain.CourierProfileRepository courierProfiles;
+
     private final Map<String, GoogleLoginCode> storedCodes = new HashMap<>();
     private String validExchangeCode;
 
     @BeforeEach
     void setUp() {
+        org.mockito.Mockito.when(users.findById(org.mockito.ArgumentMatchers.any()))
+                .thenAnswer(inv -> {
+                com.swiftdrop.identity.domain.User stubUser = new com.swiftdrop.identity.domain.User(
+                        "stub@example.com", "hash", "Stub User",
+                        java.util.Set.of(com.swiftdrop.identity.domain.Role.CUSTOMER));
+                org.springframework.test.util.ReflectionTestUtils.setField(stubUser, "id", inv.getArgument(0));
+                return java.util.Optional.of(stubUser);
+            });
         storedCodes.clear();
 
         // Code repository mock matching GoogleExchangeApiTest
@@ -141,7 +157,7 @@ class IdentityAuthorizationMatrixTest {
         User customer = withId(new User("customer@example.com", passwordEncoder.encode("correct-password"), "Customer Alice", Set.of(Role.CUSTOMER)), EXISTING_CUSTOMER_ID);
         User merchant = withId(new User("merchant@example.com", passwordEncoder.encode("correct-password"), "Merchant Shop", Set.of(Role.MERCHANT)), EXISTING_MERCHANT_ID);
         User courier = withId(new User("courier@example.com", passwordEncoder.encode("correct-password"), "Courier Bob", Set.of(Role.COURIER)), EXISTING_COURIER_ID);
-        User admin = withId(new User("admin@example.com", passwordEncoder.encode("correct-password"), "Admin Dave", Set.of(Role.DISPATCHER_ADMIN)), EXISTING_ADMIN_ID);
+        User admin = withId(new User("admin@example.com", passwordEncoder.encode("correct-password"), "Admin Dave", Set.of(Role.ADMIN)), EXISTING_ADMIN_ID);
         User disabled = withId(new User("disabled@example.com", passwordEncoder.encode("correct-password"), "Disabled User", Set.of(Role.CUSTOMER)), DISABLED_USER_ID);
         disabled.setEnabled(false);
 
@@ -292,10 +308,10 @@ class IdentityAuthorizationMatrixTest {
                         HttpStatus.OK
                 ),
                 AuthorizationMatrixRow.row(
-                        "GET /api/v1/users/me: Authenticated DISPATCHER_ADMIN returns 200 OK",
+                        "GET /api/v1/users/me: Authenticated ADMIN returns 200 OK",
                         HttpMethod.GET,
                         "/api/v1/users/me",
-                        TestPrincipal.dispatcherAdmin(EXISTING_ADMIN_ID),
+                        TestPrincipal.admin(EXISTING_ADMIN_ID),
                         HttpStatus.OK
                 ),
                 AuthorizationMatrixRow.row(
@@ -343,24 +359,24 @@ class IdentityAuthorizationMatrixTest {
                         HttpStatus.FORBIDDEN
                 ),
                 AuthorizationMatrixRow.row(
-                        "GET /api/v1/users: DISPATCHER_ADMIN unpaged returns 200 OK",
+                        "GET /api/v1/users: ADMIN unpaged returns 200 OK",
                         HttpMethod.GET,
                         "/api/v1/users",
-                        TestPrincipal.dispatcherAdmin(EXISTING_ADMIN_ID),
+                        TestPrincipal.admin(EXISTING_ADMIN_ID),
                         HttpStatus.OK
                 ),
                 AuthorizationMatrixRow.row(
-                        "GET /api/v1/users: DISPATCHER_ADMIN paged returns 200 OK",
+                        "GET /api/v1/users: ADMIN paged returns 200 OK",
                         HttpMethod.GET,
                         "/api/v1/users?page=0&size=20",
-                        TestPrincipal.dispatcherAdmin(EXISTING_ADMIN_ID),
+                        TestPrincipal.admin(EXISTING_ADMIN_ID),
                         HttpStatus.OK
                 ),
                 AuthorizationMatrixRow.row(
-                        "GET /api/v1/users: DISPATCHER_ADMIN role-filtered returns 200 OK",
+                        "GET /api/v1/users: ADMIN role-filtered returns 200 OK",
                         HttpMethod.GET,
                         "/api/v1/users?role=COURIER",
-                        TestPrincipal.dispatcherAdmin(EXISTING_ADMIN_ID),
+                        TestPrincipal.admin(EXISTING_ADMIN_ID),
                         HttpStatus.OK
                 ),
 
@@ -402,28 +418,28 @@ class IdentityAuthorizationMatrixTest {
                                 .content("{\"fullName\": \"Staff\", \"email\": \"st@ex.com\", \"password\": \"secure-pass\", \"role\": \"COURIER\"}")
                 ),
                 AuthorizationMatrixRow.row(
-                        "POST /api/v1/staff-users: DISPATCHER_ADMIN valid COURIER returns 201 Created",
+                        "POST /api/v1/staff-users: ADMIN valid COURIER returns 201 Created",
                         HttpMethod.POST,
                         "/api/v1/staff-users",
-                        TestPrincipal.dispatcherAdmin(EXISTING_ADMIN_ID),
+                        TestPrincipal.admin(EXISTING_ADMIN_ID),
                         HttpStatus.CREATED,
                         req -> req.contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"fullName\": \"Staff\", \"email\": \"st1@ex.com\", \"password\": \"secure-pass\", \"role\": \"COURIER\"}")
                 ),
                 AuthorizationMatrixRow.row(
-                        "POST /api/v1/staff-users: DISPATCHER_ADMIN valid DISPATCHER_ADMIN returns 201 Created",
+                        "POST /api/v1/staff-users: ADMIN valid ADMIN returns 201 Created",
                         HttpMethod.POST,
                         "/api/v1/staff-users",
-                        TestPrincipal.dispatcherAdmin(EXISTING_ADMIN_ID),
+                        TestPrincipal.admin(EXISTING_ADMIN_ID),
                         HttpStatus.CREATED,
                         req -> req.contentType(MediaType.APPLICATION_JSON)
-                                .content("{\"fullName\": \"Staff Admin\", \"email\": \"st2@ex.com\", \"password\": \"secure-pass\", \"role\": \"DISPATCHER_ADMIN\"}")
+                                .content("{\"fullName\": \"Staff Admin\", \"email\": \"st2@ex.com\", \"password\": \"secure-pass\", \"role\": \"ADMIN\"}")
                 ),
                 AuthorizationMatrixRow.row(
-                        "POST /api/v1/staff-users: DISPATCHER_ADMIN rejected CUSTOMER role returns 400 Bad Request",
+                        "POST /api/v1/staff-users: ADMIN rejected CUSTOMER role returns 400 Bad Request",
                         HttpMethod.POST,
                         "/api/v1/staff-users",
-                        TestPrincipal.dispatcherAdmin(EXISTING_ADMIN_ID),
+                        TestPrincipal.admin(EXISTING_ADMIN_ID),
                         HttpStatus.BAD_REQUEST,
                         req -> req.contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"fullName\": \"Invalid\", \"email\": \"st3@ex.com\", \"password\": \"secure-pass\", \"role\": \"CUSTOMER\"}")
@@ -449,10 +465,10 @@ class IdentityAuthorizationMatrixTest {
                                 .content("{\"fullName\": \"Staff\", \"email\": \"st4@ex.com\", \"password\": \"secure-pass\"}")
                 ),
                 AuthorizationMatrixRow.row(
-                        "POST /api/v1/users/staff: DISPATCHER_ADMIN returns 201 Created",
+                        "POST /api/v1/users/staff: ADMIN returns 201 Created",
                         HttpMethod.POST,
                         "/api/v1/users/staff",
-                        TestPrincipal.dispatcherAdmin(EXISTING_ADMIN_ID),
+                        TestPrincipal.admin(EXISTING_ADMIN_ID),
                         HttpStatus.CREATED,
                         req -> req.contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"fullName\": \"Staff\", \"email\": \"st4@ex.com\", \"password\": \"secure-pass\"}")
@@ -492,34 +508,34 @@ class IdentityAuthorizationMatrixTest {
                         req -> req.contentType(MediaType.APPLICATION_JSON).content("{\"enabled\": false}")
                 ),
                 AuthorizationMatrixRow.row(
-                        "PATCH /api/v1/users/{id}: DISPATCHER_ADMIN disabling another user returns 200 OK",
+                        "PATCH /api/v1/users/{id}: ADMIN disabling another user returns 200 OK",
                         HttpMethod.PATCH,
                         "/api/v1/users/" + EXISTING_CUSTOMER_ID,
-                        TestPrincipal.dispatcherAdmin(EXISTING_ADMIN_ID),
+                        TestPrincipal.admin(EXISTING_ADMIN_ID),
                         HttpStatus.OK,
                         req -> req.contentType(MediaType.APPLICATION_JSON).content("{\"enabled\": false}")
                 ),
                 AuthorizationMatrixRow.row(
-                        "PATCH /api/v1/users/{id}: DISPATCHER_ADMIN enabling another user returns 200 OK",
+                        "PATCH /api/v1/users/{id}: ADMIN enabling another user returns 200 OK",
                         HttpMethod.PATCH,
                         "/api/v1/users/" + EXISTING_CUSTOMER_ID,
-                        TestPrincipal.dispatcherAdmin(EXISTING_ADMIN_ID),
+                        TestPrincipal.admin(EXISTING_ADMIN_ID),
                         HttpStatus.OK,
                         req -> req.contentType(MediaType.APPLICATION_JSON).content("{\"enabled\": true}")
                 ),
                 AuthorizationMatrixRow.row(
-                        "PATCH /api/v1/users/{id}: DISPATCHER_ADMIN disabling themself returns 409 Conflict",
+                        "PATCH /api/v1/users/{id}: ADMIN disabling themself returns 409 Conflict",
                         HttpMethod.PATCH,
                         "/api/v1/users/" + EXISTING_ADMIN_ID,
-                        TestPrincipal.dispatcherAdmin(EXISTING_ADMIN_ID),
+                        TestPrincipal.admin(EXISTING_ADMIN_ID),
                         HttpStatus.CONFLICT,
                         req -> req.contentType(MediaType.APPLICATION_JSON).content("{\"enabled\": false}")
                 ),
                 AuthorizationMatrixRow.row(
-                        "PATCH /api/v1/users/{id}: DISPATCHER_ADMIN patching non-existent user returns 404 Not Found",
+                        "PATCH /api/v1/users/{id}: ADMIN patching non-existent user returns 404 Not Found",
                         HttpMethod.PATCH,
                         "/api/v1/users/" + NON_EXISTENT_USER_ID,
-                        TestPrincipal.dispatcherAdmin(EXISTING_ADMIN_ID),
+                        TestPrincipal.admin(EXISTING_ADMIN_ID),
                         HttpStatus.NOT_FOUND,
                         req -> req.contentType(MediaType.APPLICATION_JSON).content("{\"enabled\": false}")
                 )
