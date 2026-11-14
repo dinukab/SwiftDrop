@@ -50,6 +50,9 @@ import com.swiftdrop.pricing.domain.ZoneRepository;
         "swiftdrop.security.google.client-id="})
 @AutoConfigureMockMvc
 class MerchantOrderApiTest {
+    @MockitoBean
+    private com.swiftdrop.dispatch.domain.CourierProfileRepository courierProfiles;
+
 
     @Autowired
     private MockMvc mvc;

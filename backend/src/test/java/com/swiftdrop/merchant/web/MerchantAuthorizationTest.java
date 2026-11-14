@@ -110,10 +110,10 @@ class MerchantAuthorizationTest {
         User adminUser = withId(new User("admin@example.com", "hash", "Admin", Set.of(Role.ADMIN)), ADMIN_ID);
         when(users.findById(ADMIN_ID)).thenReturn(Optional.of(adminUser));
 
-        Merchant pending = new Merchant(MERCHANT_USER_ID, "Test Business", null);
+        Merchant pending = new Merchant(MERCHANT_USER_ID, "Test Business", "REG-TEST-1", "merchant@example.com", "0770000000");
         ReflectionTestUtils.setField(pending, "id", MERCHANT_ID);
 
-        when(onboardingService.register(anyString(), anyString(), anyString(), anyString(), any()))
+        when(onboardingService.register(anyString(), anyString(), anyString(), anyString(), anyString(), any()))
                 .thenReturn(pending);
         when(onboardingService.requireOwnMerchant(MERCHANT_USER_ID)).thenReturn(pending);
         when(onboardingService.list(anyInt(), anyInt(), isNull()))
@@ -140,9 +140,11 @@ class MerchantAuthorizationTest {
         String validRegisterBody = """
                 {
                   "fullName": "Ada Merchant",
-                  "email": "ada@shop.example",
-                  "password": "correct-horse",
-                  "businessName": "Ada's Shop"
+                  "businessName": "Ada's Shop",
+                  "registrationNumber": "REG-ADA-1",
+                  "contactEmail": "ada@shop.example",
+                  "contactPhone": "0770000000",
+                  "password": "correct-horse"
                 }
                 """;
         String validRejectBody = "{\"reason\": \"Incomplete documentation\"}";

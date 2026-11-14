@@ -51,6 +51,9 @@ import com.swiftdrop.test.security.TestPrincipal;
         "swiftdrop.security.google.client-id="})
 @AutoConfigureMockMvc
 class AdminMerchantApiTest {
+    @MockitoBean
+    private com.swiftdrop.dispatch.domain.CourierProfileRepository courierProfiles;
+
 
     @Autowired
     private MockMvc mvc;
@@ -91,7 +94,7 @@ class AdminMerchantApiTest {
         when(merchants.findAll(any(Pageable.class))).thenReturn(page);
 
         mvc.perform(get("/api/v1/admin/merchants")
-                        .with(TestPrincipal.dispatcherAdmin().postProcessor()))
+                        .with(TestPrincipal.admin().postProcessor()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items[0].businessName").value("Alpha Store"))
                 .andExpect(jsonPath("$.items[0].status").value("PENDING_APPROVAL"));
@@ -118,7 +121,7 @@ class AdminMerchantApiTest {
         when(merchants.findById(merchantId)).thenReturn(Optional.of(merchant));
 
         mvc.perform(get("/api/v1/admin/merchants/" + merchantId)
-                        .with(TestPrincipal.dispatcherAdmin().postProcessor()))
+                        .with(TestPrincipal.admin().postProcessor()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.businessName").value("Beta Store"));
     }
@@ -132,7 +135,7 @@ class AdminMerchantApiTest {
         when(merchants.save(any(Merchant.class))).thenAnswer(inv -> inv.getArgument(0));
 
         mvc.perform(patch("/api/v1/admin/merchants/" + merchantId + "/status")
-                        .with(TestPrincipal.dispatcherAdmin().postProcessor())
+                        .with(TestPrincipal.admin().postProcessor())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -152,7 +155,7 @@ class AdminMerchantApiTest {
         when(merchants.save(any(Merchant.class))).thenAnswer(inv -> inv.getArgument(0));
 
         mvc.perform(patch("/api/v1/admin/merchants/" + merchantId + "/status")
-                        .with(TestPrincipal.dispatcherAdmin().postProcessor())
+                        .with(TestPrincipal.admin().postProcessor())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {

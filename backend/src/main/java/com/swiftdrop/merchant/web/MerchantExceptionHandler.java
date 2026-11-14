@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
+import com.swiftdrop.identity.api.PasswordRejectedException;
 import com.swiftdrop.merchant.application.ApiKeyLimitExceededException;
 import com.swiftdrop.merchant.application.MerchantNotApprovedException;
 import com.swiftdrop.merchant.application.MerchantNotFoundException;
@@ -51,6 +52,9 @@ class MerchantExceptionHandler {
     ProblemDetail typeMismatch(MethodArgumentTypeMismatchException e) {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "Invalid request");
         problem.setProperty("invalidFields", List.of(e.getName()));
+        return problem;
+    }
+
     @ExceptionHandler(PasswordRejectedException.class)
     ProblemDetail invalidPassword(PasswordRejectedException e) {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, e.getMessage());

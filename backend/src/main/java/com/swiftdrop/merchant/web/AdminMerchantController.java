@@ -31,7 +31,7 @@ import com.swiftdrop.shared.web.PageResponse;
 @RestController
 @Lazy
 @RequestMapping("/api/v1/admin/merchants")
-@PreAuthorize("hasRole('DISPATCHER_ADMIN')")
+@PreAuthorize("hasRole('ADMIN')")
 class AdminMerchantController {
 
     private final MerchantApprovalService approvalService;

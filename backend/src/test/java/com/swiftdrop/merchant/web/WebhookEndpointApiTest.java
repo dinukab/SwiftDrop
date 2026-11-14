@@ -49,6 +49,9 @@ import com.swiftdrop.test.security.TestPrincipal;
         "swiftdrop.security.google.client-id="})
 @AutoConfigureMockMvc
 class WebhookEndpointApiTest {
+    @MockitoBean
+    private com.swiftdrop.dispatch.domain.CourierProfileRepository courierProfiles;
+
 
     @Autowired
     private MockMvc mvc;

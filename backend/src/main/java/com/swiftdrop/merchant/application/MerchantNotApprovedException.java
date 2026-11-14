@@ -7,5 +7,9 @@ public class MerchantNotApprovedException extends RuntimeException {
     public MerchantNotApprovedException(UUID merchantId) {
         super("Merchant account is not approved for API operations: " + merchantId);
     }
+
+    public MerchantNotApprovedException(String message) {
+        super(message);
+    }
 }
 

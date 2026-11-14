@@ -50,6 +50,9 @@ import com.swiftdrop.test.security.TestPrincipal;
         "swiftdrop.security.google.client-id="})
 @AutoConfigureMockMvc
 class MerchantApiKeyApiTest {
+    @MockitoBean
+    private com.swiftdrop.dispatch.domain.CourierProfileRepository courierProfiles;
+
 
     @Autowired
     private MockMvc mvc;

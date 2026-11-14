@@ -2,7 +2,6 @@ package com.swiftdrop.config;
 
 import java.util.List;
 
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -22,6 +21,7 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import com.swiftdrop.identity.api.IdentityClaims;
+import com.swiftdrop.identity.api.UserDirectory;
 import com.swiftdrop.merchant.api.MerchantApiKeyFilter;
 
 /**
@@ -36,30 +36,28 @@ class SecurityConfiguration {
     @Bean
     SecurityFilterChain apiSecurity(
             HttpSecurity http,
-            ObjectProvider<MerchantApiKeyFilter> merchantApiKeyFilterProvider) throws Exception {
+            UserDirectory users,
+            RateLimitingFilter rateLimiting,
+            MerchantApiKeyFilter merchantApiKeyFilter) throws Exception {
         http
                 .authorizeHttpRequests(requests -> requests
-                        .requestMatchers(HttpMethod.POST, "/api/v1/users", "/api/v1/auth/tokens", "/api/v1/auth/google/exchanges", "/api/v1/merchants/register").permitAll()
-    SecurityFilterChain apiSecurity(HttpSecurity http, UserDirectory users,
-            RateLimitingFilter rateLimiting) throws Exception {
-        http
-                .authorizeHttpRequests(requests -> requests
-                        .requestMatchers(HttpMethod.POST, "/api/v1/users", "/api/v1/auth/tokens", "/api/v1/auth/google/exchanges",
-                                "/api/v1/merchants").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/users", "/api/v1/auth/tokens",
+                                "/api/v1/auth/google/exchanges", "/api/v1/merchants", "/api/v1/merchants/register").permitAll()
                         // Public tracking by tracking number (CUS-6); delivery returns no personal data there
                         .requestMatchers(HttpMethod.GET, "/api/v1/tracked-parcels/**").permitAll()
                         .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
                         // OpenAPI / Swagger UI: public for development; to be protected or restricted under SD-702
                         .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs", "/v3/api-docs/**").permitAll()
                         .requestMatchers("/error").permitAll()
+                        // External merchant API: only requests authenticated by X-API-Key, never by a user JWT
+                        .requestMatchers("/api/v1/merchant-api/**").hasRole("MERCHANT_API")
                         .anyRequest().authenticated())
                 // Tokens travel only in the Authorization header, never in cookies, and there is no
                 // session, so a browser cannot attach credentials to a forged cross-site request.
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(Customizer.withDefaults())
-                .addFilterBefore(rateLimiting,
-                        org.springframework.security.oauth2.server.resource.web.authentication
-                                .BearerTokenAuthenticationFilter.class)
+                .addFilterBefore(rateLimiting, BearerTokenAuthenticationFilter.class)
+                .addFilterBefore(merchantApiKeyFilter, BearerTokenAuthenticationFilter.class)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .oauth2ResourceServer(resourceServer -> resourceServer
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter(users))));

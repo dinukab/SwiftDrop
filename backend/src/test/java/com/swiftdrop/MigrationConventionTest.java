@@ -143,6 +143,30 @@ class MigrationConventionTest {
                         tuple(
                                 "202611091220",
                                 "merchant create webhooks",
-                                "merchant/V202611091220__merchant_create_webhooks.sql"));
+                                "merchant/V202611091220__merchant_create_webhooks.sql"),
+                        tuple(
+                                "202611112100",
+                                "dispatch create couriers",
+                                "dispatch/V202611112100__dispatch_create_couriers.sql"),
+                        tuple(
+                                "202611130900",
+                                "merchant create applications",
+                                "merchant/V202611130900__merchant_create_applications.sql"),
+                        tuple(
+                                "202611131000",
+                                "identity create courier approvals",
+                                "identity/V202611131000__identity_create_courier_approvals.sql"),
+                        tuple(
+                                "202611131100",
+                                "identity split dispatcher admin role",
+                                "identity/V202611131100__identity_split_dispatcher_admin_role.sql"),
+                        tuple(
+                                "202611131200",
+                                "identity drop courier approvals",
+                                "identity/V202611131200__identity_drop_courier_approvals.sql"),
+                        tuple(
+                                "202611142000",
+                                "pricing seed sri lanka provinces",
+                                "pricing/V202611142000__pricing_seed_sri_lanka_provinces.sql"));
     }
 }
