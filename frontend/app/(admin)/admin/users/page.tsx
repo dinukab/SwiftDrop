@@ -273,7 +273,7 @@ export default function AdminUsersPage() {
         const params = new URLSearchParams();
         params.set("page", "0");
         params.set("size", "50");
-        params.set("status", "PENDING");
+        params.set("status", "PENDING_APPROVAL");
         const response = await api.get<PageResponse<MerchantResponse>>(
           `/api/v1/merchants?${params.toString()}`
         );

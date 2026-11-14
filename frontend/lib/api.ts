@@ -246,7 +246,7 @@ export async function getProofPhoto(parcelId: string, token: string): Promise<Bl
   return await response.blob();
 }
 
-export type MerchantStatus = "PENDING" | "APPROVED" | "REJECTED" | "SUSPENDED";
+export type MerchantStatus = "PENDING_APPROVAL" | "APPROVED" | "REJECTED" | "SUSPENDED";
 
 export interface MerchantResponse {
   id: string;
