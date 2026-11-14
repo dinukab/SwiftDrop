@@ -1,6 +1,7 @@
 package com.swiftdrop.merchant.domain;
 
 import java.time.Instant;
+import java.util.Objects;
 import java.util.UUID;
 
 import jakarta.persistence.Column;
@@ -23,20 +24,25 @@ public class Merchant {
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
-    @Column(name = "id", updatable = false, nullable = false)
     private UUID id;
 
-    @Column(name = "user_id", nullable = false, unique = true, updatable = false)
+    @Column(name = "user_id", nullable = false, unique = true)
     private UUID userId;
 
-    @Column(name = "business_name", nullable = false)
+    @Column(name = "business_name", nullable = false, length = 150)
     private String businessName;
 
-    @Column(name = "contact_phone")
+    @Column(name = "registration_number", nullable = false, unique = true, length = 50)
+    private String registrationNumber;
+
+    @Column(name = "contact_email", nullable = false, length = 254)
+    private String contactEmail;
+
+    @Column(name = "contact_phone", nullable = false, length = 30)
     private String contactPhone;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "status", nullable = false)
+    @Column(nullable = false, length = 20)
     private MerchantStatus status;
 
     @Column(name = "reviewed_by")
@@ -51,20 +57,51 @@ public class Merchant {
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
-    @Version
-    @Column(name = "version", nullable = false)
-    private long version;
+    @Column(name = "updated_at", nullable = false)
+    private Instant updatedAt;
 
     protected Merchant() {
-        // JPA
+        // for JPA
     }
 
-    public Merchant(UUID userId, String businessName, String contactPhone) {
-        this.userId = userId;
-        this.businessName = businessName.trim();
-        this.contactPhone = normalizePhone(contactPhone);
-        this.status = MerchantStatus.PENDING;
-        this.createdAt = Instant.now();
+    public Merchant(UUID userId, String businessName, String registrationNumber, String contactEmail,
+            String contactPhone) {
+        this.userId = Objects.requireNonNull(userId, "userId");
+        this.businessName = Objects.requireNonNull(businessName, "businessName").trim();
+        this.registrationNumber = Objects.requireNonNull(registrationNumber, "registrationNumber").trim();
+        this.contactEmail = Objects.requireNonNull(contactEmail, "contactEmail").trim();
+        this.contactPhone = Objects.requireNonNull(contactPhone, "contactPhone").trim();
+        this.status = MerchantStatus.PENDING_APPROVAL;
+        Instant now = Instant.now();
+        this.createdAt = now;
+        this.updatedAt = now;
+    }
+
+    public void approve(UUID adminUserId) {
+        this.status = MerchantStatus.APPROVED;
+        this.reviewedBy = Objects.requireNonNull(adminUserId, "adminUserId");
+        this.reviewedAt = Instant.now();
+        this.rejectionReason = null;
+        this.updatedAt = Instant.now();
+    }
+
+    public void reject(UUID adminUserId, String reason) {
+        this.status = MerchantStatus.REJECTED;
+        this.reviewedBy = Objects.requireNonNull(adminUserId, "adminUserId");
+        this.reviewedAt = Instant.now();
+        this.rejectionReason = reason != null ? reason.trim() : null;
+        this.updatedAt = Instant.now();
+    }
+
+    public void suspend(UUID adminUserId) {
+        this.status = MerchantStatus.SUSPENDED;
+        this.reviewedBy = Objects.requireNonNull(adminUserId, "adminUserId");
+        this.reviewedAt = Instant.now();
+        this.updatedAt = Instant.now();
+    }
+
+    public boolean isApproved() {
+        return this.status == MerchantStatus.APPROVED;
     }
 
     public UUID getId() {
@@ -77,6 +114,14 @@ public class Merchant {
 
     public String getBusinessName() {
         return businessName;
+    }
+
+    public String getRegistrationNumber() {
+        return registrationNumber;
+    }
+
+    public String getContactEmail() {
+        return contactEmail;
     }
 
     public String getContactPhone() {
@@ -103,45 +148,8 @@ public class Merchant {
         return createdAt;
     }
 
-    public long getVersion() {
-        return version;
-    }
-
-    public boolean isApproved() {
-        return status == MerchantStatus.APPROVED;
-    }
-
-    public void approve(UUID adminId) {
-        this.status = MerchantStatus.APPROVED;
-        this.reviewedBy = adminId;
-        this.reviewedAt = Instant.now();
-        this.rejectionReason = null;
-    }
-
-    public void reject(UUID adminId, String reason) {
-        this.status = MerchantStatus.REJECTED;
-        this.reviewedBy = adminId;
-        this.reviewedAt = Instant.now();
-        this.rejectionReason = reason.trim();
-    }
-
-    public void suspend(UUID adminId) {
-        this.status = MerchantStatus.SUSPENDED;
-        this.reviewedBy = adminId;
-        this.reviewedAt = Instant.now();
-    }
-
-    private static String normalizePhone(String contactPhone) {
-        if (contactPhone == null) {
-            return null;
-        }
-        String trimmed = contactPhone.trim();
-        return trimmed.isEmpty() ? null : trimmed;
-    }
-
-    /** Never includes personal data. */
-    @Override
-    public String toString() {
-        return "Merchant[id=" + id + ", status=" + status + "]";
+    public Instant getUpdatedAt() {
+        return updatedAt;
     }
 }
+

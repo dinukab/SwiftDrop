@@ -2,6 +2,7 @@ package com.swiftdrop.config;
 
 import java.util.List;
 
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -14,13 +15,14 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
+import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import com.swiftdrop.identity.api.IdentityClaims;
-import com.swiftdrop.identity.api.UserDirectory;
+import com.swiftdrop.merchant.api.MerchantApiKeyFilter;
 
 /**
  * Stateless bearer-token security for the REST API. The {@code JwtDecoder} comes from the identity
@@ -32,6 +34,12 @@ import com.swiftdrop.identity.api.UserDirectory;
 class SecurityConfiguration {
 
     @Bean
+    SecurityFilterChain apiSecurity(
+            HttpSecurity http,
+            ObjectProvider<MerchantApiKeyFilter> merchantApiKeyFilterProvider) throws Exception {
+        http
+                .authorizeHttpRequests(requests -> requests
+                        .requestMatchers(HttpMethod.POST, "/api/v1/users", "/api/v1/auth/tokens", "/api/v1/auth/google/exchanges", "/api/v1/merchants/register").permitAll()
     SecurityFilterChain apiSecurity(HttpSecurity http, UserDirectory users,
             RateLimitingFilter rateLimiting) throws Exception {
         http
