@@ -56,7 +56,9 @@ export default function MerchantApiKeysPage() {
   };
 
   useEffect(() => {
-    fetchKeys();
+    queueMicrotask(() => {
+      void fetchKeys();
+    });
   }, []);
 
   const handleCreate = async (e: React.FormEvent) => {

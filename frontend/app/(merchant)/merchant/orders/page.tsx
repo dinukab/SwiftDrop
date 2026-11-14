@@ -58,7 +58,9 @@ export default function MerchantOrdersPage() {
   };
 
   useEffect(() => {
-    fetchOrders();
+    queueMicrotask(() => {
+      void fetchOrders();
+    });
   }, [page, statusFilter]);
 
   const getStatusBadge = (status: string) => {

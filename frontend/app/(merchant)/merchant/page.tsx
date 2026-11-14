@@ -4,7 +4,6 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { api, formatApiError } from "@/lib/api";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Package, Key, Webhook, ArrowRight, ShieldCheck, Clock, AlertTriangle, Loader2 } from "lucide-react";
 
 interface MerchantProfile {
@@ -20,7 +19,7 @@ interface MerchantProfile {
 export default function MerchantPortalPage() {
   const [profile, setProfile] = useState<MerchantProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [, setError] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadProfile() {
@@ -107,11 +106,9 @@ export default function MerchantPortalPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button variant="ghost" size="sm" asChild className="p-0 text-primary hover:bg-transparent">
-              <Link href="/merchant/orders" className="flex items-center gap-1 text-sm font-medium">
-                View orders <ArrowRight className="w-4 h-4" />
-              </Link>
-            </Button>
+            <Link href="/merchant/orders" className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline">
+              View orders <ArrowRight className="w-4 h-4" />
+            </Link>
           </CardContent>
         </Card>
 
@@ -126,11 +123,9 @@ export default function MerchantPortalPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button variant="ghost" size="sm" asChild className="p-0 text-primary hover:bg-transparent">
-              <Link href="/merchant/api-keys" className="flex items-center gap-1 text-sm font-medium">
-                Manage keys <ArrowRight className="w-4 h-4" />
-              </Link>
-            </Button>
+            <Link href="/merchant/api-keys" className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline">
+              Manage keys <ArrowRight className="w-4 h-4" />
+            </Link>
           </CardContent>
         </Card>
 
@@ -145,11 +140,9 @@ export default function MerchantPortalPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button variant="ghost" size="sm" asChild className="p-0 text-primary hover:bg-transparent">
-              <Link href="/merchant/webhooks" className="flex items-center gap-1 text-sm font-medium">
-                Configure webhooks <ArrowRight className="w-4 h-4" />
-              </Link>
-            </Button>
+            <Link href="/merchant/webhooks" className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline">
+              Configure webhooks <ArrowRight className="w-4 h-4" />
+            </Link>
           </CardContent>
         </Card>
       </div>
