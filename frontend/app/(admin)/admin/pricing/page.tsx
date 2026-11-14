@@ -7,8 +7,11 @@ import {
   formatApiError,
   type AdminZoneRequest,
   type AdminZoneResponse,
+  type PriceQuoteRequest,
+  type PriceQuoteResponse,
   type PricingRuleRequest,
   type PricingRuleResponse,
+  type ParcelSize,
 } from "@/lib/api";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -108,6 +111,14 @@ export default function AdminPricingPage() {
   const [ruleFormError, setRuleFormError] = useState<string | null>(null);
   const [savingRule, setSavingRule] = useState(false);
 
+  const [simPickupZoneId, setSimPickupZoneId] = useState("");
+  const [simDropoffZoneId, setSimDropoffZoneId] = useState("");
+  const [simSize, setSimSize] = useState<ParcelSize | "">("");
+  const [simWeight, setSimWeight] = useState("1000");
+  const [simResult, setSimResult] = useState<PriceQuoteResponse | null>(null);
+  const [simError, setSimError] = useState<string | null>(null);
+  const [simBusy, setSimBusy] = useState(false);
+
   useEffect(() => {
     if (!token) return;
     let cancelled = false;
@@ -157,6 +168,45 @@ export default function AdminPricingPage() {
   }, [zones, rules]);
 
   const activeCount = zones.filter((zone) => zone.active).length;
+
+  // ---- Fee simulator ----
+
+  async function handleSimulate(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!token) return;
+
+    const weight = Number(simWeight);
+    if (!simPickupZoneId || !simDropoffZoneId) {
+      setSimError("Choose both zones.");
+      return;
+    }
+    if (!simSize) {
+      setSimError("Choose a parcel size.");
+      return;
+    }
+    if (!Number.isInteger(weight) || weight < 1 || weight > 30_000) {
+      setSimError("Weight must be a whole number of grams between 1 and 30,000.");
+      return;
+    }
+
+    const body: PriceQuoteRequest = {
+      pickupZoneId: simPickupZoneId,
+      dropoffZoneId: simDropoffZoneId,
+      size: simSize,
+      weightGrams: weight,
+    };
+
+    setSimBusy(true);
+    setSimError(null);
+    setSimResult(null);
+    try {
+      setSimResult(await api.post<PriceQuoteResponse>("/api/v1/price-quotes", body, { token }));
+    } catch (err) {
+      setSimError(formatApiError(err));
+    } finally {
+      setSimBusy(false);
+    }
+  }
 
   // ---- Zones ----
 
@@ -591,6 +641,82 @@ export default function AdminPricingPage() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Fee simulator</CardTitle>
+          <CardDescription>
+            Calculates the fee exactly as a customer would be quoted, using the same server calculation.
+          </CardDescription>
+        </CardHeader>
+
+        <CardContent className="space-y-4">
+          <form onSubmit={handleSimulate} noValidate className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="sim-pickup">Pickup zone</Label>
+                <ZoneSelect id="sim-pickup" value={simPickupZoneId} zones={zones} onChange={setSimPickupZoneId} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="sim-dropoff">Drop-off zone</Label>
+                <ZoneSelect id="sim-dropoff" value={simDropoffZoneId} zones={zones} onChange={setSimDropoffZoneId} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="sim-size">Size</Label>
+                <select
+                  id="sim-size"
+                  value={simSize}
+                  onChange={(e) => setSimSize(e.target.value as ParcelSize | "")}
+                  className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
+                >
+                  <option value="">Select a size</option>
+                  <option value="SMALL">Small</option>
+                  <option value="MEDIUM">Medium</option>
+                  <option value="LARGE">Large</option>
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="sim-weight">Weight (grams)</Label>
+                <Input
+                  id="sim-weight"
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  max={30000}
+                  step={1}
+                  value={simWeight}
+                  onChange={(e) => setSimWeight(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end">
+              <Button type="submit" disabled={simBusy}>
+                {simBusy && <Loader2 className="size-4 animate-spin" />}
+                Calculate fee
+              </Button>
+            </div>
+          </form>
+
+          {simError && (
+            <p role="alert" className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+              {simError}
+            </p>
+          )}
+
+          {simResult && (
+            <div className="space-y-1 rounded-xl border p-4 text-sm">
+              <p className="text-2xl font-semibold">
+                {simResult.currency} {simResult.amount}
+              </p>
+              <p className="text-muted-foreground">
+                Base {simResult.breakdown.baseFee} · Weight {simResult.breakdown.weightFee} · Size{" "}
+                {simResult.breakdown.sizeSurcharge}
+              </p>
             </div>
           )}
         </CardContent>
