@@ -124,6 +124,18 @@ class ZoneAdminApiTest {
     }
 
     @Test
+    void deactivatingAZoneUsedByAnActiveRuleIsAConflict() throws Exception {
+        UUID id = UUID.randomUUID();
+        when(zones.findById(id)).thenReturn(Optional.of(new Zone("LK-NP", "Northern Province", true)));
+        when(pricingRules.existsByOriginZoneIdAndActiveTrue(id)).thenReturn(true);
+
+        mvc.perform(put(ZONES + "/" + id).with(TestPrincipal.admin().postProcessor())
+                        .contentType("application/json")
+                        .content("{\"code\":\"LK-NP\",\"name\":\"Northern Province\",\"active\":false}"))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
     void updatingAnUnknownZoneIsNotFound() throws Exception {
         when(zones.findById(any())).thenReturn(Optional.empty());
 

@@ -14,13 +14,66 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataIntegrityViolationException;
 
+import com.swiftdrop.pricing.domain.PricingRuleRepository;
 import com.swiftdrop.pricing.domain.Zone;
 import com.swiftdrop.pricing.domain.ZoneRepository;
 
 class ZoneAdministrationServiceTest {
 
     private final ZoneRepository zones = mock(ZoneRepository.class);
-    private final ZoneAdministrationService service = new ZoneAdministrationService(zones);
+    private final PricingRuleRepository rules = mock(PricingRuleRepository.class);
+    private final ZoneAdministrationService service = new ZoneAdministrationService(zones, rules);
+
+    @Test
+    void deactivatingAZoneWithAnActiveOriginRuleIsRejected() {
+        Zone zone = new Zone("LK-NP", "Northern Province");
+        UUID id = UUID.randomUUID();
+        when(zones.findById(id)).thenReturn(Optional.of(zone));
+        when(rules.existsByOriginZoneIdAndActiveTrue(id)).thenReturn(true);
+
+        assertThatThrownBy(() -> service.update(id, "LK-NP", "Northern Province", false))
+                .isInstanceOf(ZoneConflictException.class)
+                .hasMessageContaining("active pricing rules");
+        assertThat(zone.isActive()).isTrue();
+        verify(zones, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void deactivatingAZoneWithAnActiveDestinationRuleIsRejected() {
+        Zone zone = new Zone("LK-NP", "Northern Province");
+        UUID id = UUID.randomUUID();
+        when(zones.findById(id)).thenReturn(Optional.of(zone));
+        when(rules.existsByOriginZoneIdAndActiveTrue(id)).thenReturn(false);
+        when(rules.existsByDestinationZoneIdAndActiveTrue(id)).thenReturn(true);
+
+        assertThatThrownBy(() -> service.update(id, "LK-NP", "Northern Province", false))
+                .isInstanceOf(ZoneConflictException.class);
+    }
+
+    @Test
+    void deactivatingAZoneWithNoActiveRuleIsAllowed() {
+        Zone zone = new Zone("LK-NP", "Northern Province");
+        UUID id = UUID.randomUUID();
+        when(zones.findById(id)).thenReturn(Optional.of(zone));
+        when(zones.saveAndFlush(zone)).thenReturn(zone);
+
+        Zone updated = service.update(id, "LK-NP", "Northern Province", false);
+
+        assertThat(updated.isActive()).isFalse();
+    }
+
+    @Test
+    void activatingAZoneNeverChecksRules() {
+        Zone zone = new Zone("LK-NP", "Northern Province", false);
+        UUID id = UUID.randomUUID();
+        when(zones.findById(id)).thenReturn(Optional.of(zone));
+        when(zones.saveAndFlush(zone)).thenReturn(zone);
+
+        service.update(id, "LK-NP", "Northern Province", true);
+
+        verify(rules, never()).existsByOriginZoneIdAndActiveTrue(any());
+        verify(rules, never()).existsByDestinationZoneIdAndActiveTrue(any());
+    }
 
     @Test
     void createNormalizesCodeAndSavesActiveZone() {

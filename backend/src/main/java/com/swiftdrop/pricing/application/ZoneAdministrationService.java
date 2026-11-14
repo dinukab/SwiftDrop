@@ -8,6 +8,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.swiftdrop.pricing.domain.PricingRuleRepository;
 import com.swiftdrop.pricing.domain.Zone;
 import com.swiftdrop.pricing.domain.ZoneRepository;
 
@@ -19,9 +20,11 @@ import com.swiftdrop.pricing.domain.ZoneRepository;
 public class ZoneAdministrationService {
 
     private final ZoneRepository zones;
+    private final PricingRuleRepository rules;
 
-    public ZoneAdministrationService(ZoneRepository zones) {
+    public ZoneAdministrationService(ZoneRepository zones, PricingRuleRepository rules) {
         this.zones = zones;
+        this.rules = rules;
     }
 
     /** Every zone, active or not, ordered by name. */
@@ -51,7 +54,8 @@ public class ZoneAdministrationService {
      * Changes a zone. Keeping its own code or name is allowed; taking another zone's is not.
      *
      * @throws ZoneNotFoundException if no zone has this id
-     * @throws ZoneConflictException if the code or name belongs to another zone
+     * @throws ZoneConflictException if the code or name belongs to another zone, or the zone is being
+     *         deactivated while an active pricing rule still uses it
      */
     @Transactional
     public Zone update(UUID id, String code, String name, boolean active) {
@@ -64,10 +68,19 @@ public class ZoneAdministrationService {
         if (!normalizedName.equals(zone.getName()) && zones.existsByName(normalizedName)) {
             throw new ZoneConflictException("A zone named " + normalizedName + " already exists");
         }
+        // Deactivating a zone would make its active rules unusable and leave routes unpriced
+        if (zone.isActive() && !active && usedByActiveRule(id)) {
+            throw new ZoneConflictException(
+                    "Zone " + zone.getCode() + " still has active pricing rules. Deactivate those rules first.");
+        }
         zone.setCode(normalizedCode);
         zone.setName(normalizedName);
         zone.setActive(active);
         return save(zone);
+    }
+
+    private boolean usedByActiveRule(UUID zoneId) {
+        return rules.existsByOriginZoneIdAndActiveTrue(zoneId) || rules.existsByDestinationZoneIdAndActiveTrue(zoneId);
     }
 
     private Zone save(Zone zone) {
