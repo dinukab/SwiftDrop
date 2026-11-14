@@ -104,6 +104,33 @@ export interface AdminZoneRequest {
   active: boolean;
 }
 
+// Admin pricing rules (ADM-3, sub-part 8.4). Amounts arrive as strings such as "300.00".
+export interface PricingRuleResponse {
+  id: string;
+  originZoneId: string;
+  destinationZoneId: string;
+  baseFee: string;
+  perKgFee: string;
+  smallSizeSurcharge: string;
+  mediumSizeSurcharge: string;
+  largeSizeSurcharge: string;
+  currency: string;
+  active: boolean;
+  version: number;
+}
+
+export interface PricingRuleRequest {
+  originZoneId: string;
+  destinationZoneId: string;
+  baseFee: string;
+  perKgFee: string;
+  smallSizeSurcharge: string;
+  mediumSizeSurcharge: string;
+  largeSizeSurcharge: string;
+  currency: string;
+  active: boolean;
+}
+
 export interface BookingAddress {
   contactName: string;
   phone: string;
