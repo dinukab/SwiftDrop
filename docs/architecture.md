@@ -187,7 +187,10 @@ tracking     → delivery
   length, reject-publish overflow and at-least-once dead-lettering into isolated quorum DLQs.
   Configuration tests are Docker-free; `RabbitMessagingIT` exercises an isolated RabbitMQ 4.3
   container under the integration profile. Broker verification is pending in this workspace
-  (Docker unavailable). No outbox relay, processing listeners or webhook sender is implemented.
+  (Docker unavailable). Stage 3 adds an opt-in outbox relay, ordered durable inboxes,
+  notification effects and merchant event retention pending the Stage 4 webhook-job adapter.
+  Webhook signing and HTTP delivery remain unimplemented.
+  See [Stage 3 processing and recovery](messaging-stage-3.md).
   See [Stage 2 setup and verification](messaging-stage-2.md).
 - **Decided (ADR 0003):** `delivery` is the only publisher of status-change events;
   `notification` and `merchant` consume them through RabbitMQ; `tracking` may receive them
