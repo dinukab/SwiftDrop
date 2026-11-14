@@ -111,6 +111,14 @@ class AuthenticationApiTest {
 
     @BeforeEach
     void setUp() {
+        org.mockito.Mockito.when(users.findById(org.mockito.ArgumentMatchers.any()))
+                .thenAnswer(inv -> {
+                com.swiftdrop.identity.domain.User stubUser = new com.swiftdrop.identity.domain.User(
+                        "stub@example.com", "hash", "Stub User",
+                        java.util.Set.of(com.swiftdrop.identity.domain.Role.CUSTOMER));
+                org.springframework.test.util.ReflectionTestUtils.setField(stubUser, "id", inv.getArgument(0));
+                return java.util.Optional.of(stubUser);
+            });
         when(users.findByEmailIgnoringCase(any())).thenCallRealMethod();
         when(users.findByEmail(any())).thenReturn(Optional.empty());
         when(users.saveAndFlush(any())).thenAnswer(call -> withId(call.getArgument(0)));

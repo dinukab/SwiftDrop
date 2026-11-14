@@ -80,6 +80,14 @@ class PriceQuoteApiTest {
 
     @BeforeEach
     void setUp() {
+        org.mockito.Mockito.when(users.findById(org.mockito.ArgumentMatchers.any()))
+                .thenAnswer(inv -> {
+                com.swiftdrop.identity.domain.User stubUser = new com.swiftdrop.identity.domain.User(
+                        "stub@example.com", "hash", "Stub User",
+                        java.util.Set.of(com.swiftdrop.identity.domain.Role.CUSTOMER));
+                org.springframework.test.util.ReflectionTestUtils.setField(stubUser, "id", inv.getArgument(0));
+                return java.util.Optional.of(stubUser);
+            });
         givenZone(COLOMBO, "CMB", "Colombo");
         givenZone(KANDY, "KDY", "Kandy");
         PricingRule rule = new PricingRule(COLOMBO, KANDY, new BigDecimal("400.00"), new BigDecimal("100.00"),

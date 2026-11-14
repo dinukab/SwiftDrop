@@ -24,6 +24,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.swiftdrop.identity.application.AccountService;
+import com.swiftdrop.identity.application.CourierApprovalService;
 import com.swiftdrop.identity.application.InvalidRoleException;
 import com.swiftdrop.identity.domain.Role;
 import com.swiftdrop.identity.domain.User;
@@ -35,9 +36,11 @@ import com.swiftdrop.shared.web.PageResponse;
 class UserController {
 
     private final AccountService accounts;
+    private final CourierApprovalService courierApprovals;
 
-    UserController(AccountService accounts) {
+    UserController(AccountService accounts, CourierApprovalService courierApprovals) {
         this.accounts = accounts;
+        this.courierApprovals = courierApprovals;
     }
 
     /** Public customer registration. */
@@ -111,6 +114,11 @@ class UserController {
         if (!user.isEnabled()) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Account is disabled");
         }
-        return UserResponse.from(user);
+        // Assigned roles stay as stored; courierApprovalStatus distinguishes pending/rejected
+        // couriers whose tokens do not carry courier authority (see AccountStatusJwtAuthenticationConverter).
+        String courierStatus = courierApprovals.findByUserId(user.getId())
+                .map(approval -> approval.getStatus().name())
+                .orElse(null);
+        return UserResponse.from(user, courierStatus);
     }
 }

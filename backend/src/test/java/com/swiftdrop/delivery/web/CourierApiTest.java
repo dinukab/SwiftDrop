@@ -121,6 +121,14 @@ class CourierApiTest {
 
     @BeforeEach
     void setUp() {
+        org.mockito.Mockito.when(users.findById(org.mockito.ArgumentMatchers.any()))
+                .thenAnswer(inv -> {
+                com.swiftdrop.identity.domain.User stubUser = new com.swiftdrop.identity.domain.User(
+                        "stub@example.com", "hash", "Stub User",
+                        java.util.Set.of(com.swiftdrop.identity.domain.Role.CUSTOMER));
+                org.springframework.test.util.ReflectionTestUtils.setField(stubUser, "id", inv.getArgument(0));
+                return java.util.Optional.of(stubUser);
+            });
         ParcelAddress address = new ParcelAddress("Kumari Silva", "+94711234567", "4 Lake View", null, "Kandy",
                 UUID.randomUUID(), null);
         parcel = Parcel.forCustomer("SD7K3M9Q2XWB", UUID.randomUUID(), address, address, ParcelSize.SMALL, 1000, null,

@@ -83,6 +83,18 @@ class TrackingStreamApiTest {
 
     @MockitoBean
     private CourierApprovalRepository courierApprovals;
+    @org.junit.jupiter.api.BeforeEach
+    void stubAuthenticatedUser() {
+        org.mockito.Mockito.when(users.findById(org.mockito.ArgumentMatchers.any()))
+                .thenAnswer(inv -> {
+                        com.swiftdrop.identity.domain.User stubUser = new com.swiftdrop.identity.domain.User(
+                                "stub@example.com", "hash", "Stub User",
+                                java.util.Set.of(com.swiftdrop.identity.domain.Role.CUSTOMER));
+                        org.springframework.test.util.ReflectionTestUtils.setField(stubUser, "id", inv.getArgument(0));
+                        return java.util.Optional.of(stubUser);
+                    });
+    }
+
     @Test
     void anyoneCanOpenAStreamAndGetsTheSnapshotFirst() throws Exception {
         givenParcel("SD7K3M9Q2XWB", ParcelStatus.IN_TRANSIT);

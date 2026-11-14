@@ -115,6 +115,14 @@ class ParcelApiTest {
 
     @BeforeEach
     void setUp() {
+        org.mockito.Mockito.when(users.findById(org.mockito.ArgumentMatchers.any()))
+                .thenAnswer(inv -> {
+                com.swiftdrop.identity.domain.User stubUser = new com.swiftdrop.identity.domain.User(
+                        "stub@example.com", "hash", "Stub User",
+                        java.util.Set.of(com.swiftdrop.identity.domain.Role.CUSTOMER));
+                org.springframework.test.util.ReflectionTestUtils.setField(stubUser, "id", inv.getArgument(0));
+                return java.util.Optional.of(stubUser);
+            });
         ParcelAddress address = new ParcelAddress("Nimal Perera", "+94771234567", "12 Temple Rd", null, "Colombo",
                 ZONE, "00500");
         parcel = Parcel.forCustomer("SD7K3M9Q2XWB", CUSTOMER_ID, address, address, ParcelSize.MEDIUM, 2000, "Books",

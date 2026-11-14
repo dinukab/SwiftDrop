@@ -108,6 +108,14 @@ class CourierRegistrationApiTest {
 
     @BeforeEach
     void setUp() {
+        org.mockito.Mockito.when(users.findById(org.mockito.ArgumentMatchers.any()))
+                .thenAnswer(inv -> {
+                com.swiftdrop.identity.domain.User stubUser = new com.swiftdrop.identity.domain.User(
+                        "stub@example.com", "hash", "Stub User",
+                        java.util.Set.of(com.swiftdrop.identity.domain.Role.CUSTOMER));
+                org.springframework.test.util.ReflectionTestUtils.setField(stubUser, "id", inv.getArgument(0));
+                return java.util.Optional.of(stubUser);
+            });
         pendingApproval = approval(PENDING_COURIER_ID, CourierApprovalStatus.PENDING);
         approvedApproval = approval(COURIER_ID, CourierApprovalStatus.APPROVED);
         rejectedApproval = approval(UUID.fromString("ffffffff-ffff-ffff-ffff-ffffffffffff"), CourierApprovalStatus.REJECTED);

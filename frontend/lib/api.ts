@@ -18,6 +18,8 @@ export interface UserResponse {
   fullName: string;
   roles: string[];
   enabled: boolean;
+  /** PENDING/APPROVED/REJECTED for publicly registered couriers; null for other accounts. */
+  courierApprovalStatus?: string | null;
 }
 
 export interface PageResponse<T> {

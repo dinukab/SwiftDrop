@@ -30,14 +30,16 @@ class AccountServiceTest {
 
     private final PasswordEncoder encoder = PasswordEncoderFactories.createDelegatingPasswordEncoder();
     private UserRepository users;
+    private com.swiftdrop.identity.domain.CourierApprovalRepository courierApprovals;
     private AccountService service;
 
     @BeforeEach
     void setUp() {
         users = mock(UserRepository.class);
+        courierApprovals = mock(com.swiftdrop.identity.domain.CourierApprovalRepository.class);
         when(users.findByEmailIgnoringCase(any())).thenCallRealMethod();
         when(users.saveAndFlush(any())).thenAnswer(call -> withId(call.getArgument(0)));
-        service = new AccountService(users, encoder);
+        service = new AccountService(users, encoder, courierApprovals);
     }
 
     @Test
