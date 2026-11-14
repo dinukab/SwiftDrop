@@ -8,5 +8,5 @@ public enum ActorRole {
     CUSTOMER,
     MERCHANT,
     COURIER,
-    DISPATCHER_ADMIN
+    DISPATCHER
 }

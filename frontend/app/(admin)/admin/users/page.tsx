@@ -10,6 +10,7 @@ import {
   type PageResponse,
   type CreateStaffUserRequest,
   type UpdateUserStatusRequest,
+  type MerchantResponse,
 } from "@/lib/api";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -38,7 +39,7 @@ import {
 } from "lucide-react";
 
 const PAGE_SIZE = 10;
-const ROLE_FILTERS = ["ALL", "CUSTOMER", "MERCHANT", "COURIER", "DISPATCHER_ADMIN"] as const;
+const ROLE_FILTERS = ["ALL", "CUSTOMER", "MERCHANT", "COURIER", "DISPATCHER", "ADMIN"] as const;
 type RoleFilter = (typeof ROLE_FILTERS)[number];
 
 const STAFF_ROLES = [
@@ -49,9 +50,15 @@ const STAFF_ROLES = [
     icon: Truck,
   },
   {
-    value: "DISPATCHER_ADMIN" as const,
-    label: "Dispatcher & Admin",
-    description: "Full system administration, courier assignment, pricing rules, and monitoring.",
+    value: "DISPATCHER" as const,
+    label: "Dispatcher",
+    description: "Daily delivery operations: parcel assignment, courier workloads, and delivery monitoring.",
+    icon: Truck,
+  },
+  {
+    value: "ADMIN" as const,
+    label: "Administrator",
+    description: "System administration: user management, approvals, pricing, zones, and reports.",
     icon: Shield,
   },
 ];
@@ -191,9 +198,21 @@ export default function AdminUsersPage() {
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
+  // Pending merchant applications (ADMIN approval queue)
+  const [pendingMerchants, setPendingMerchants] = useState<MerchantResponse[]>([]);
+  const [pendingMerchantsError, setPendingMerchantsError] = useState<string | null>(null);
+  const [isLoadingPendingMerchants, setIsLoadingPendingMerchants] = useState(true);
+  const [approvingMerchantId, setApprovingMerchantId] = useState<string | null>(null);
+  const [rejectTarget, setRejectTarget] = useState<MerchantResponse | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
+  const [rejectError, setRejectError] = useState<string | null>(null);
+  const [isRejectingMerchant, setIsRejectingMerchant] = useState(false);
+
+
   // Trigger refs for focus restoration
   const createStaffButtonRef = useRef<HTMLButtonElement | null>(null);
   const statusTriggerRef = useRef<HTMLElement | null>(null);
+  const rejectTriggerRef = useRef<HTMLElement | null>(null);
 
   // Notifications
   const [notification, setNotification] = useState<{
@@ -245,6 +264,114 @@ export default function AdminUsersPage() {
     };
   }, [page, roleFilter, refreshKey]);
 
+  useEffect(() => {
+    let ignore = false;
+
+    async function fetchPendingMerchants() {
+      setIsLoadingPendingMerchants(true);
+      try {
+        const params = new URLSearchParams();
+        params.set("page", "0");
+        params.set("size", "50");
+        params.set("status", "PENDING");
+        const response = await api.get<PageResponse<MerchantResponse>>(
+          `/api/v1/merchants?${params.toString()}`
+        );
+        if (!ignore) {
+          setPendingMerchants(response.items || []);
+          setPendingMerchantsError(null);
+          setIsLoadingPendingMerchants(false);
+        }
+      } catch (err: unknown) {
+        if (!ignore) {
+          setPendingMerchantsError(formatApiError(err));
+          setIsLoadingPendingMerchants(false);
+        }
+      }
+    }
+
+    fetchPendingMerchants();
+    return () => {
+      ignore = true;
+    };
+  }, [refreshKey]);
+
+
+  async function handleApproveMerchant(merchant: MerchantResponse) {
+    if (approvingMerchantId || isRejectingMerchant) return;
+    setApprovingMerchantId(merchant.id);
+    try {
+      await api.post<MerchantResponse>(`/api/v1/merchants/${merchant.id}/approval`);
+      setPendingMerchants((prev) => prev.filter((item) => item.id !== merchant.id));
+      setNotification({
+        type: "success",
+        message: `${merchant.businessName} was approved. The merchant can now sign in and access the merchant portal.`,
+      });
+      setIsLoading(true);
+      setFetchError(null);
+      setRoleFilter((prev) => (prev === "ALL" || prev === "MERCHANT" ? prev : "ALL"));
+      setPage(0);
+      setRefreshKey((k) => k + 1);
+    } catch (err: unknown) {
+      setNotification({
+        type: "error",
+        message: formatApiError(err),
+      });
+    } finally {
+      setApprovingMerchantId(null);
+    }
+  }
+
+  function handleOpenRejectMerchant(merchant: MerchantResponse, triggerElement?: HTMLElement | null) {
+    if (approvingMerchantId || isRejectingMerchant) return;
+    rejectTriggerRef.current = triggerElement ?? null;
+    setRejectTarget(merchant);
+    setRejectReason("");
+    setRejectError(null);
+  }
+
+  function handleCloseRejectMerchant() {
+    if (isRejectingMerchant) return;
+    setRejectTarget(null);
+    setRejectReason("");
+    setRejectError(null);
+  }
+
+  async function handleConfirmRejectMerchant(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!rejectTarget || isRejectingMerchant) return;
+
+    const trimmedReason = rejectReason.trim();
+    if (!trimmedReason) {
+      setRejectError("Please enter a rejection reason.");
+      return;
+    }
+    if (trimmedReason.length > 500) {
+      setRejectError("Rejection reason must be at most 500 characters.");
+      return;
+    }
+
+    setIsRejectingMerchant(true);
+    setRejectError(null);
+    try {
+      await api.post<MerchantResponse>(`/api/v1/merchants/${rejectTarget.id}/rejection`, {
+        reason: trimmedReason,
+      });
+      setPendingMerchants((prev) => prev.filter((item) => item.id !== rejectTarget.id));
+      setNotification({
+        type: "success",
+        message: `${rejectTarget.businessName} was rejected.`,
+      });
+      setRejectTarget(null);
+      setRejectReason("");
+      setRefreshKey((k) => k + 1);
+    } catch (err: unknown) {
+      setRejectError(formatApiError(err));
+    } finally {
+      setIsRejectingMerchant(false);
+    }
+  }
+
   function handleFilterChange(newRole: RoleFilter) {
     if (newRole === roleFilter) return;
     setIsLoading(true);
@@ -278,7 +405,7 @@ export default function AdminUsersPage() {
   const [staffFullName, setStaffFullName] = useState("");
   const [staffEmail, setStaffEmail] = useState("");
   const [staffPassword, setStaffPassword] = useState("");
-  const [staffRole, setStaffRole] = useState<"COURIER" | "DISPATCHER_ADMIN">("COURIER");
+  const [staffRole, setStaffRole] = useState<"COURIER" | "DISPATCHER" | "ADMIN">("COURIER");
   const [showPassword, setShowPassword] = useState(false);
   const [staffFormErrors, setStaffFormErrors] = useState<Record<string, string>>({});
   const [staffFormGeneralError, setStaffFormGeneralError] = useState<string | null>(null);
@@ -338,8 +465,8 @@ export default function AdminUsersPage() {
       errors.password = "Password must be at most 72 bytes.";
     }
 
-    if (staffRole !== "COURIER" && staffRole !== "DISPATCHER_ADMIN") {
-      errors.role = "Role must be COURIER or DISPATCHER_ADMIN.";
+    if (staffRole !== "COURIER" && staffRole !== "DISPATCHER" && staffRole !== "ADMIN") {
+      errors.role = "Role must be COURIER, DISPATCHER or ADMIN.";
     }
 
     if (Object.keys(errors).length > 0) {
@@ -553,6 +680,130 @@ export default function AdminUsersPage() {
         </div>
       )}
 
+      {/* Pending Merchant Applications */}
+      <Card className="rounded-xl border-border bg-card shadow-xs overflow-hidden">
+        <CardHeader className="border-b border-border/70 pb-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <CardTitle className="text-lg font-bold text-foreground flex items-center gap-2">
+                Pending Merchant Applications
+                <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20">
+                  {pendingMerchants.length} pending
+                </span>
+              </CardTitle>
+              <CardDescription className="text-xs text-muted-foreground mt-0.5">
+                Approve business registrations. Only ADMIN can activate merchant portal access.
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          {isLoadingPendingMerchants && (
+            <div className="p-6 text-sm text-muted-foreground" role="status">
+              Loading pending merchant applications...
+            </div>
+          )}
+          {!isLoadingPendingMerchants && pendingMerchantsError && (
+            <div className="p-6 text-sm text-destructive" role="alert">
+              {pendingMerchantsError}
+            </div>
+          )}
+          {!isLoadingPendingMerchants && !pendingMerchantsError && pendingMerchants.length === 0 && (
+            <div className="p-6 text-sm text-muted-foreground">
+              No merchant applications are waiting for approval.
+            </div>
+          )}
+          {!isLoadingPendingMerchants && !pendingMerchantsError && pendingMerchants.length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-sm">
+                <caption className="sr-only">Pending merchant applications awaiting administrator approval</caption>
+                <thead>
+                  <tr className="border-b border-border bg-muted/40 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    <th scope="col" className="py-3 px-4">
+                      Business
+                    </th>
+                    <th scope="col" className="py-3 px-4">
+                      Status
+                    </th>
+                    <th scope="col" className="py-3 px-4">
+                      Submitted
+                    </th>
+                    <th scope="col" className="py-3 px-4 text-right">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/60">
+                  {pendingMerchants.map((merchant) => (
+                    <tr key={merchant.id} className="transition-colors hover:bg-muted/30">
+                      <td className="py-3.5 px-4">
+                        <div className="font-medium text-foreground flex items-center gap-2">
+                          <Store className="size-3.5 text-amber-600 dark:text-amber-400" />
+                          {merchant.businessName}
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-0.5">
+                          User ID: {merchant.userId}
+                        </div>
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20">
+                          <span className="size-1.5 rounded-full bg-amber-500" />
+                          PENDING
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-4 text-xs text-muted-foreground">
+                        {new Date(merchant.createdAt).toLocaleString()}
+                      </td>
+                      <td className="py-3.5 px-4 text-right">
+                        <div className="inline-flex flex-wrap items-center justify-end gap-2">
+                          <Button
+                            size="sm"
+                            onClick={() => handleApproveMerchant(merchant)}
+                            disabled={
+                              approvingMerchantId === merchant.id ||
+                              isRejectingMerchant ||
+                              rejectTarget?.id === merchant.id
+                            }
+                            className="text-xs font-semibold shadow-xs"
+                          >
+                            {approvingMerchantId === merchant.id ? (
+                              <>
+                                <Loader2 className="size-3.5 animate-spin mr-1.5" />
+                                Approving...
+                              </>
+                            ) : (
+                              <>
+                                <UserCheck className="size-3.5 mr-1" />
+                                Approve
+                              </>
+                            )}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={(e) => handleOpenRejectMerchant(merchant, e.currentTarget)}
+                            disabled={
+                              approvingMerchantId === merchant.id ||
+                              isRejectingMerchant ||
+                              rejectTarget?.id === merchant.id
+                            }
+                            className="text-xs font-semibold"
+                          >
+                            <UserX className="size-3.5 mr-1" />
+                            Reject
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+
       {/* Directory Table Card */}
       <Card className="rounded-xl border-border bg-card shadow-xs overflow-hidden">
         <CardHeader className="border-b border-border/70 pb-4">
@@ -729,7 +980,7 @@ export default function AdminUsersPage() {
                                   "bg-muted text-muted-foreground border-border";
                                 let Icon = User;
 
-                                if (role === "DISPATCHER_ADMIN") {
+                                if (role === "ADMIN") {
                                   badgeStyle =
                                     "bg-primary/10 text-primary border-primary/20";
                                   Icon = Shield;
@@ -855,6 +1106,91 @@ export default function AdminUsersPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Reject Merchant Application Modal */}
+      <AccessibleModal
+        isOpen={Boolean(rejectTarget)}
+        onClose={handleCloseRejectMerchant}
+        titleId="reject-merchant-modal-title"
+        descriptionId="reject-merchant-modal-desc"
+        isSubmitting={isRejectingMerchant}
+        triggerRef={rejectTriggerRef}
+        maxWidthClass="max-w-md"
+      >
+        <div className="flex items-center justify-between p-5 border-b border-border">
+          <div>
+            <h2 id="reject-merchant-modal-title" className="text-lg font-bold text-foreground">
+              Reject merchant application
+            </h2>
+            <p id="reject-merchant-modal-desc" className="text-xs text-muted-foreground mt-0.5">
+              {rejectTarget
+                ? `Provide a reason for rejecting ${rejectTarget.businessName}.`
+                : "Provide a rejection reason."}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleCloseRejectMerchant}
+            disabled={isRejectingMerchant}
+            className="text-muted-foreground hover:text-foreground rounded p-1 transition-colors"
+            aria-label="Close modal"
+          >
+            <X className="size-5" />
+          </button>
+        </div>
+
+        <form onSubmit={handleConfirmRejectMerchant} noValidate>
+          <div className="p-5 space-y-4">
+            {rejectError && (
+              <div
+                role="alert"
+                className="p-3 rounded-lg border border-destructive/20 bg-destructive/10 text-destructive text-xs font-medium"
+              >
+                {rejectError}
+              </div>
+            )}
+            <div className="space-y-1.5">
+              <Label htmlFor="reject-merchant-reason">Rejection reason</Label>
+              <textarea
+                id="reject-merchant-reason"
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+                disabled={isRejectingMerchant}
+                maxLength={500}
+                required
+                rows={4}
+                className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                placeholder="Incomplete documentation, unverifiable business details, ..."
+              />
+              <p className="text-[11px] text-muted-foreground">{rejectReason.trim().length}/500</p>
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 p-5 border-t border-border">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleCloseRejectMerchant}
+              disabled={isRejectingMerchant}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" variant="destructive" disabled={isRejectingMerchant}>
+              {isRejectingMerchant ? (
+                <>
+                  <Loader2 className="size-3.5 animate-spin mr-1.5" />
+                  Rejecting...
+                </>
+              ) : (
+                <>
+                  <UserX className="size-3.5 mr-1" />
+                  Confirm rejection
+                </>
+              )}
+            </Button>
+          </div>
+        </form>
+      </AccessibleModal>
+
 
       {/* Staff Account Onboarding Modal */}
       <AccessibleModal

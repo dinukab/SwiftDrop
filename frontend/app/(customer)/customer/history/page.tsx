@@ -1,25 +1,270 @@
-import React from "react";
-import { PortalPlaceholderCard } from "@/components/portal";
+"use client";
+
+import React, { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { Download, Search } from "lucide-react";
+import { useAuth } from "@/lib/auth-context";
+import { api, formatApiError, type PageResponse, type ParcelHistoryItem, type ParcelStatus } from "@/lib/api";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { ReceiptModal } from "@/components/customer/receipt-modal";
+
+const PAGE_SIZE = 20;
+
+const STATUS_STYLES: Record<ParcelStatus, string> = {
+  CREATED: "bg-muted text-muted-foreground",
+  PICKED_UP: "bg-blue-100 text-blue-800",
+  IN_TRANSIT: "bg-blue-100 text-blue-800",
+  OUT_FOR_DELIVERY: "bg-amber-100 text-amber-800",
+  DELIVERED: "bg-emerald-100 text-emerald-800",
+  FAILED: "bg-red-100 text-red-800",
+};
+
+function formatStatus(status: ParcelStatus): string {
+  return status.replaceAll("_", " ");
+}
+
+function formatDate(value: string): string {
+  return new Date(value).toLocaleString();
+}
+
+const STATUS_OPTIONS: { value: ParcelStatus | ""; label: string }[] = [
+  { value: "", label: "All Statuses" },
+  { value: "CREATED", label: "Booked" },
+  { value: "PICKED_UP", label: "Picked Up" },
+  { value: "IN_TRANSIT", label: "In Transit" },
+  { value: "OUT_FOR_DELIVERY", label: "Out for Delivery" },
+  { value: "DELIVERED", label: "Delivered" },
+  { value: "FAILED", label: "Failed" },
+];
 
 export default function CustomerHistoryPage() {
+  const { token, isAuthenticated } = useAuth();
+  const [history, setHistory] = useState<PageResponse<ParcelHistoryItem> | null>(null);
+  const [page, setPage] = useState(0);
+  const [statusFilter, setStatusFilter] = useState<ParcelStatus | "">("");
+  const [search, setSearch] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [receiptParcel, setReceiptParcel] = useState<ParcelHistoryItem | null>(null);
+  const [requestError, setRequestError] = useState<{ page: number; message: string } | null>(null);
+  const error = requestError?.page === page ? requestError.message : null;
+  const loading = Boolean(isAuthenticated && token && !error && (!history || history.page !== page));
+
+  useEffect(() => {
+    if (!isAuthenticated || !token) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const statusParam = statusFilter ? `&status=${statusFilter}` : "";
+
+    api
+      .get<PageResponse<ParcelHistoryItem>>(`/api/v1/parcels?page=${page}&size=${PAGE_SIZE}${statusParam}`, { token })
+      .then((result) => {
+        if (!cancelled) setHistory(result);
+      })
+      .catch((err) => {
+        if (!cancelled) setRequestError({ page, message: formatApiError(err) });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, page, statusFilter, token]);
+
+  const items = useMemo(() => {
+    let result = history?.items ?? [];
+    const term = search.trim().toLowerCase();
+    if (term) {
+      result = result.filter((p) => p.trackingNumber.toLowerCase().includes(term));
+    }
+    if (dateFrom) {
+      result = result.filter((p) => p.createdAt.slice(0, 10) >= dateFrom);
+    }
+    if (dateTo) {
+      result = result.filter((p) => p.createdAt.slice(0, 10) <= dateTo);
+    }
+    return result;
+  }, [history, search, dateFrom, dateTo]);
+
   return (
-    <div className="space-y-6">
-      <PortalPlaceholderCard
-        title="Delivery History & Receipts"
-        description="View past and active parcel bookings, track status milestones, and download delivery receipts."
-        workstream="WS2 — Customer Booking & Pricing Integration"
-        contractRef="CUS-5, D-13 · Contract §4.2"
-        plannedEndpoints={[
-          "GET /api/v1/parcels (planned)",
-          "GET /api/v1/parcels/{id}/receipt (planned)",
-        ]}
-        plannedFeatures={[
-          "Paginated shipment history table conforming to PageResponse contract",
-          "Status indicator chips for delivery lifecycle stages",
-          "Quick tracking number lookup linking to the public tracking view",
-          "Printable delivery receipt viewer with breakdown of paid fees",
-        ]}
-      />
+    <div className="mx-auto max-w-5xl space-y-6">
+      <div>
+        <h1 className="text-xl font-semibold">Delivery history</h1>
+        <p className="text-sm text-muted-foreground">
+          View every parcel you have booked, including deliveries confirmed by the courier.
+        </p>
+      </div>
+
+      {error && (
+        <p role="alert" className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+          Could not load delivery history: {error}
+        </p>
+      )}
+
+      <section className="overflow-hidden rounded-xl border bg-card">
+        <div className="border-b px-4 py-4 sm:px-6">
+          <h2 className="font-semibold">Your deliveries</h2>
+          {history && (
+            <p className="mt-1 text-sm text-muted-foreground">
+              {history.totalItems} {history.totalItems === 1 ? "delivery" : "deliveries"} total
+            </p>
+          )}
+        </div>
+
+        {/* Filters */}
+        <div className="flex flex-col gap-2 border-b px-4 py-3 sm:flex-row sm:items-center sm:px-6">
+          <div className="relative flex-1">
+            <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search tracking number…"
+              className="pl-8"
+              aria-label="Search tracking number"
+            />
+          </div>
+          <select
+            value={statusFilter}
+            onChange={(e) => {
+              setStatusFilter(e.target.value as ParcelStatus | "");
+              setPage(0);
+            }}
+            className="h-8 rounded-lg border border-border bg-background px-2.5 text-sm"
+            aria-label="Filter by status"
+          >
+            {STATUS_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+          <Input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className="sm:w-40"
+            aria-label="Date from"
+          />
+          <Input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            className="sm:w-40"
+            aria-label="Date to"
+          />
+        </div>
+
+        {loading ? (
+          <p className="px-4 py-10 text-center text-sm text-muted-foreground sm:px-6">Loading delivery history...</p>
+        ) : !history || history.items.length === 0 ? (
+          <div className="px-4 py-10 text-center sm:px-6">
+            <p className="text-sm text-muted-foreground">No deliveries found.</p>
+            <Link href="/customer/new" className="mt-3 inline-flex text-sm font-medium text-primary hover:underline">
+              Book a delivery
+            </Link>
+          </div>
+        ) : items.length === 0 ? (
+          <p className="px-4 py-10 text-center text-sm text-muted-foreground sm:px-6">
+            No deliveries match the current filters.
+          </p>
+        ) : (
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[700px] text-left text-sm">
+                <thead className="bg-muted/50 text-xs uppercase tracking-wide text-muted-foreground">
+                  <tr>
+                    <th scope="col" className="px-4 py-3 sm:px-6">Tracking</th>
+                    <th scope="col" className="px-4 py-3">Route</th>
+                    <th scope="col" className="px-4 py-3">Status</th>
+                    <th scope="col" className="px-4 py-3">Fee</th>
+                    <th scope="col" className="px-4 py-3">Last updated</th>
+                    <th scope="col" className="px-4 py-3">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {items.map((parcel) => (
+                    <tr key={parcel.id} className="align-top">
+                      <td className="px-4 py-4 sm:px-6">
+                        <Link
+                          href={`/track?code=${encodeURIComponent(parcel.trackingNumber)}`}
+                          className="font-mono font-medium text-primary hover:underline"
+                        >
+                          {parcel.trackingNumber}
+                        </Link>
+                        <p className="mt-1 text-xs text-muted-foreground">Booked {formatDate(parcel.createdAt)}</p>
+                      </td>
+                      <td className="px-4 py-4">
+                        <p>{parcel.pickupCity} → {parcel.dropoffCity}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {parcel.size} · {parcel.weightGrams.toLocaleString()} g
+                        </p>
+                      </td>
+                      <td className="px-4 py-4">
+                        <span className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${STATUS_STYLES[parcel.status]}`}>
+                          {formatStatus(parcel.status)}
+                        </span>
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-4">
+                        {parcel.fee.currency} {parcel.fee.amount}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-4 text-muted-foreground">
+                        {formatDate(parcel.updatedAt)}
+                      </td>
+                      <td className="px-4 py-4">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setReceiptParcel(parcel)}
+                        >
+                          <Download data-icon="inline-start" />
+                          Receipt
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {history.totalPages > 1 && (
+              <div className="flex items-center justify-between border-t px-4 py-3 sm:px-6">
+                <p className="text-xs text-muted-foreground">
+                  Page {history.page + 1} of {history.totalPages}
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={page === 0 || loading}
+                    onClick={() => setPage((current) => current - 1)}
+                  >
+                    Previous
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={page >= history.totalPages - 1 || loading}
+                    onClick={() => setPage((current) => current + 1)}
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </section>
+
+      {token && (
+        <ReceiptModal
+          parcel={receiptParcel}
+          token={token}
+          onClose={() => setReceiptParcel(null)}
+        />
+      )}
     </div>
   );
 }

@@ -5,53 +5,11 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { api, formatApiError, getApiBaseUrl, type AccessTokenResponse } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import { resolvePostLoginDestination, sanitizeInternalRedirect } from "@/lib/redirect";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-
-/**
- * Validates and sanitizes a post-login redirect path to prevent open redirect vulnerabilities.
- * Accepts only safe relative paths starting with a single '/' (e.g. "/customer", "/track?code=123").
- * Rejects protocol-relative URLs ('//'), backslash tricks ('/\'), scheme prefixes ('https:', 'javascript:'),
- * and control characters, falling back to the default home path.
- */
-function sanitizeRedirectTarget(target: string | null | undefined): string {
-  if (!target || typeof target !== "string") {
-    return "/";
-  }
-
-  const trimmed = target.trim();
-
-  if (trimmed === "/") {
-    return "/";
-  }
-
-  // Must begin with a single '/' and not be followed by '/' or '\'
-  if (!trimmed.startsWith("/") || trimmed.startsWith("//") || trimmed.startsWith("/\\")) {
-    return "/";
-  }
-
-  // Reject CRLF or control characters
-  if (/[\x00-\x1F\x7F]/.test(trimmed)) {
-    return "/";
-  }
-
-  try {
-    const parsed = new URL(trimmed, "http://localhost");
-    // Ensure the host authority was not parsed, origin remains unchanged, and destination is not a login loop
-    if (
-      parsed.origin !== "http://localhost" ||
-      !parsed.pathname.startsWith("/") ||
-      parsed.pathname === "/login"
-    ) {
-      return "/";
-    }
-    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
-  } catch {
-    return "/";
-  }
-}
 
 function LoginForm() {
   const router = useRouter();
@@ -65,7 +23,7 @@ function LoginForm() {
 
   const registered = searchParams.get("registered") === "true";
   const expired = searchParams.get("expired") === "true";
-  const redirectTarget = sanitizeRedirectTarget(searchParams.get("redirect"));
+  const redirectParam = searchParams.get("redirect");
 
   // Google button is enabled only when explicitly configured via environment flag (AC-2)
   const isGoogleLoginEnabled = process.env.NEXT_PUBLIC_ENABLE_GOOGLE_LOGIN === "true";
@@ -76,7 +34,6 @@ function LoginForm() {
 
     setErrorMessage(null);
 
-    // Client-side validation hints
     const trimmedEmail = email.trim();
     if (!trimmedEmail) {
       setErrorMessage("Please enter your email address.");
@@ -95,8 +52,9 @@ function LoginForm() {
         password,
       });
 
-      await login(response.accessToken);
-      router.push(redirectTarget);
+      // Roles come from GET /api/v1/users/me after token issue — never from a client-submitted role.
+      const user = await login(response.accessToken);
+      router.push(resolvePostLoginDestination(redirectParam, user.roles));
     } catch (err: unknown) {
       setErrorMessage(formatApiError(err));
     } finally {
@@ -201,8 +159,7 @@ function LoginForm() {
                 className="w-full font-medium"
                 onClick={() => {
                   if (typeof window !== "undefined") {
-                    const rawRedirect = searchParams.get("redirect");
-                    const targetPath = sanitizeRedirectTarget(rawRedirect);
+                    const targetPath = sanitizeInternalRedirect(redirectParam, "");
                     if (targetPath && targetPath !== "/" && targetPath !== "/login") {
                       window.sessionStorage.setItem("swiftdrop_auth_redirect", targetPath);
                     } else {

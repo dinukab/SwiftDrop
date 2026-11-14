@@ -56,7 +56,7 @@ public class AccountService implements UserDirectory {
 
     /** Bootstraps the initial administrator account on startup. */
     public User bootstrapAdmin(String email, String rawPassword) {
-        return registerUser("System Administrator", email, rawPassword, EnumSet.of(Role.DISPATCHER_ADMIN));
+        return registerUser("System Administrator", email, rawPassword, EnumSet.of(Role.ADMIN));
     }
 
     /** Registers a courier staff account. */
@@ -64,10 +64,10 @@ public class AccountService implements UserDirectory {
         return registerUser(fullName, email, rawPassword, EnumSet.of(Role.COURIER));
     }
 
-    /** Registers a staff account (COURIER or DISPATCHER_ADMIN). */
+    /** Registers a staff account (COURIER, DISPATCHER or ADMIN). */
     public User registerStaff(String fullName, String email, String rawPassword, Role role) {
-        if (role != Role.COURIER && role != Role.DISPATCHER_ADMIN) {
-            throw new InvalidRoleException("Staff account role must be COURIER or DISPATCHER_ADMIN");
+        if (role != Role.COURIER && role != Role.DISPATCHER && role != Role.ADMIN) {
+            throw new InvalidRoleException("Staff account role must be COURIER, DISPATCHER or ADMIN");
         }
         return registerUser(fullName, email, rawPassword, EnumSet.of(role));
     }

@@ -14,7 +14,7 @@ services:
       POSTGRES_USER: ${SWIFTDROP_POSTGRES_USER:-swiftdrop}
       POSTGRES_PASSWORD: ${SWIFTDROP_POSTGRES_PASSWORD:?Set SWIFTDROP_POSTGRES_PASSWORD in .env (copy .env.example)}
     ports:
-      - "127.0.0.1:${SWIFTDROP_POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${SWIFTDROP_POSTGRES_PORT:-5433}:5432"
     volumes:
       # PostgreSQL 18+ images keep PGDATA under /var/lib/postgresql/18/docker; mount the parent
       - postgres-data:/var/lib/postgresql
