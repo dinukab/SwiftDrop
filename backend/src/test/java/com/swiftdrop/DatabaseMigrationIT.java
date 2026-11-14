@@ -79,11 +79,7 @@ class DatabaseMigrationIT {
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(
                 "SELECT version, description, type, script, success FROM flyway_schema_history ORDER BY installed_rank ASC");
 
-<<<<<<< HEAD
-        assertThat(rows).hasSize(11);
-=======
-        assertThat(rows).hasSize(9);
->>>>>>> 0df2e0fccfe314da496aee2d474e8e7df1a59037
+        assertThat(rows).hasSize(12);
 
         assertThat(rows.get(0))
                 .containsEntry("version", "202610251600")
@@ -122,21 +118,21 @@ class DatabaseMigrationIT {
                         tuple("delivery/V202611031030__delivery_create_parcel_outbox_events.sql", true),
                         tuple("dispatch/V202611112100__dispatch_create_couriers.sql", true));
 
-        assertThat(rows.get(8))
+        assertThat(rows.get(9))
                 .containsEntry("version", "202611130900")
                 .containsEntry("description", "merchant create applications")
                 .containsEntry("type", "SQL")
                 .containsEntry("script", "merchant/V202611130900__merchant_create_applications.sql")
                 .containsEntry("success", true);
 
-        assertThat(rows.get(9))
+        assertThat(rows.get(10))
                 .containsEntry("version", "202611130901")
                 .containsEntry("description", "merchant create merchants")
                 .containsEntry("type", "SQL")
                 .containsEntry("script", "merchant/V202611130901__merchant_create_merchants.sql")
                 .containsEntry("success", true);
 
-        assertThat(rows.get(10))
+        assertThat(rows.get(11))
                 .containsEntry("version", "202611131000")
                 .containsEntry("description", "identity create courier approvals")
                 .containsEntry("type", "SQL")

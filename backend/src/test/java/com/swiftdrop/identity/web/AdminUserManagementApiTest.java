@@ -100,15 +100,14 @@ class AdminUserManagementApiTest {
     private PricingRuleRepository pricingRules;
 
     @MockitoBean
-<<<<<<< HEAD
     private MerchantRepository merchants;
 
     @MockitoBean
     private CourierApprovalRepository courierApprovals;
-=======
+
+    @MockitoBean
     private CourierProfileRepository courierProfiles;
 
->>>>>>> 0df2e0fccfe314da496aee2d474e8e7df1a59037
     private User adminUser;
     private User targetUser;
 

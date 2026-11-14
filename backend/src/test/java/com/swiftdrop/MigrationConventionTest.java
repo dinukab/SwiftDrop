@@ -133,7 +133,10 @@ class MigrationConventionTest {
                                 "delivery create parcel outbox events",
                                 "delivery/V202611031030__delivery_create_parcel_outbox_events.sql"),
                         tuple(
-<<<<<<< HEAD
+                                "202611112100",
+                                "dispatch create couriers",
+                                "dispatch/V202611112100__dispatch_create_couriers.sql"),
+                        tuple(
                                 "202611130900",
                                 "merchant create applications",
                                 "merchant/V202611130900__merchant_create_applications.sql"),
@@ -145,10 +148,5 @@ class MigrationConventionTest {
                                 "202611131000",
                                 "identity create courier approvals",
                                 "identity/V202611131000__identity_create_courier_approvals.sql"));
-=======
-                                "202611112100",
-                                "dispatch create couriers",
-                                "dispatch/V202611112100__dispatch_create_couriers.sql"));
->>>>>>> 0df2e0fccfe314da496aee2d474e8e7df1a59037
     }
 }
