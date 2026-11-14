@@ -118,7 +118,7 @@ class ParcelAuthorizationMatrixIT {
         UUID courierId = insertUser(Role.COURIER);
         assignedCourier = TestPrincipal.user(courierId, Role.COURIER);
         otherCourier = TestPrincipal.user(insertUser(Role.COURIER), Role.COURIER);
-        admin = TestPrincipal.user(insertUser(Role.DISPATCHER_ADMIN), Role.DISPATCHER_ADMIN);
+        admin = TestPrincipal.user(insertUser(Role.DISPATCHER), Role.DISPATCHER);
         merchant = TestPrincipal.user(insertUser(Role.MERCHANT), Role.MERCHANT);
         dualRole = TestPrincipal.user(insertUser(Role.COURIER, Role.CUSTOMER), Role.COURIER, Role.CUSTOMER);
 

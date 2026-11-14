@@ -10,7 +10,7 @@ export default function AdminPricingPage() {
         workstream="WS8 — Pricing Administration & Zones"
         contractRef="ADM-3 · Contract §4.2"
         plannedEndpoints={[
-          "GET /api/v1/zones (planned)",
+          "GET /api/v1/zones",
           "POST /api/v1/zones (planned)",
           "PUT /api/v1/zones/{id} (planned)",
           "GET /api/v1/pricing-rules (planned)",

@@ -33,6 +33,7 @@ import com.swiftdrop.delivery.domain.DeliveryProofRepository;
 import com.swiftdrop.delivery.domain.OutboxEventRepository;
 import com.swiftdrop.delivery.domain.ParcelRepository;
 import com.swiftdrop.delivery.domain.ParcelStatusHistoryRepository;
+import com.swiftdrop.dispatch.domain.CourierProfileRepository;
 import com.swiftdrop.identity.application.GoogleExchangeService;
 import com.swiftdrop.identity.domain.ExternalIdentityRepository;
 import com.swiftdrop.identity.domain.GoogleLoginCode;
@@ -43,7 +44,6 @@ import com.swiftdrop.identity.domain.UserRepository;
 import com.swiftdrop.pricing.api.FeeCalculator;
 import com.swiftdrop.pricing.domain.PricingRuleRepository;
 import com.swiftdrop.merchant.domain.MerchantRepository;
-import com.swiftdrop.identity.domain.CourierApprovalRepository;
 import com.swiftdrop.pricing.domain.ZoneRepository;
 
 @SpringBootTest(properties = {
@@ -80,16 +80,24 @@ class GoogleExchangeApiTest {
     private ZoneRepository zones;
     @MockitoBean
     private PricingRuleRepository pricingRules;
+    @MockitoBean
+    private CourierProfileRepository courierProfiles;
 
     @MockitoBean
     private MerchantRepository merchants;
 
-    @MockitoBean
-    private CourierApprovalRepository courierApprovals;
     private final Map<String, GoogleLoginCode> storedCodes = new HashMap<>();
 
     @BeforeEach
     void setUp() {
+        org.mockito.Mockito.when(users.findById(org.mockito.ArgumentMatchers.any()))
+                .thenAnswer(inv -> {
+                com.swiftdrop.identity.domain.User stubUser = new com.swiftdrop.identity.domain.User(
+                        "stub@example.com", "hash", "Stub User",
+                        java.util.Set.of(com.swiftdrop.identity.domain.Role.CUSTOMER));
+                org.springframework.test.util.ReflectionTestUtils.setField(stubUser, "id", inv.getArgument(0));
+                return java.util.Optional.of(stubUser);
+            });
         storedCodes.clear();
         when(codeRepository.save(any(GoogleLoginCode.class))).thenAnswer(call -> {
             GoogleLoginCode code = call.getArgument(0);

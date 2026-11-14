@@ -20,12 +20,12 @@ import com.swiftdrop.delivery.domain.DeliveryProofRepository;
 import com.swiftdrop.delivery.domain.OutboxEventRepository;
 import com.swiftdrop.delivery.domain.ParcelRepository;
 import com.swiftdrop.delivery.domain.ParcelStatusHistoryRepository;
+import com.swiftdrop.dispatch.domain.CourierProfileRepository;
 import com.swiftdrop.identity.domain.ExternalIdentityRepository;
 import com.swiftdrop.identity.domain.GoogleLoginCodeRepository;
 import com.swiftdrop.identity.domain.UserRepository;
 import com.swiftdrop.pricing.domain.PricingRuleRepository;
 import com.swiftdrop.merchant.domain.MerchantRepository;
-import com.swiftdrop.identity.domain.CourierApprovalRepository;
 import com.swiftdrop.pricing.domain.Zone;
 import com.swiftdrop.pricing.domain.ZoneRepository;
 import com.swiftdrop.test.security.TestPrincipal;
@@ -59,7 +59,6 @@ class ZoneApiTest {
     private MerchantRepository merchants;
 
     @MockitoBean
-    private CourierApprovalRepository courierApprovals;    @MockitoBean
     private ParcelRepository parcels;
     @MockitoBean
     private ParcelStatusHistoryRepository parcelHistory;
@@ -67,6 +66,20 @@ class ZoneApiTest {
     private DeliveryProofRepository deliveryProofs;
     @MockitoBean
     private OutboxEventRepository outboxEvents;
+    @MockitoBean
+    private CourierProfileRepository courierProfiles;
+
+    @org.junit.jupiter.api.BeforeEach
+    void stubAuthenticatedUser() {
+        org.mockito.Mockito.when(users.findById(org.mockito.ArgumentMatchers.any()))
+                .thenAnswer(inv -> {
+                        com.swiftdrop.identity.domain.User stubUser = new com.swiftdrop.identity.domain.User(
+                                "stub@example.com", "hash", "Stub User",
+                                java.util.Set.of(com.swiftdrop.identity.domain.Role.CUSTOMER));
+                        org.springframework.test.util.ReflectionTestUtils.setField(stubUser, "id", inv.getArgument(0));
+                        return java.util.Optional.of(stubUser);
+                    });
+    }
 
     @Test
     void loggedInUsersGetActiveZonesSortedByName() throws Exception {

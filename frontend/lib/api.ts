@@ -32,7 +32,7 @@ export interface CreateStaffUserRequest {
   fullName: string;
   email: string;
   password: string;
-  role?: "COURIER" | "DISPATCHER_ADMIN";
+  role?: "COURIER" | "DISPATCHER" | "ADMIN";
 }
 
 export interface UpdateUserStatusRequest {
@@ -90,6 +90,22 @@ export interface ProofResponse {
   hasPhoto: boolean;
   photoSizeBytes: number | null;
   capturedAt: string;
+}
+
+type UnauthorizedHandler = () => void;
+
+let unauthorizedHandler: UnauthorizedHandler | null = null;
+
+export class ApiError extends Error {
+  readonly status: number;
+  readonly problem?: ProblemDetail;
+
+  constructor(status: number, message: string, problem?: ProblemDetail) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.problem = problem;
+  }
 }
 
 // Multipart file upload helper
@@ -160,6 +176,8 @@ export async function getProofPhoto(parcelId: string, token: string): Promise<Bl
   }
 
   return await response.blob();
+}
+
 export type MerchantStatus = "PENDING" | "APPROVED" | "REJECTED" | "SUSPENDED";
 
 export interface MerchantResponse {
@@ -186,43 +204,10 @@ export interface RejectMerchantRequest {
   reason: string;
 }
 
-export type CourierApprovalStatus = "PENDING" | "APPROVED" | "REJECTED";
-
-export interface CourierApprovalResponse {
-  userId: string;
-  email: string;
-  fullName: string;
-  status: CourierApprovalStatus;
-  rejectionReason: string | null;
-  createdAt: string;
-  reviewedAt: string | null;
-  reviewedBy: string | null;
-}
-
-export interface RejectCourierRequest {
-  reason: string;
-}
-
-export class ApiError extends Error {
-  readonly status: number;
-  readonly problem?: ProblemDetail;
-
-  constructor(status: number, message: string, problem?: ProblemDetail) {
-    super(message);
-    this.name = "ApiError";
-    this.status = status;
-    this.problem = problem;
-  }
-}
-
 export interface RequestOptions extends Omit<RequestInit, "body"> {
   token?: string | null;
   body?: unknown;
 }
-
-type UnauthorizedHandler = () => void;
-
-let unauthorizedHandler: UnauthorizedHandler | null = null;
 
 export function onUnauthorized(handler: UnauthorizedHandler): () => void {
   unauthorizedHandler = handler;

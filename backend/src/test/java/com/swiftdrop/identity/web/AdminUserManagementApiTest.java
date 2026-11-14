@@ -23,6 +23,7 @@ import com.swiftdrop.delivery.domain.DeliveryProofRepository;
 import com.swiftdrop.delivery.domain.OutboxEventRepository;
 import com.swiftdrop.delivery.domain.ParcelRepository;
 import com.swiftdrop.delivery.domain.ParcelStatusHistoryRepository;
+import com.swiftdrop.dispatch.domain.CourierProfileRepository;
 import com.swiftdrop.identity.domain.ExternalIdentityRepository;
 import com.swiftdrop.identity.domain.GoogleLoginCodeRepository;
 import com.swiftdrop.identity.domain.Role;
@@ -31,7 +32,6 @@ import com.swiftdrop.identity.domain.UserRepository;
 import com.swiftdrop.pricing.api.FeeCalculator;
 import com.swiftdrop.pricing.domain.PricingRuleRepository;
 import com.swiftdrop.merchant.domain.MerchantRepository;
-import com.swiftdrop.identity.domain.CourierApprovalRepository;
 import com.swiftdrop.pricing.domain.ZoneRepository;
 import com.swiftdrop.test.security.TestPrincipal;
 
@@ -102,13 +102,22 @@ class AdminUserManagementApiTest {
     private MerchantRepository merchants;
 
     @MockitoBean
-    private CourierApprovalRepository courierApprovals;
+    private com.swiftdrop.dispatch.domain.CourierProfileRepository courierProfiles;
+
     private User adminUser;
     private User targetUser;
 
     @BeforeEach
     void setUp() {
-        adminUser = withId(new User("admin@swiftdrop.com", passwordEncoder.encode("admin-pass"), "Admin Dave", Set.of(Role.DISPATCHER_ADMIN)), ADMIN_ID);
+        org.mockito.Mockito.when(users.findById(org.mockito.ArgumentMatchers.any()))
+                .thenAnswer(inv -> {
+                com.swiftdrop.identity.domain.User stubUser = new com.swiftdrop.identity.domain.User(
+                        "stub@example.com", "hash", "Stub User",
+                        java.util.Set.of(com.swiftdrop.identity.domain.Role.CUSTOMER));
+                org.springframework.test.util.ReflectionTestUtils.setField(stubUser, "id", inv.getArgument(0));
+                return java.util.Optional.of(stubUser);
+            });
+        adminUser = withId(new User("admin@swiftdrop.com", passwordEncoder.encode("admin-pass"), "Admin Dave", Set.of(Role.ADMIN)), ADMIN_ID);
         targetUser = withId(new User("target@swiftdrop.com", passwordEncoder.encode("target-pass"), "Target Alice", Set.of(Role.CUSTOMER)), TARGET_USER_ID);
 
         when(users.findById(ADMIN_ID)).thenReturn(Optional.of(adminUser));
@@ -130,7 +139,7 @@ class AdminUserManagementApiTest {
     void listUsersUnpagedReturnsArrayForBackwardsCompatibility() throws Exception {
         when(users.findAll()).thenReturn(List.of(adminUser, targetUser));
 
-        mvc.perform(get("/api/v1/users").with(TestPrincipal.dispatcherAdmin(ADMIN_ID).postProcessor()))
+        mvc.perform(get("/api/v1/users").with(TestPrincipal.admin(ADMIN_ID).postProcessor()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(2)))
                 .andExpect(jsonPath("$[0].email").value("admin@swiftdrop.com"))
@@ -145,7 +154,7 @@ class AdminUserManagementApiTest {
         when(users.findAll(any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(adminUser, targetUser), org.springframework.data.domain.PageRequest.of(0, 20), 2));
 
-        mvc.perform(get("/api/v1/users?page=0&size=20").with(TestPrincipal.dispatcherAdmin(ADMIN_ID).postProcessor()))
+        mvc.perform(get("/api/v1/users?page=0&size=20").with(TestPrincipal.admin(ADMIN_ID).postProcessor()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(2)))
                 .andExpect(jsonPath("$.page").value(0))
@@ -161,14 +170,14 @@ class AdminUserManagementApiTest {
         when(users.findByRole(eq(Role.COURIER), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of()));
 
-        mvc.perform(get("/api/v1/users?role=COURIER").with(TestPrincipal.dispatcherAdmin(ADMIN_ID).postProcessor()))
+        mvc.perform(get("/api/v1/users?role=COURIER").with(TestPrincipal.admin(ADMIN_ID).postProcessor()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(0)));
     }
 
     @Test
     void listUsersRejectsInvalidRoleFilter() throws Exception {
-        mvc.perform(get("/api/v1/users?role=INVALID_ROLE").with(TestPrincipal.dispatcherAdmin(ADMIN_ID).postProcessor()))
+        mvc.perform(get("/api/v1/users?role=INVALID_ROLE").with(TestPrincipal.admin(ADMIN_ID).postProcessor()))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.invalidFields", contains("role")));
     }
@@ -179,7 +188,7 @@ class AdminUserManagementApiTest {
         when(users.findByEmail("newcourier@swiftdrop.com")).thenReturn(Optional.empty());
 
         mvc.perform(post("/api/v1/staff-users")
-                        .with(TestPrincipal.dispatcherAdmin(ADMIN_ID).postProcessor())
+                        .with(TestPrincipal.admin(ADMIN_ID).postProcessor())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -203,25 +212,25 @@ class AdminUserManagementApiTest {
         when(users.findByEmail("newadmin@swiftdrop.com")).thenReturn(Optional.empty());
 
         mvc.perform(post("/api/v1/staff-users")
-                        .with(TestPrincipal.dispatcherAdmin(ADMIN_ID).postProcessor())
+                        .with(TestPrincipal.admin(ADMIN_ID).postProcessor())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
                                   "fullName": "Admin Sarah",
                                   "email": "newadmin@swiftdrop.com",
                                   "password": "secure-pass-123",
-                                  "role": "DISPATCHER_ADMIN"
+                                  "role": "ADMIN"
                                 }
                                 """))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.email").value("newadmin@swiftdrop.com"))
-                .andExpect(jsonPath("$.roles", contains("DISPATCHER_ADMIN")));
+                .andExpect(jsonPath("$.roles", contains("ADMIN")));
     }
 
     @Test
     void createStaffRejectsCustomerAndMerchantRoles() throws Exception {
         mvc.perform(post("/api/v1/staff-users")
-                        .with(TestPrincipal.dispatcherAdmin(ADMIN_ID).postProcessor())
+                        .with(TestPrincipal.admin(ADMIN_ID).postProcessor())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -235,7 +244,7 @@ class AdminUserManagementApiTest {
                 .andExpect(jsonPath("$.invalidFields", contains("role")));
 
         mvc.perform(post("/api/v1/staff-users")
-                        .with(TestPrincipal.dispatcherAdmin(ADMIN_ID).postProcessor())
+                        .with(TestPrincipal.admin(ADMIN_ID).postProcessor())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -254,7 +263,7 @@ class AdminUserManagementApiTest {
         when(users.findByEmail("target@swiftdrop.com")).thenReturn(Optional.of(targetUser));
 
         mvc.perform(post("/api/v1/staff-users")
-                        .with(TestPrincipal.dispatcherAdmin(ADMIN_ID).postProcessor())
+                        .with(TestPrincipal.admin(ADMIN_ID).postProcessor())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -272,7 +281,7 @@ class AdminUserManagementApiTest {
     void adminCanDisableAndEnableUser() throws Exception {
         // Disable target user
         mvc.perform(patch("/api/v1/users/" + TARGET_USER_ID)
-                        .with(TestPrincipal.dispatcherAdmin(ADMIN_ID).postProcessor())
+                        .with(TestPrincipal.admin(ADMIN_ID).postProcessor())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"enabled\": false}"))
                 .andExpect(status().isOk())
@@ -283,7 +292,7 @@ class AdminUserManagementApiTest {
 
         // Enable target user
         mvc.perform(patch("/api/v1/users/" + TARGET_USER_ID)
-                        .with(TestPrincipal.dispatcherAdmin(ADMIN_ID).postProcessor())
+                        .with(TestPrincipal.admin(ADMIN_ID).postProcessor())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"enabled\": true}"))
                 .andExpect(status().isOk())
@@ -296,7 +305,7 @@ class AdminUserManagementApiTest {
     @Test
     void adminCannotDisableThemself() throws Exception {
         mvc.perform(patch("/api/v1/users/" + ADMIN_ID)
-                        .with(TestPrincipal.dispatcherAdmin(ADMIN_ID).postProcessor())
+                        .with(TestPrincipal.admin(ADMIN_ID).postProcessor())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"enabled\": false}"))
                 .andExpect(status().isConflict())
@@ -311,7 +320,7 @@ class AdminUserManagementApiTest {
         when(users.findById(unknownId)).thenReturn(Optional.empty());
 
         mvc.perform(patch("/api/v1/users/" + unknownId)
-                        .with(TestPrincipal.dispatcherAdmin(ADMIN_ID).postProcessor())
+                        .with(TestPrincipal.admin(ADMIN_ID).postProcessor())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"enabled\": false}"))
                 .andExpect(status().isNotFound());
@@ -320,7 +329,7 @@ class AdminUserManagementApiTest {
     @Test
     void patchUserStatusRejectsMissingEnabledField() throws Exception {
         mvc.perform(patch("/api/v1/users/" + TARGET_USER_ID)
-                        .with(TestPrincipal.dispatcherAdmin(ADMIN_ID).postProcessor())
+                        .with(TestPrincipal.admin(ADMIN_ID).postProcessor())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
                 .andExpect(status().isBadRequest())

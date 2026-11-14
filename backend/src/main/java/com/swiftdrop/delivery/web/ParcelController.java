@@ -60,7 +60,7 @@ class ParcelController {
 
     /** Customers see their own parcels, dispatchers/admins all; newest first. */
     @GetMapping
-    @PreAuthorize("hasAnyRole('CUSTOMER', 'DISPATCHER_ADMIN')")
+    @PreAuthorize("hasAnyRole('CUSTOMER', 'DISPATCHER')")
     PageResponse<ParcelListItemResponse> list(@AuthenticationPrincipal Jwt jwt,
             @RequestParam(required = false) Integer page,
             @RequestParam(required = false) Integer size,
@@ -73,20 +73,20 @@ class ParcelController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('CUSTOMER', 'COURIER', 'DISPATCHER_ADMIN')")
+    @PreAuthorize("hasAnyRole('CUSTOMER', 'COURIER', 'DISPATCHER')")
     ParcelDetailResponse detail(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id) {
         return ParcelDetailResponse.from(reads.detail(id, Callers.viewer(jwt)));
     }
 
     @GetMapping("/{id}/receipt")
-    @PreAuthorize("hasAnyRole('CUSTOMER', 'DISPATCHER_ADMIN')")
+    @PreAuthorize("hasAnyRole('CUSTOMER', 'DISPATCHER')")
     ReceiptResponse receipt(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id) {
         return ReceiptResponse.from(reads.receipt(id, Callers.viewer(jwt)));
     }
 
     /** Proof photo for the owner, the assigned courier or an admin; never cached. */
     @GetMapping("/{id}/proof/photo")
-    @PreAuthorize("hasAnyRole('CUSTOMER', 'COURIER', 'DISPATCHER_ADMIN')")
+    @PreAuthorize("hasAnyRole('CUSTOMER', 'COURIER', 'DISPATCHER')")
     ResponseEntity<byte[]> proofPhoto(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id) {
         DeliveryProofService.Photo photo = proofs.photo(id, Callers.viewer(jwt))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Photo not found"));
