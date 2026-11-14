@@ -1,5 +1,6 @@
 import React from "react";
 import { PortalShell, type PortalNavItem } from "@/components/portal/portal-shell";
+import { MerchantApprovalGuard } from "@/components/portal/merchant-approval-guard";
 
 const MERCHANT_NAV: PortalNavItem[] = [
   { href: "/merchant", label: "Dashboard", exact: true },
@@ -16,7 +17,7 @@ export default function MerchantPortalLayout({ children }: { children: React.Rea
       workspaceBadge="Merchant Workspace · WS4 & WS5"
       navItems={MERCHANT_NAV}
     >
-      {children}
+      <MerchantApprovalGuard>{children}</MerchantApprovalGuard>
     </PortalShell>
   );
 }

@@ -10,6 +10,8 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import com.swiftdrop.identity.api.EmailTakenException;
+import com.swiftdrop.identity.api.PasswordRejectedException;
 import com.swiftdrop.identity.application.EmailAlreadyRegisteredException;
 import com.swiftdrop.identity.application.InvalidCredentialsException;
 import com.swiftdrop.identity.application.InvalidExchangeCodeException;
@@ -36,13 +38,13 @@ class IdentityExceptionHandler {
         return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "Malformed request body");
     }
 
-    @ExceptionHandler(InvalidPasswordException.class)
-    ProblemDetail invalidPassword(InvalidPasswordException e) {
+    @ExceptionHandler({InvalidPasswordException.class, PasswordRejectedException.class})
+    ProblemDetail invalidPassword(RuntimeException e) {
         return invalid(e.getMessage(), List.of("password"));
     }
 
-    @ExceptionHandler(EmailAlreadyRegisteredException.class)
-    ProblemDetail duplicate(EmailAlreadyRegisteredException e) {
+    @ExceptionHandler({EmailAlreadyRegisteredException.class, EmailTakenException.class})
+    ProblemDetail duplicate(RuntimeException e) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, e.getMessage());
     }
 
