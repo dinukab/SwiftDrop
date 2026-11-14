@@ -115,6 +115,30 @@ The Merchant Workspace portal routes are wrapped in [layout.tsx](../frontend/app
 
 ---
 
+### 4.1 Store API request signatures (Phase 5)
+
+Every request to `/api/v1/merchant-api/**` is authenticated with `X-API-Key`. A key created with
+encryption configured also has a **signing secret**, returned once together with the key. The store
+signs each request:
+
+```
+X-SwiftDrop-Timestamp: <unix seconds>
+X-SwiftDrop-Signature: v1=hex(HMAC-SHA256(signingSecret, timestamp + "." + METHOD + "." + path + "." + sha256hex(body)))
+```
+
+`path` is the request path without the query string; `body` is empty for `GET`. The timestamp must be
+within 5 minutes of the server clock. Signatures are optional while
+`SWIFTDROP_MERCHANT_API_REQUIRE_SIGNATURE=false`; once it is `true`, every request must be signed and
+keys without a secret are refused. A repeated order reference with the same content returns the existing
+parcel (`200`); with different content it is refused (`409`), so an old request cannot silently change an
+order. Store-API requests are limited to `SWIFTDROP_RATE_LIMIT_MERCHANT_API_PER_MINUTE` per client address.
+
+Checked end to end on a running backend, with signatures optional and then required: a valid signature is
+accepted; a wrong secret, a stale timestamp, a signature moved to a different body, a missing signature
+(when required) and a key without a secret are refused; a reused reference with different content gets
+`409`. Known limit: a captured signed request can be sent again within the 5-minute window; for orders this
+returns the same parcel, but a nonce check is not implemented.
+
 ## 7. Remaining Work (Not Yet Implemented)
 
 1. **Webhook delivery (MER-3 / ADR 0004 §7), built in Phase 4, off by default.** The outbox relay publishes committed status events (`swiftdrop.messaging.relay.enabled`); the merchant consumer creates one delivery per active endpoint and event, storing the exact body (`swiftdrop.webhooks.enabled`); the sender signs each body with HMAC-SHA256 (`X-SwiftDrop-Signature: v1=…`, the store's `verifyV1` formula) and posts it with Apache HttpClient 5: 5 s connect, 10 s response, no redirects, public addresses only (checked at connect time). 2xx succeeds; connection failure, timeout, 408, 429 and 5xx retry (30 s base, doubling, ±20 % jitter, 1 h cap, 8 attempts); other responses fail at once. **Not yet built:** the delivery-history endpoint, manual redelivery (cap 3), and the merchant-facing history view.

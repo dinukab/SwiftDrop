@@ -61,6 +61,10 @@ public class Parcel {
     @Column(name = "merchant_order_reference", length = 100)
     private String merchantOrderReference;
 
+    /** SHA-256 hex of the merchant order's fields; null for parcels created before fingerprints. */
+    @Column(name = "order_fingerprint", length = 64)
+    private String orderFingerprint;
+
     @Embedded
     @AttributeOverrides({
         @AttributeOverride(name = "contactName", column = @Column(name = "pickup_contact_name", nullable = false, length = 200)),
@@ -336,6 +340,18 @@ public class Parcel {
 
     public UUID getMerchantId() {
         return merchantId;
+    }
+
+    /** Records the fingerprint of the order this parcel was created from. Set once, at booking. */
+    public void recordOrderFingerprint(String fingerprint) {
+        if (this.orderFingerprint != null) {
+            throw new IllegalStateException("The order fingerprint is recorded once");
+        }
+        this.orderFingerprint = Objects.requireNonNull(fingerprint, "fingerprint");
+    }
+
+    public String getOrderFingerprint() {
+        return orderFingerprint;
     }
 
     public String getMerchantOrderReference() {
