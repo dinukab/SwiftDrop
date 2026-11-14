@@ -32,7 +32,7 @@ export interface CreateStaffUserRequest {
   fullName: string;
   email: string;
   password: string;
-  role?: "COURIER" | "DISPATCHER_ADMIN";
+  role?: "COURIER" | "DISPATCHER" | "ADMIN";
 }
 
 export interface UpdateUserStatusRequest {
@@ -201,23 +201,6 @@ export interface RegisterMerchantRequest {
 }
 
 export interface RejectMerchantRequest {
-  reason: string;
-}
-
-export type CourierApprovalStatus = "PENDING" | "APPROVED" | "REJECTED";
-
-export interface CourierApprovalResponse {
-  userId: string;
-  email: string;
-  fullName: string;
-  status: CourierApprovalStatus;
-  rejectionReason: string | null;
-  createdAt: string;
-  reviewedAt: string | null;
-  reviewedBy: string | null;
-}
-
-export interface RejectCourierRequest {
   reason: string;
 }
 
