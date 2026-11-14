@@ -21,6 +21,7 @@ import com.swiftdrop.delivery.api.ParcelStatus;
 import com.swiftdrop.delivery.api.ParcelSummary;
 import com.swiftdrop.merchant.application.MerchantApprovalService;
 import com.swiftdrop.merchant.application.MerchantDashboardService;
+import com.swiftdrop.merchant.application.MerchantNotApprovedException;
 import com.swiftdrop.merchant.domain.Merchant;
 import com.swiftdrop.shared.web.PageLimit;
 import com.swiftdrop.shared.web.PageResponse;
@@ -78,9 +79,16 @@ class MerchantDashboardController {
         return MerchantDashboardItemResponse.from(parcel);
     }
 
+    /** Orders are a merchant capability, so they require an APPROVED merchant (D-22). */
     private Merchant getMerchant(Jwt jwt) {
         UUID userId = UUID.fromString(jwt.getSubject());
-        return approvalService.getMerchantByUserId(userId);
+        Merchant merchant = approvalService.getMerchantByUserId(userId);
+        if (!merchant.isApproved()) {
+            throw new MerchantNotApprovedException(
+                    "Merchant account is " + merchant.getStatus().name()
+                            + "; an administrator must approve the application before this feature is available");
+        }
+        return merchant;
     }
 }
 
