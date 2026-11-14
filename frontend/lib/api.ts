@@ -230,12 +230,14 @@ export async function getProofPhoto(parcelId: string, token: string): Promise<Bl
   return await response.blob();
 }
 
-export type MerchantStatus = "PENDING" | "APPROVED" | "REJECTED" | "SUSPENDED";
+export type MerchantStatus = "PENDING_APPROVAL" | "APPROVED" | "REJECTED" | "SUSPENDED";
 
 export interface MerchantResponse {
   id: string;
   userId: string;
   businessName: string;
+  registrationNumber: string;
+  contactEmail: string;
   contactPhone: string | null;
   status: MerchantStatus;
   rejectionReason: string | null;
@@ -246,10 +248,11 @@ export interface MerchantResponse {
 
 export interface RegisterMerchantRequest {
   fullName: string;
-  email: string;
-  password: string;
   businessName: string;
-  contactPhone?: string;
+  registrationNumber: string;
+  contactEmail: string;
+  contactPhone: string;
+  password: string;
 }
 
 export interface RejectMerchantRequest {

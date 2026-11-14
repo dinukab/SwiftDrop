@@ -37,6 +37,7 @@ function SignupForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [businessName, setBusinessName] = useState("");
+  const [registrationNumber, setRegistrationNumber] = useState("");
   const [contactPhone, setContactPhone] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -53,6 +54,7 @@ function SignupForm() {
     const trimmedName = fullName.trim();
     const trimmedEmail = email.trim().toLowerCase();
     const trimmedBusinessName = businessName.trim();
+    const trimmedRegistrationNumber = registrationNumber.trim();
     const trimmedPhone = contactPhone.trim();
 
     if (!trimmedName) {
@@ -68,8 +70,8 @@ function SignupForm() {
       setErrorMessage("Please enter your email address.");
       return;
     }
-    if (!EMAIL_REGEX.test(trimmedEmail) || trimmedEmail.length > 320) {
-      setErrorMessage("Please enter a valid email address (max 320 characters).");
+    if (!EMAIL_REGEX.test(trimmedEmail) || trimmedEmail.length > 254) {
+      setErrorMessage("Please enter a valid email address (max 254 characters).");
       return;
     }
 
@@ -78,12 +80,24 @@ function SignupForm() {
         setErrorMessage("Please enter your business / store name.");
         return;
       }
-      if (trimmedBusinessName.length > 200) {
-        setErrorMessage("Business / store name must be at most 200 characters.");
+      if (trimmedBusinessName.length > 150) {
+        setErrorMessage("Business / store name must be at most 150 characters.");
         return;
       }
-      if (trimmedPhone.length > 20) {
-        setErrorMessage("Contact phone must be at most 20 characters.");
+      if (!trimmedRegistrationNumber) {
+        setErrorMessage("Please enter your business registration number.");
+        return;
+      }
+      if (trimmedRegistrationNumber.length > 50) {
+        setErrorMessage("Registration number must be at most 50 characters.");
+        return;
+      }
+      if (!trimmedPhone) {
+        setErrorMessage("Please enter a contact phone number.");
+        return;
+      }
+      if (trimmedPhone.length > 30) {
+        setErrorMessage("Contact phone must be at most 30 characters.");
         return;
       }
     }
@@ -123,10 +137,11 @@ function SignupForm() {
       if (accountType === "merchant") {
         await api.post<MerchantResponse>("/api/v1/merchants", {
           fullName: trimmedName,
-          email: trimmedEmail,
-          password,
           businessName: trimmedBusinessName,
-          ...(trimmedPhone ? { contactPhone: trimmedPhone } : {}),
+          registrationNumber: trimmedRegistrationNumber,
+          contactEmail: trimmedEmail,
+          contactPhone: trimmedPhone,
+          password,
         });
         setSubmittedAs("merchant");
         return;
@@ -134,10 +149,18 @@ function SignupForm() {
 
     } catch (err: unknown) {
       if (err instanceof ApiError && err.status === 409) {
-        setIsConflict(true);
-        setErrorMessage(
-          "An account with this email address already exists. Please sign in with your credentials."
-        );
+        if (accountType === "merchant") {
+          // 409 covers both duplicate email and duplicate registration number; the backend
+          // does not expose which field conflicted, so keep the message neutral.
+          setErrorMessage(
+            "An account or business registration with these details already exists."
+          );
+        } else {
+          setIsConflict(true);
+          setErrorMessage(
+            "An account with this email address already exists. Please sign in with your credentials."
+          );
+        }
       } else {
         setErrorMessage(formatApiError(err));
       }
@@ -284,13 +307,28 @@ function SignupForm() {
                     value={businessName}
                     onChange={(e) => setBusinessName(e.target.value)}
                     disabled={isLoading}
-                    maxLength={200}
+                    maxLength={150}
                     required
                     className="bg-background text-sm"
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="signup-contact-phone">Contact phone (optional)</Label>
+                  <Label htmlFor="signup-registration-number">Business registration number</Label>
+                  <Input
+                    id="signup-registration-number"
+                    type="text"
+                    autoComplete="off"
+                    placeholder="REG-123456"
+                    value={registrationNumber}
+                    onChange={(e) => setRegistrationNumber(e.target.value)}
+                    disabled={isLoading}
+                    maxLength={50}
+                    required
+                    className="bg-background text-sm"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="signup-contact-phone">Contact phone</Label>
                   <Input
                     id="signup-contact-phone"
                     type="tel"
@@ -299,7 +337,8 @@ function SignupForm() {
                     value={contactPhone}
                     onChange={(e) => setContactPhone(e.target.value)}
                     disabled={isLoading}
-                    maxLength={20}
+                    maxLength={30}
+                    required
                     className="bg-background text-sm"
                   />
                 </div>

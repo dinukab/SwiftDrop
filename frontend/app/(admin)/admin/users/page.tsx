@@ -273,7 +273,7 @@ export default function AdminUsersPage() {
         const params = new URLSearchParams();
         params.set("page", "0");
         params.set("size", "50");
-        params.set("status", "PENDING");
+        params.set("status", "PENDING_APPROVAL");
         const response = await api.get<PageResponse<MerchantResponse>>(
           `/api/v1/merchants?${params.toString()}`
         );
@@ -748,7 +748,7 @@ export default function AdminUsersPage() {
                       <td className="py-3.5 px-4">
                         <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20">
                           <span className="size-1.5 rounded-full bg-amber-500" />
-                          PENDING
+                          PENDING_APPROVAL
                         </span>
                       </td>
                       <td className="py-3.5 px-4 text-xs text-muted-foreground">

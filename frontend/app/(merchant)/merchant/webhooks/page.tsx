@@ -44,7 +44,9 @@ export default function MerchantWebhooksPage() {
   };
 
   useEffect(() => {
-    fetchEndpoints();
+    queueMicrotask(() => {
+      void fetchEndpoints();
+    });
   }, []);
 
   const handleRegister = async (e: React.FormEvent) => {

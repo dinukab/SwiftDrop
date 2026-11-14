@@ -165,6 +165,10 @@ class MigrationConventionTest {
                                 "identity drop courier approvals",
                                 "identity/V202611131200__identity_drop_courier_approvals.sql"),
                         tuple(
+                                "202611131300",
+                                "identity add user session version",
+                                "identity/V202611131300__identity_add_user_session_version.sql"),
+                        tuple(
                                 "202611142000",
                                 "pricing seed sri lanka provinces",
                                 "pricing/V202611142000__pricing_seed_sri_lanka_provinces.sql"));
