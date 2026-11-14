@@ -38,8 +38,10 @@ import com.swiftdrop.delivery.domain.OutboxEventRepository;
 import com.swiftdrop.delivery.domain.ParcelRepository;
 import com.swiftdrop.delivery.domain.ParcelStatusHistoryRepository;
 import com.swiftdrop.dispatch.application.CourierNotEligibleException;
+import com.swiftdrop.dispatch.application.CourierWorkload;
 import com.swiftdrop.dispatch.application.DispatchService;
 import com.swiftdrop.dispatch.domain.CourierProfileRepository;
+import com.swiftdrop.dispatch.domain.VehicleType;
 import com.swiftdrop.identity.domain.ExternalIdentityRepository;
 import com.swiftdrop.identity.domain.GoogleLoginCodeRepository;
 import com.swiftdrop.identity.domain.Role;
@@ -182,5 +184,25 @@ class DispatchApiTest {
                         .contentType(MediaType.APPLICATION_JSON).content(BODY))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.detail").value("Courier profile is inactive"));
+    }
+
+    @Test
+    void workloadsAreForDispatchersOnly() throws Exception {
+        when(dispatch.workloads()).thenReturn(List.of(
+                new CourierWorkload(COURIER_ID, "Kasun Perera", VehicleType.BIKE, 2)));
+
+        mvc.perform(get("/api/v1/courier-workloads").with(TestPrincipal.dispatcher().postProcessor()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].courierUserId").value(COURIER_ID.toString()))
+                .andExpect(jsonPath("$[0].fullName").value("Kasun Perera"))
+                .andExpect(jsonPath("$[0].vehicleType").value("BIKE"))
+                .andExpect(jsonPath("$[0].activeParcels").value(2));
+
+        for (TestPrincipal other : List.of(TestPrincipal.admin(), TestPrincipal.customer(),
+                TestPrincipal.merchant(), TestPrincipal.courier())) {
+            mvc.perform(get("/api/v1/courier-workloads").with(other.postProcessor()))
+                    .andExpect(status().isForbidden());
+        }
+        mvc.perform(get("/api/v1/courier-workloads")).andExpect(status().isUnauthorized());
     }
 }

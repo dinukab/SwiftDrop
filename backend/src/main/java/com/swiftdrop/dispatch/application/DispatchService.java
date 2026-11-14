@@ -1,11 +1,21 @@
 package com.swiftdrop.dispatch.application;
 
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import com.swiftdrop.dispatch.domain.CourierProfile;
+import com.swiftdrop.dispatch.domain.CourierProfileRepository;
+import com.swiftdrop.identity.api.UserDirectory;
+import com.swiftdrop.identity.api.UserSummary;
 
 import com.swiftdrop.delivery.api.PageRequest;
 import com.swiftdrop.delivery.api.PageResult;
@@ -27,11 +37,36 @@ public class DispatchService {
     private final ParcelAssignment parcelAssignment;
     private final CourierEligibility eligibility;
 
+    private final CourierProfileRepository profiles;
+    private final UserDirectory userDirectory;
+
     public DispatchService(ParcelQueries parcelQueries, ParcelAssignment parcelAssignment,
-            CourierEligibility eligibility) {
+            CourierEligibility eligibility, CourierProfileRepository profiles, UserDirectory userDirectory) {
         this.parcelQueries = Objects.requireNonNull(parcelQueries, "parcelQueries");
         this.parcelAssignment = Objects.requireNonNull(parcelAssignment, "parcelAssignment");
         this.eligibility = Objects.requireNonNull(eligibility, "eligibility");
+        this.profiles = Objects.requireNonNull(profiles, "profiles");
+        this.userDirectory = Objects.requireNonNull(userDirectory, "userDirectory");
+    }
+
+    /**
+     * Eligible couriers with their active parcel count (0 when absent from the delivery count),
+     * least busy first, then by name. Same eligibility rule as {@link #assign}.
+     */
+    @Transactional(readOnly = true)
+    public List<CourierWorkload> workloads() {
+        Map<UUID, Long> counts = parcelQueries.countActiveParcelsByCourier();
+        List<CourierWorkload> result = new ArrayList<>();
+        for (CourierProfile profile : profiles.findByActiveTrue()) {
+            UserSummary user = userDirectory.findUser(profile.getUserId()).orElse(null);
+            if (CourierEligibility.isEligible(user, profile)) {
+                result.add(new CourierWorkload(profile.getUserId(), user.fullName(), profile.getVehicleType(),
+                        counts.getOrDefault(profile.getUserId(), 0L)));
+            }
+        }
+        result.sort(Comparator.comparingLong(CourierWorkload::activeParcels)
+                .thenComparing(CourierWorkload::fullName, String.CASE_INSENSITIVE_ORDER));
+        return result;
     }
 
     /** CREATED parcels without a courier, oldest first; page and size are clamped. */

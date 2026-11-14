@@ -1,5 +1,7 @@
 package com.swiftdrop.dispatch.web;
 
+import java.util.List;
+
 import jakarta.validation.Valid;
 
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -39,6 +41,12 @@ class DispatchController {
         return PageResponse.of(
                 result.items().stream().map(UnassignedParcelResponse::from).toList(),
                 result.page(), result.size(), result.totalItems());
+    }
+
+    /** Eligible couriers, least busy first, for the assignment picker. */
+    @GetMapping("/api/v1/courier-workloads")
+    List<CourierWorkloadResponse> workloads() {
+        return dispatch.workloads().stream().map(CourierWorkloadResponse::from).toList();
     }
 
     /** The dispatcher is the token subject, never a request field. */
