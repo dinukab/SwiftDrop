@@ -40,7 +40,7 @@ public class MerchantOnboardingService {
      */
     @Transactional
     public Merchant register(String fullName, String email, String rawPassword, String businessName,
-            String contactPhone) {
+            String registrationNumber, String contactPhone) {
         UUID userId;
         try {
             userId = userDirectory.createMerchantUser(fullName, email, rawPassword);
@@ -48,7 +48,7 @@ public class MerchantOnboardingService {
             throw new MerchantConflictException(e.getMessage());
         }
 
-        Merchant merchant = new Merchant(userId, businessName, contactPhone);
+        Merchant merchant = new Merchant(userId, businessName, registrationNumber, email, contactPhone);
         try {
             return merchants.saveAndFlush(merchant);
         } catch (DataIntegrityViolationException e) {
@@ -106,7 +106,7 @@ public class MerchantOnboardingService {
     private Merchant requirePending(UUID merchantId) {
         Merchant merchant = merchants.findById(merchantId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Merchant not found"));
-        if (merchant.getStatus() != MerchantStatus.PENDING) {
+        if (merchant.getStatus() != MerchantStatus.PENDING_APPROVAL) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Merchant is already " + merchant.getStatus().name().toLowerCase());
         }

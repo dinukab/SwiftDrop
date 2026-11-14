@@ -83,6 +83,58 @@ export interface StatusChangeRequest {
   note?: string;
 }
 
+// Customer booking API types (contract §4.2–4.3)
+export interface ZoneResponse {
+  id: string;
+  code: string;
+  name: string;
+}
+
+export interface BookingAddress {
+  contactName: string;
+  phone: string;
+  line1: string;
+  line2?: string;
+  city: string;
+  zoneId: string;
+  postalCode?: string;
+}
+
+export interface CreateParcelRequest {
+  pickup: BookingAddress;
+  dropoff: BookingAddress;
+  size: ParcelSize;
+  weightGrams: number;
+  description?: string;
+}
+
+export interface PriceQuoteRequest {
+  pickupZoneId: string;
+  dropoffZoneId: string;
+  size: ParcelSize;
+  weightGrams: number;
+}
+
+export interface PriceQuoteResponse {
+  amount: string;
+  currency: string;
+  pricingRuleId: string;
+  breakdown: {
+    baseFee: string;
+    weightFee: string;
+    sizeSurcharge: string;
+  };
+}
+
+export interface ParcelCreatedResponse {
+  id: string;
+  trackingNumber: string;
+  status: ParcelStatus;
+  fee: { amount: string; currency: string };
+  assignedCourierId: string | null;
+  createdAt: string;
+}
+
 // Proof of Delivery API types
 export interface ProofResponse {
   parcelId: string;

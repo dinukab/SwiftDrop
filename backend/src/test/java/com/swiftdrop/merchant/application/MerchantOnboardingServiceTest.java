@@ -54,12 +54,14 @@ class MerchantOnboardingServiceTest {
             return merchant;
         });
 
-        Merchant created = service.register("Ada", "ada@shop.example", "password12", "Ada's Shop", "0770000000");
+        Merchant created = service.register("Ada", "ada@shop.example", "password12", "Ada's Shop", "REG-ADA-1", "0770000000");
 
         assertThat(created.getId()).isEqualTo(MERCHANT_ID);
         assertThat(created.getUserId()).isEqualTo(USER_ID);
         assertThat(created.getBusinessName()).isEqualTo("Ada's Shop");
-        assertThat(created.getStatus()).isEqualTo(MerchantStatus.PENDING);
+        assertThat(created.getRegistrationNumber()).isEqualTo("REG-ADA-1");
+        assertThat(created.getContactEmail()).isEqualTo("ada@shop.example");
+        assertThat(created.getStatus()).isEqualTo(MerchantStatus.PENDING_APPROVAL);
 
         ArgumentCaptor<Merchant> captor = ArgumentCaptor.forClass(Merchant.class);
         verify(merchants).saveAndFlush(captor.capture());
@@ -70,7 +72,7 @@ class MerchantOnboardingServiceTest {
     void registerMapsDuplicateEmailToConflict() {
         when(userDirectory.createMerchantUser(any(), any(), any())).thenThrow(new EmailTakenException());
 
-        assertThatThrownBy(() -> service.register("Ada", "ada@shop.example", "password12", "Shop", null))
+        assertThatThrownBy(() -> service.register("Ada", "ada@shop.example", "password12", "Shop", "REG-ADA-2", "0770000000"))
                 .isInstanceOf(MerchantConflictException.class)
                 .hasMessageContaining("already registered");
     }
@@ -155,7 +157,7 @@ class MerchantOnboardingServiceTest {
     }
 
     private static Merchant pendingMerchant() {
-        Merchant merchant = new Merchant(USER_ID, "Ada's Shop", null);
+        Merchant merchant = new Merchant(USER_ID, "Ada's Shop", "REG-ADA-1", "ada@shop.example", "0770000000");
         ReflectionTestUtils.setField(merchant, "id", MERCHANT_ID);
         return merchant;
     }

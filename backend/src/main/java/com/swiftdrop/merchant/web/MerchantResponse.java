@@ -5,28 +5,35 @@ import java.util.UUID;
 
 import com.swiftdrop.merchant.domain.Merchant;
 
-/** REST representation of a merchant profile. */
 public record MerchantResponse(
         UUID id,
         UUID userId,
         String businessName,
+        String registrationNumber,
+        String contactEmail,
         String contactPhone,
         String status,
+        UUID reviewedBy,
+        Instant reviewedAt,
         String rejectionReason,
         Instant createdAt,
-        Instant reviewedAt,
-        UUID reviewedBy) {
-
-    static MerchantResponse from(Merchant merchant) {
+        Instant updatedAt
+) {
+    public static MerchantResponse from(Merchant merchant) {
         return new MerchantResponse(
                 merchant.getId(),
                 merchant.getUserId(),
                 merchant.getBusinessName(),
+                merchant.getRegistrationNumber(),
+                merchant.getContactEmail(),
                 merchant.getContactPhone(),
                 merchant.getStatus().name(),
+                merchant.getReviewedBy(),
+                merchant.getReviewedAt(),
                 merchant.getRejectionReason(),
                 merchant.getCreatedAt(),
-                merchant.getReviewedAt(),
-                merchant.getReviewedBy());
+                merchant.getUpdatedAt()
+        );
     }
 }
+
