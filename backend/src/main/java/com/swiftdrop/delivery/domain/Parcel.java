@@ -248,6 +248,54 @@ public class Parcel {
     }
 
     /**
+     * Holds the parcel before pickup, for example while the merchant is still preparing the goods.
+     * A held parcel cannot be picked up or assigned a courier until it is resumed. Takes the next
+     * sequence number. The caller must hold a lock on the parcel row.
+     *
+     * @throws ParcelNotFoundException if this is not a parcel of {@code merchantId}
+     * @throws ParcelConflictException if the parcel is not in {@code CREATED}
+     */
+    public void pause(UUID merchantId, Instant now) {
+        holdMove(merchantId, ParcelStatus.PAUSED, now, "A delivery can only be paused before pickup");
+    }
+
+    /**
+     * Releases a held parcel back to {@code CREATED}. Its assigned courier, if any, is kept.
+     *
+     * @throws ParcelNotFoundException if this is not a parcel of {@code merchantId}
+     * @throws ParcelConflictException if the parcel is not {@code PAUSED}
+     */
+    public void resume(UUID merchantId, Instant now) {
+        holdMove(merchantId, ParcelStatus.CREATED, now, "Only a paused delivery can be resumed");
+    }
+
+    /**
+     * Cancels the parcel before pickup. Final: a cancelled parcel is never reopened.
+     *
+     * @throws ParcelNotFoundException if this is not a parcel of {@code merchantId}
+     * @throws ParcelConflictException if the parcel is past {@code CREATED}/{@code PAUSED}
+     */
+    public void cancel(UUID merchantId, Instant now) {
+        holdMove(merchantId, ParcelStatus.CANCELLED, now, "A delivery can only be cancelled before pickup");
+    }
+
+    private void holdMove(UUID merchantId, ParcelStatus target, Instant now, String conflictMessage) {
+        Objects.requireNonNull(merchantId, "merchantId");
+        Objects.requireNonNull(now, "now");
+        // Not the owner (or not a merchant parcel): same answer as a missing parcel, so a merchant
+        // cannot learn whether another merchant's order exists (ADR 0006 §7).
+        if (source != ParcelSource.MERCHANT || !merchantId.equals(this.merchantId)) {
+            throw new ParcelNotFoundException();
+        }
+        if (!ParcelLifecycle.canHoldMove(status, target)) {
+            throw new ParcelConflictException(conflictMessage);
+        }
+        this.status = target;
+        this.lastSequence++;
+        this.updatedAt = now;
+    }
+
+    /**
      * Fee snapshot from pricing, fixed at creation (contract §8.2).
      *
      * @param amount non-negative, 2 decimals

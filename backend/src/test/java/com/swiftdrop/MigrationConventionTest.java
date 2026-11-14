@@ -167,6 +167,10 @@ class MigrationConventionTest {
                         tuple(
                                 "202611142000",
                                 "pricing seed sri lanka provinces",
-                                "pricing/V202611142000__pricing_seed_sri_lanka_provinces.sql"));
+                                "pricing/V202611142000__pricing_seed_sri_lanka_provinces.sql"),
+                        tuple(
+                                "202611151000",
+                                "delivery add pause cancel statuses",
+                                "delivery/V202611151000__delivery_add_pause_cancel_statuses.sql"));
     }
 }
