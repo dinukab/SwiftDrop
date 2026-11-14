@@ -171,6 +171,14 @@ class MigrationConventionTest {
                         tuple(
                                 "202611151000",
                                 "delivery add pause cancel statuses",
-                                "delivery/V202611151000__delivery_add_pause_cancel_statuses.sql"));
+                                "delivery/V202611151000__delivery_add_pause_cancel_statuses.sql"),
+                        tuple(
+                                "202611151100",
+                                "delivery mark existing outbox published",
+                                "delivery/V202611151100__delivery_mark_existing_outbox_published.sql"),
+                        tuple(
+                                "202611151110",
+                                "merchant webhook delivery payload",
+                                "merchant/V202611151110__merchant_webhook_delivery_payload.sql"));
     }
 }

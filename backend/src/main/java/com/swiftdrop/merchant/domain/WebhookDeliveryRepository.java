@@ -15,7 +15,11 @@ public interface WebhookDeliveryRepository extends JpaRepository<WebhookDelivery
 
     List<WebhookDelivery> findByMerchantId(UUID merchantId);
 
-    @Query("SELECT d FROM WebhookDelivery d WHERE d.status = 'PENDING' AND d.nextAttemptAt <= :now ORDER BY d.nextAttemptAt ASC")
-    List<WebhookDelivery> findDueDeliveries(@Param("now") Instant now);
+    /**
+     * Pending deliveries that are due, oldest first, locked for this sender. Rows locked by another
+     * sender are skipped, so two senders never send the same delivery. Must run inside a transaction.
+     */
+    @Query(value = "SELECT * FROM merchant_webhook_deliveries WHERE status = 'PENDING' AND next_attempt_at <= :now "
+            + "ORDER BY next_attempt_at LIMIT :limit FOR UPDATE SKIP LOCKED", nativeQuery = true)
+    List<WebhookDelivery> lockDueDeliveries(@Param("now") Instant now, @Param("limit") int limit);
 }
-

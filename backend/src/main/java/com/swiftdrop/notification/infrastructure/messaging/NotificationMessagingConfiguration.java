@@ -40,9 +40,10 @@ public class NotificationMessagingConfiguration {
         Queue deadLetters = QueueBuilder.durable(QUEUE + ".dlq").quorum().build();
         DirectExchange exchange = new DirectExchange(DEAD_LETTER_EXCHANGE, true, false);
 
+        // Deliberately NOT bound to swiftdrop.events yet: nothing consumes it, so a bound queue would
+        // fill to its limit and make every publish to the exchange fail. Bind it when the notification
+        // module has a consumer (see docs/merchantecommerceconnect.md, Phase 4).
         return new Declarables(source, deadLetters, exchange,
-                new Binding(QUEUE, Binding.DestinationType.QUEUE, "swiftdrop.events",
-                        ParcelStatusChanged.EVENT_TYPE, null),
                 new Binding(deadLetters.getName(), Binding.DestinationType.QUEUE,
                         DEAD_LETTER_EXCHANGE, QUEUE, null));
     }

@@ -79,7 +79,7 @@ class DatabaseMigrationIT {
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(
                 "SELECT version, description, type, script, success FROM flyway_schema_history ORDER BY installed_rank ASC");
 
-        assertThat(rows).hasSize(18);
+        assertThat(rows).hasSize(20);
 
         assertThat(rows.get(0))
                 .containsEntry("version", "202610251600")
@@ -171,6 +171,20 @@ class DatabaseMigrationIT {
                 .containsEntry("description", "delivery add pause cancel statuses")
                 .containsEntry("type", "SQL")
                 .containsEntry("script", "delivery/V202611151000__delivery_add_pause_cancel_statuses.sql")
+                .containsEntry("success", true);
+
+        assertThat(rows.get(18))
+                .containsEntry("version", "202611151100")
+                .containsEntry("description", "delivery mark existing outbox published")
+                .containsEntry("type", "SQL")
+                .containsEntry("script", "delivery/V202611151100__delivery_mark_existing_outbox_published.sql")
+                .containsEntry("success", true);
+
+        assertThat(rows.get(19))
+                .containsEntry("version", "202611151110")
+                .containsEntry("description", "merchant webhook delivery payload")
+                .containsEntry("type", "SQL")
+                .containsEntry("script", "merchant/V202611151110__merchant_webhook_delivery_payload.sql")
                 .containsEntry("success", true);
 
         // Assert tables exist in the isolated test database

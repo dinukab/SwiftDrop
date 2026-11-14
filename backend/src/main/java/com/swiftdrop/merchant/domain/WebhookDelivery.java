@@ -59,11 +59,22 @@ public class WebhookDelivery {
         // for JPA
     }
 
+    @Column(name = "payload", columnDefinition = "TEXT")
+    private String payload;
+
     public WebhookDelivery(UUID endpointId, UUID merchantId, UUID parcelId, UUID eventId) {
+        this(endpointId, merchantId, parcelId, eventId, null);
+    }
+
+    /**
+     * @param payload the exact event body to send and sign on every attempt; no personal data
+     */
+    public WebhookDelivery(UUID endpointId, UUID merchantId, UUID parcelId, UUID eventId, String payload) {
         this.endpointId = Objects.requireNonNull(endpointId, "endpointId");
         this.merchantId = Objects.requireNonNull(merchantId, "merchantId");
         this.parcelId = Objects.requireNonNull(parcelId, "parcelId");
         this.eventId = Objects.requireNonNull(eventId, "eventId");
+        this.payload = payload;
         this.attemptCount = 0;
         this.status = "PENDING";
         Instant now = Instant.now();
@@ -110,6 +121,11 @@ public class WebhookDelivery {
 
     public UUID getParcelId() {
         return parcelId;
+    }
+
+    /** The exact event body, or {@code null} for a row created before bodies were stored. */
+    public String getPayload() {
+        return payload;
     }
 
     public UUID getEventId() {

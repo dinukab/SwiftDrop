@@ -33,7 +33,11 @@ class WebhookEndpointServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new WebhookEndpointService(webhookRepository, merchantRepository);
+        // The same test-only key the build passes to every test run (see pom.xml)
+        WebhookSecretCipher cipher = new WebhookSecretCipher(
+                "test=9YNCoF61LK2O35ShQ1pKG+Roty+tHmUplzzjcEjNz2M=", "test");
+        service = new WebhookEndpointService(webhookRepository, merchantRepository, cipher,
+                new WebhookUrlPolicy(false));
     }
 
     @Test

@@ -25,6 +25,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 
 import com.swiftdrop.delivery.api.ParcelAssignment;
@@ -79,8 +80,6 @@ class DispatchApiTest {
     private ParcelQueries parcelQueries;
     @MockitoBean
     private ParcelAssignment parcelAssignment;
-    @MockitoBean
-    private UserDirectory userDirectory;
     @MockitoBean
     private CourierProfileRepository profiles;
 
@@ -145,8 +144,7 @@ class DispatchApiTest {
 
     @Test
     void anIneligibleCourierIsAConflictAndNothingIsAssigned() throws Exception {
-        UserSummary disabled = new UserSummary(COURIER, "Kamal", "k@example.com", Set.of("COURIER"), false);
-        when(userDirectory.findUser(COURIER)).thenReturn(Optional.of(disabled));
+        identityUser(COURIER, "Kamal", false, Role.COURIER);
 
         mvc.perform(post(ASSIGN)
                         .with(TestPrincipal.dispatcher(DISPATCHER).postProcessor())
@@ -200,10 +198,8 @@ class DispatchApiTest {
         when(profiles.findByActive(eq(true), any())).thenReturn(new PageImpl<>(List.of(
                 new CourierProfile(busy, "+94771111111", VehicleType.VAN, Instant.now()),
                 new CourierProfile(idle, "+94772222222", VehicleType.CAR, Instant.now()))));
-        when(userDirectory.findUser(busy)).thenReturn(Optional.of(
-                new UserSummary(busy, "Busy Bill", "b@example.com", Set.of("COURIER"), true)));
-        when(userDirectory.findUser(idle)).thenReturn(Optional.of(
-                new UserSummary(idle, "Idle Ida", "i@example.com", Set.of("COURIER"), true)));
+        identityUser(busy, "Busy Bill", true, Role.COURIER);
+        identityUser(idle, "Idle Ida", true, Role.COURIER);
         when(parcelQueries.countActiveParcelsByCourier()).thenReturn(Map.of(busy, 3L));
 
         mvc.perform(get("/api/v1/courier-workloads").with(TestPrincipal.dispatcher(DISPATCHER).postProcessor()))
@@ -235,9 +231,16 @@ class DispatchApiTest {
     }
 
     private void courierIsEligible() {
-        when(userDirectory.findUser(COURIER)).thenReturn(Optional.of(
-                new UserSummary(COURIER, "Kamal", "k@example.com", Set.of("COURIER"), true)));
+        identityUser(COURIER, "Kamal", true, Role.COURIER);
         when(profiles.findByUserId(COURIER)).thenReturn(Optional.of(
                 new CourierProfile(COURIER, "+94771234567", VehicleType.BIKE, Instant.now())));
+    }
+
+    /** Stubs the identity user behind {@code UserDirectory} (the repository), as the identity tests do. */
+    private void identityUser(UUID id, String name, boolean enabled, Role role) {
+        User user = new User(name.toLowerCase().replace(' ', '.') + "@example.com", "hash", name, Set.of(role));
+        ReflectionTestUtils.setField(user, "id", id);
+        user.setEnabled(enabled);
+        when(users.findById(id)).thenReturn(Optional.of(user));
     }
 }
