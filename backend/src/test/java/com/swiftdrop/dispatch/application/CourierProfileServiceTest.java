@@ -3,6 +3,8 @@ package com.swiftdrop.dispatch.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -11,6 +13,7 @@ import static org.mockito.Mockito.when;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -19,7 +22,12 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentCaptor;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.swiftdrop.dispatch.domain.CourierProfile;
@@ -112,7 +120,7 @@ class CourierProfileServiceTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"CUSTOMER", "MERCHANT", "DISPATCHER_ADMIN"})
+    @ValueSource(strings = {"CUSTOMER", "MERCHANT", "DISPATCHER", "ADMIN"})
     void rejectsUsersWithoutCourierRole(String role) {
         UserSummary nonCourier = new UserSummary(USER_ID, "Nimal Silva", "nimal@swiftdrop.com", Set.of(role), true);
         when(userDirectory.findUser(USER_ID)).thenReturn(Optional.of(nonCourier));
@@ -129,6 +137,85 @@ class CourierProfileServiceTest {
         when(profiles.findByUserId(USER_ID)).thenReturn(Optional.of(existing));
 
         assertThat(service.findByUserId(USER_ID)).contains(existing);
+    }
+
+    @Test
+    void listsAllProfilesWithStableSortWhenNoFilter() {
+        Page<CourierProfile> result = new PageImpl<>(List.of());
+        when(profiles.findAll(any(Pageable.class))).thenReturn(result);
+
+        assertThat(service.listProfiles(null, 2, 10)).isSameAs(result);
+
+        ArgumentCaptor<Pageable> pageable = ArgumentCaptor.forClass(Pageable.class);
+        verify(profiles).findAll(pageable.capture());
+        assertThat(pageable.getValue().getPageNumber()).isEqualTo(2);
+        assertThat(pageable.getValue().getPageSize()).isEqualTo(10);
+        assertThat(pageable.getValue().getSort()).isEqualTo(Sort.by("createdAt", "id"));
+        verify(profiles, never()).findByActive(anyBoolean(), any());
+    }
+
+    @Test
+    void filtersByActiveFlagAndClampsPaging() {
+        Page<CourierProfile> result = new PageImpl<>(List.of());
+        when(profiles.findByActive(eq(true), any(Pageable.class))).thenReturn(result);
+
+        assertThat(service.listProfiles(true, -5, 1000)).isSameAs(result);
+
+        ArgumentCaptor<Pageable> pageable = ArgumentCaptor.forClass(Pageable.class);
+        verify(profiles).findByActive(eq(true), pageable.capture());
+        assertThat(pageable.getValue().getPageNumber()).isZero();
+        assertThat(pageable.getValue().getPageSize()).isEqualTo(100);
+        verify(profiles, never()).findAll(any(Pageable.class));
+    }
+
+    @Test
+    void getProfileThrowsWhenMissing() {
+        when(profiles.findById(PROFILE_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.getProfile(PROFILE_ID))
+                .isInstanceOf(CourierProfileNotFoundException.class);
+    }
+
+    @Test
+    void updatesPhoneAndVehicleType() {
+        CourierProfile existing = new CourierProfile(USER_ID, "+94771234567", VehicleType.BIKE, NOW.minusSeconds(60));
+        when(profiles.findById(PROFILE_ID)).thenReturn(Optional.of(existing));
+
+        CourierProfile updated = service.updateDetails(PROFILE_ID, " +94770000000 ", VehicleType.VAN);
+
+        assertThat(updated.getPhone()).isEqualTo("+94770000000");
+        assertThat(updated.getVehicleType()).isEqualTo(VehicleType.VAN);
+        assertThat(updated.getUpdatedAt()).isEqualTo(NOW);
+    }
+
+    @Test
+    void rejectsInvalidPhoneOnUpdateWithoutChangingProfile() {
+        CourierProfile existing = new CourierProfile(USER_ID, "+94771234567", VehicleType.BIKE, NOW.minusSeconds(60));
+        when(profiles.findById(PROFILE_ID)).thenReturn(Optional.of(existing));
+
+        assertThatThrownBy(() -> service.updateDetails(PROFILE_ID, "0771234567", VehicleType.VAN))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        assertThat(existing.getPhone()).isEqualTo("+94771234567");
+        assertThat(existing.getVehicleType()).isEqualTo(VehicleType.BIKE);
+    }
+
+    @Test
+    void deactivatesAndReactivatesProfile() {
+        CourierProfile existing = new CourierProfile(USER_ID, "+94771234567", VehicleType.BIKE, NOW.minusSeconds(60));
+        when(profiles.findById(PROFILE_ID)).thenReturn(Optional.of(existing));
+
+        assertThat(service.setActive(PROFILE_ID, false).isActive()).isFalse();
+        assertThat(service.setActive(PROFILE_ID, true).isActive()).isTrue();
+        assertThat(existing.getUpdatedAt()).isEqualTo(NOW);
+    }
+
+    @Test
+    void setActiveThrowsWhenProfileMissing() {
+        when(profiles.findById(PROFILE_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.setActive(PROFILE_ID, false))
+                .isInstanceOf(CourierProfileNotFoundException.class);
     }
 }
 
