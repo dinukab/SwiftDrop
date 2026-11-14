@@ -146,17 +146,17 @@ tables.
 
 | # | Workstream | Owner | ✅ Done | Total | Progress |
 |---|---|---|---|---|---|
-| M1 | Identity, access control, shared foundations | M1 | 8 | 10 | 80% |
+| M1 | Identity, access control, shared foundations | M1 | 9 | 11 | 82% |
 | M2 | Customer booking | M2 | 3 | 7 | 43% |
 | M3 | Delivery core (parcel lifecycle) | M3 | 6 | 8 | 75% |
-| M4 | Merchant registration, approval, dashboard, webhook endpoints | M4 | 0 | 7 | 0% |
+| M4 | Merchant registration, approval, dashboard, webhook endpoints | M4 | 1 | 7 | 14% |
 | M5 | Merchant API keys, order intake, webhook delivery | M5 | 0 | 7 | 0% |
 | M6 | Courier operations | M6 | 4 | 6 | 67% |
 | M7 | Dispatch and quality lead | M7 | 1 | 8 | 13% |
 | M8 | Pricing and reports | M8 | 3 | 7 | 43% |
 | M9 | RabbitMQ events and notifications | M9 | 0 | 7 | 0% |
 | M10 | Live tracking, containers, demo | M10 | 1 | 8 | 13% |
-| | **Total** | | **26** | **75** | **35%** |
+| | **Total** | | **28** | **76** | **37%** |
 
 ### 2.1 Build order (phases)
 
@@ -195,6 +195,7 @@ the auth pages, and `SecurityConfiguration`.
 | 1.8 | Authorization test-matrix harness | SD-106 | ✅ | | | |
 | 1.9 | Integration-test profile with real PostgreSQL **and RabbitMQ** | SD-003 | 🟡 | | | |
 | 1.10 | *(Optional, needs ADR)* Split `DISPATCHER_ADMIN` into `ADMIN` and `DISPATCHER` | — | ⬜ | | | |
+| 1.11 | Public courier registration with admin approval (`/api/v1/courier-registrations`) | — | ✅ | `feature/rbac-user-management` | | 2026-11-14 |
 
 **How to implement the open sub-parts**
 
@@ -277,11 +278,11 @@ Owns the `merchant` module (with M5), `frontend/app/(merchant)` and `(admin)/adm
 
 | ID | Sub-part | SD | Status | Branch | PR | Date |
 |---|---|---|---|---|---|---|
-| 4.1 | Merchant registration (`PENDING`): `POST /api/v1/merchants` | SD-401 | ⬜ | | | |
-| 4.2 | Admin approval and rejection, with status history | SD-402 | ⬜ | | | |
-| 4.3 | Admin merchants page (list, approve, reject) | SD-402 | ⬜ | | | |
+| 4.1 | Merchant registration (`PENDING`): `POST /api/v1/merchants` | SD-401 | ✅ | `feature/rbac-user-management` | | 2026-11-14 |
+| 4.2 | Admin approval and rejection, with status history | SD-402 | 🟡 | `feature/rbac-user-management` | | |
+| 4.3 | Admin merchants page (list, approve, reject) | SD-402 | 🟡 | `feature/rbac-user-management` | | |
 | 4.4 | Merchant dashboard API `GET /api/v1/merchants/me/orders` | SD-406 | ⬜ | | | |
-| 4.5 | Merchant sign-up page and dashboard UI | SD-407 | ⬜ | | | |
+| 4.5 | Merchant sign-up page and dashboard UI | SD-407 | 🟡 | `feature/rbac-user-management` | | |
 | 4.6 | Webhook endpoint registration with encrypted secret | SD-408 | ⬜ | | | |
 | 4.7 | Webhook endpoints and delivery history page | SD-412 | ⬜ | | | |
 
@@ -367,7 +368,7 @@ Owns `delivery.web` courier endpoints and `frontend/app/(courier)`.
 | 6.2 | `POST /api/v1/parcels/{id}/status-changes` with note | SD-310 | ✅ | | | |
 | 6.3 | Proof of delivery: recipient name and photo | SD-311 | ✅ | | | |
 | 6.4 | Failed delivery with reason code | SD-312 | ✅ | | | |
-| 6.5 | Courier mobile UI (list, detail, next status, proof, failure) | SD-313 | ⬜ | | | |
+| 6.5 | Courier mobile UI (list, detail, next status, proof, failure) | SD-313 | 🟡 | `feature/courier-module` | | |
 | 6.6 | Parcel ownership authorization suite (TST-2) | SD-316 | 🟡 | | | |
 
 **How to implement**
@@ -410,6 +411,14 @@ The contracts dispatch needs **already exist**, so nothing outside the module bl
 | Active parcels per courier | `delivery.api.ParcelQueries.countActiveParcelsByCourier()` |
 | Record an assignment | `delivery.api.ParcelAssignment.assignCourier(parcelId, courierUserId, dispatcherUserId)` |
 | Check a user | `identity.api.UserDirectory.findUser(id)` → `UserSummary` |
+
+**Courier eligibility, updated 2026-11-14.** `DEV_2` added public courier registration. A
+self-registered courier has the `COURIER` role but gets a `PENDING` approval row, and the
+`COURIER` authority is withheld from their token until an admin approves. So eligibility must
+also require **approved**. The check lives in `identity.application.CourierApprovalService`
+(`isApproved`), but dispatch may use only `identity.api`. **Before 7.2, ask M1 (Saranga) to expose
+it in `identity.api`**, for example as a field on `UserSummary` or a method on `UserDirectory`.
+Couriers created by an admin have no approval row and count as approved.
 
 **Courier eligibility** (contract §5.4): the user is **enabled**, **and** has the `COURIER`
 role, **and** has an **active** courier profile.
@@ -573,7 +582,7 @@ Owns the `notification` module, the outbox relay and `shared.messaging`.
 
 | ID | Sub-part | SD | Status | Branch | PR | Date |
 |---|---|---|---|---|---|---|
-| 9.1 | RabbitMQ topology (exchange, queues, dead-letter) and broker check | SD-501 | ⬜ | | | |
+| 9.1 | RabbitMQ topology (exchange, queues, dead-letter) and broker check | SD-501 | 🟡 | `feature/messaging-and-webhook` | | |
 | 9.2 | Outbox relay: publish `parcel_outbox_events` in order | SD-502 | ⬜ | | | |
 | 9.3 | Shared ordered-consumer support (duplicates, gaps) | SD-503 | ⬜ | | | |
 | 9.4 | Notification consumer and mock SMS/email store | SD-504 | ⬜ | | | |
@@ -616,7 +625,7 @@ profile and the demo script.
 | ID | Sub-part | SD | Status | Branch | PR | Date |
 |---|---|---|---|---|---|---|
 | 10.1 | SSE tracking stream `GET /api/v1/tracked-parcels/{n}/events` | SD-508 | ✅ | | | |
-| 10.2 | Public mobile tracking page with live updates | SD-510 | 🟡 | | | |
+| 10.2 | Public mobile tracking page with live updates | SD-510 | 🟡 | `feature/tracking-realtime` | | |
 | 10.3 | Backend Dockerfile | SD-801 | ⬜ | | | |
 | 10.4 | Frontend Dockerfile | SD-802 | ⬜ | | | |
 | 10.5 | Full-stack Compose profile (`docker compose --profile app up`) | SD-803 | ⬜ | | | |
@@ -653,5 +662,6 @@ profile and the demo script.
 
 Newest first. Use one line per status change: `YYYY-MM-DD · <id> · <status> · <member> · <PR or note>`.
 
+- 2026-11-14 · 1.11, 4.1 ✅; 4.2, 4.3, 4.5, 6.5, 9.1 🟡 · M7 · re-scored against `DEV_2` (PR #4 to #7); totals now 28/76
 - 2026-11-14 · all · tracker created; statuses set from the current code · M7 · —
 - 2026-11-11 · 7.1 · 🟡 · M7 · commit `setup1` (couriers migration, `CourierProfile`, service, tests)
