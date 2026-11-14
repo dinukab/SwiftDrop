@@ -5,14 +5,20 @@ approval, and the security configuration that enforces them. Module boundaries f
 
 ## Roles
 
-Exactly four roles exist; there is no separate dispatcher role:
+Exactly five roles exist. `DISPATCHER` (delivery operations) and `ADMIN` (system
+administration) are independent; the earlier combined `DISPATCHER_ADMIN` was split by
+migration `V202611131100` (existing combined-role users were mapped to `ADMIN`):
 
 | Role | Who gets it | How |
 |---|---|---|
 | `CUSTOMER` | Public sign-up | `POST /api/v1/users` (role is never client-settable) |
 | `MERCHANT` | Public sign-up | `POST /api/v1/merchants` → user + `PENDING` merchant row |
-| `COURIER` | Public sign-up **or** admin-created | `POST /api/v1/courier-registrations` (approval required) or `POST /api/v1/staff-users` (admin, immediate) |
-| `DISPATCHER_ADMIN` | Admin-created only | `POST /api/v1/staff-users` or env bootstrap (`BootstrapAdminService`) |
+| `COURIER` | Public sign-up **or** admin-created | `POST /api/v1/courier-registrations` (approval required) or staff creation (admin, immediate) |
+| `DISPATCHER` | Admin-created only | `POST /api/v1/staff-users` or `POST /api/v1/users/staff` with `role: "DISPATCHER"` |
+| `ADMIN` | Admin-created only | same staff endpoints with `role: "ADMIN"`, or env bootstrap (`BootstrapAdminService`) |
+
+Authorization split: parcel/delivery operational endpoints require `DISPATCHER`;
+user management, staff creation, and merchant/courier approvals require `ADMIN`.
 
 ## Token lifecycle
 
@@ -44,19 +50,20 @@ design), actuator health, OpenAPI/Swagger, `/error`.
 
 Everything else requires a valid, enabled-account JWT. Method security adds role checks.
 
-| Endpoint | CUSTOMER | MERCHANT | COURIER | DISPATCHER_ADMIN | Anonymous |
-|---|---|---|---|---|---|
-| `POST /users`, `/auth/*`, `POST /merchants`, `POST /courier-registrations` | 201 | 201 | 201 | 201 | allowed |
-| `GET /users/me` | 200 | 200 | 200 (+`courierApprovalStatus`) | 200 | 401 |
-| `GET /users` (list), `PATCH /users/{id}` | 403 | 403 | 403 | 200 | 401 |
-| `POST /users/staff`, `POST /staff-users` | 403 | 403 | 403 | 201 | 401 |
-| `GET /merchants` list, `POST /{id}/approval|rejection` | 403 | 403 | 403 | 200 | 401 |
-| `GET /merchants/me` | 404 | 200 (pending ok) | 404 | 404 | 401 |
-| `GET /courier-registrations` (admin list) | 403 | 403 | 403 | 200 | 401 |
-| `POST /courier-registrations/{userId}/approval|rejection` | 403 | 403 | 403 | 200 | 401 |
-| `GET /courier-registrations/me` | 404 | 404 | 200/404 | 404 | 401 |
-| `GET /courier/parcels`, `POST /parcels/{id}/status-changes`, `PUT /parcels/{id}/proof` | 403 | 403 | 200 if approved else 403 | 403 | 401 |
-| Own parcels / delivery booking | own only | — | — | — | — |
+| Endpoint | CUSTOMER | MERCHANT | COURIER | DISPATCHER | ADMIN | Anonymous |
+|---|---|---|---|---|---|---|
+| `POST /users`, `/auth/*`, `POST /merchants`, `POST /courier-registrations` | 201 | 201 | 201 | 201 | 201 | allowed |
+| `GET /users/me` | 200 | 200 | 200 (+`courierApprovalStatus`) | 200 | 200 | 401 |
+| `GET /users` (list), `PATCH /users/{id}` | 403 | 403 | 403 | 403 | 200 | 401 |
+| `POST /users/staff`, `POST /staff-users` | 403 | 403 | 403 | 403 | 201 | 401 |
+| `GET /merchants` list, `POST /{id}/approval|rejection` | 403 | 403 | 403 | 403 | 200 | 401 |
+| `GET /merchants/me` | 404 | 200 (pending ok) | 404 | 404 | 404 | 401 |
+| `GET /courier-registrations` (admin list) | 403 | 403 | 403 | 403 | 200 | 401 |
+| `POST /courier-registrations/{userId}/approval|rejection` | 403 | 403 | 403 | 403 | 200 | 401 |
+| `GET /courier-registrations/me` | 404 | 404 | 200/404 | 404 | 404 | 401 |
+| `GET /courier/parcels`, `POST /parcels/{id}/status-changes`, `PUT /parcels/{id}/proof` | 403 | 403 | 200 if approved else 403 | 403 | 403 | 401 |
+| Parcel list/detail/receipt/proof (delivery ops) | own only | — | assigned only | 200 | 403 | 401 |
+| Own parcels / delivery booking | own only | — | — | — | — | — |
 
 Notes on non-403/404 outcomes:
 
@@ -91,7 +98,7 @@ Configure via `SWIFTDROP_RATE_LIMIT_AUTH_PER_MINUTE` and
   no row and are treated as approved.
 - `merchants` (merchant module): `PENDING → APPROVED | REJECTED | SUSPENDED`;
   capability endpoints call `requireApproved()`.
-- Approval/rejection endpoints are `DISPATCHER_ADMIN`-only; only `PENDING` rows can
+- Approval/rejection endpoints are `ADMIN`-only; only `PENDING` rows can
   transition (409 otherwise). A courier cannot approve their own registration.
 
 ## `/users/me` response
