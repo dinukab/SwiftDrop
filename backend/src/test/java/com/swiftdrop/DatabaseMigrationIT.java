@@ -41,7 +41,10 @@ import com.swiftdrop.pricing.api.FeeCalculator;
  */
 @SpringBootTest(properties = {
         "swiftdrop.security.jwt.secret=test-only-jwt-secret-not-used-outside-tests-0123456789",
-        "swiftdrop.security.google.client-id="
+        "swiftdrop.security.google.client-id=",
+        // Keep the users table empty: a configured bootstrap admin would otherwise add a row.
+        "swiftdrop.identity.bootstrap.admin-email=",
+        "swiftdrop.identity.bootstrap.admin-password="
 })
 @Testcontainers
 @SuppressWarnings("deprecation")
@@ -77,7 +80,7 @@ class DatabaseMigrationIT {
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(
                 "SELECT version, description, type, script, success FROM flyway_schema_history ORDER BY installed_rank ASC");
 
-        assertThat(rows).hasSize(8);
+        assertThat(rows).hasSize(11);
 
         assertThat(rows.get(0))
                 .containsEntry("version", "202610251600")
@@ -114,6 +117,27 @@ class DatabaseMigrationIT {
                         tuple("delivery/V202611031010__delivery_create_parcel_status_history.sql", true),
                         tuple("delivery/V202611031020__delivery_create_delivery_proofs.sql", true),
                         tuple("delivery/V202611031030__delivery_create_parcel_outbox_events.sql", true));
+
+        assertThat(rows.get(8))
+                .containsEntry("version", "202611130900")
+                .containsEntry("description", "merchant create applications")
+                .containsEntry("type", "SQL")
+                .containsEntry("script", "merchant/V202611130900__merchant_create_applications.sql")
+                .containsEntry("success", true);
+
+        assertThat(rows.get(9))
+                .containsEntry("version", "202611130901")
+                .containsEntry("description", "merchant create merchants")
+                .containsEntry("type", "SQL")
+                .containsEntry("script", "merchant/V202611130901__merchant_create_merchants.sql")
+                .containsEntry("success", true);
+
+        assertThat(rows.get(10))
+                .containsEntry("version", "202611131000")
+                .containsEntry("description", "identity create courier approvals")
+                .containsEntry("type", "SQL")
+                .containsEntry("script", "identity/V202611131000__identity_create_courier_approvals.sql")
+                .containsEntry("success", true);
 
         // Assert tables exist in the isolated test database
         Integer usersCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM users", Integer.class);

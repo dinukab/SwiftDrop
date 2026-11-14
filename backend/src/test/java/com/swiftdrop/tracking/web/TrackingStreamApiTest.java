@@ -34,6 +34,8 @@ import com.swiftdrop.identity.domain.GoogleLoginCodeRepository;
 import com.swiftdrop.identity.domain.UserRepository;
 import com.swiftdrop.pricing.api.FeeCalculator;
 import com.swiftdrop.pricing.domain.PricingRuleRepository;
+import com.swiftdrop.merchant.domain.MerchantRepository;
+import com.swiftdrop.identity.domain.CourierApprovalRepository;
 import com.swiftdrop.pricing.domain.ZoneRepository;
 
 /** The live tracking stream through the real security configuration and Spring MVC async handling. */
@@ -76,6 +78,11 @@ class TrackingStreamApiTest {
     @MockitoBean
     private PricingRuleRepository pricingRules;
 
+    @MockitoBean
+    private MerchantRepository merchants;
+
+    @MockitoBean
+    private CourierApprovalRepository courierApprovals;
     @Test
     void anyoneCanOpenAStreamAndGetsTheSnapshotFirst() throws Exception {
         givenParcel("SD7K3M9Q2XWB", ParcelStatus.IN_TRANSIT);

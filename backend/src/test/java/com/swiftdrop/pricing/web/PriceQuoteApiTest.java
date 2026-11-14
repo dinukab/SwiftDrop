@@ -30,6 +30,8 @@ import com.swiftdrop.identity.domain.GoogleLoginCodeRepository;
 import com.swiftdrop.identity.domain.UserRepository;
 import com.swiftdrop.pricing.domain.PricingRule;
 import com.swiftdrop.pricing.domain.PricingRuleRepository;
+import com.swiftdrop.merchant.domain.MerchantRepository;
+import com.swiftdrop.identity.domain.CourierApprovalRepository;
 import com.swiftdrop.pricing.domain.Zone;
 import com.swiftdrop.pricing.domain.ZoneRepository;
 import com.swiftdrop.test.security.TestPrincipal;
@@ -62,7 +64,12 @@ class PriceQuoteApiTest {
     private ZoneRepository zones;
     @MockitoBean
     private PricingRuleRepository pricingRules;
+
     @MockitoBean
+    private MerchantRepository merchants;
+
+    @MockitoBean
+    private CourierApprovalRepository courierApprovals;    @MockitoBean
     private ParcelRepository parcels;
     @MockitoBean
     private ParcelStatusHistoryRepository parcelHistory;

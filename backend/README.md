@@ -49,5 +49,5 @@ precedence. The variables are listed in [`.env.example`](../.env.example).
 The default build (`.\mvnw.cmd clean verify` or `.\mvnw.cmd test`) executes only unit and slice tests
 (`*Test.java`) and remains completely Docker-free.
 
-There are no integration tests against RabbitMQ yet
-(see [testing](../docs/architecture.md#12-testing)).
+RabbitMQ topology tests use an isolated broker in the integration profile; see
+[Stage 2 messaging setup](../docs/messaging-stage-2.md) for commands and coverage.

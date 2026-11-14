@@ -160,6 +160,47 @@ export async function getProofPhoto(parcelId: string, token: string): Promise<Bl
   }
 
   return await response.blob();
+export type MerchantStatus = "PENDING" | "APPROVED" | "REJECTED" | "SUSPENDED";
+
+export interface MerchantResponse {
+  id: string;
+  userId: string;
+  businessName: string;
+  contactPhone: string | null;
+  status: MerchantStatus;
+  rejectionReason: string | null;
+  createdAt: string;
+  reviewedAt: string | null;
+  reviewedBy: string | null;
+}
+
+export interface RegisterMerchantRequest {
+  fullName: string;
+  email: string;
+  password: string;
+  businessName: string;
+  contactPhone?: string;
+}
+
+export interface RejectMerchantRequest {
+  reason: string;
+}
+
+export type CourierApprovalStatus = "PENDING" | "APPROVED" | "REJECTED";
+
+export interface CourierApprovalResponse {
+  userId: string;
+  email: string;
+  fullName: string;
+  status: CourierApprovalStatus;
+  rejectionReason: string | null;
+  createdAt: string;
+  reviewedAt: string | null;
+  reviewedBy: string | null;
+}
+
+export interface RejectCourierRequest {
+  reason: string;
 }
 
 export class ApiError extends Error {
