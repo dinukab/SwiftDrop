@@ -152,9 +152,9 @@ function UnassignedTab({ token, reloadKey, onChanged, onNotice }: TabProps) {
           <ul className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {workloads.map((w) => (
               <li key={w.courierUserId} className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm">
-                <span>
-                  {w.fullName}
-                  <span className="ml-2 text-xs text-muted-foreground">{w.vehicleType}</span>
+                <span className="flex min-w-0 items-baseline gap-2">
+                  <span className="truncate">{w.fullName}</span>
+                  <span className="text-xs text-muted-foreground">{w.vehicleType}</span>
                 </span>
                 <span className="font-medium">{w.activeParcels} active</span>
               </li>
