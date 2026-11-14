@@ -152,11 +152,11 @@ tables.
 | M4 | Merchant registration, approval, dashboard, webhook endpoints | M4 | 1 | 7 | 14% |
 | M5 | Merchant API keys, order intake, webhook delivery | M5 | 0 | 7 | 0% |
 | M6 | Courier operations | M6 | 4 | 6 | 67% |
-| M7 | Dispatch and quality lead | M7 | 1 | 8 | 13% |
+| M7 | Dispatch and quality lead | M7 | 5 | 8 | 63% |
 | M8 | Pricing and reports | M8 | 3 | 7 | 43% |
 | M9 | RabbitMQ events and notifications | M9 | 0 | 7 | 0% |
 | M10 | Live tracking, containers, demo | M10 | 1 | 8 | 13% |
-| | **Total** | | **29** | **76** | **38%** |
+| | **Total** | | **33** | **76** | **43%** |
 
 ### 2.1 Build order (phases)
 
@@ -393,7 +393,7 @@ step. Also leads the security review, the test report and the contribution sheet
 | 7.1 | Courier profiles: schema, service, admin API | SD-305 | ✅ | `feature/dispatcher` | | 2026-11-14 |
 | 7.2 | Unassigned parcels and courier assignment | SD-306 | ✅ | `feature/dispatcher` | | 2026-11-14 |
 | 7.3 | Courier workload view | SD-307 | ✅ | `feature/dispatcher` | | 2026-11-14 |
-| 7.4 | Assignment history per parcel (needs 3.7) | — | ⬜ | | | |
+| 7.4 | Assignment history per parcel (needs 3.7) | — | ⛔ | | | |
 | 7.5 | Dispatcher UI | SD-308 | ✅ | `feature/dispatcher` | | 2026-11-14 |
 | 7.6 | JaCoCo code coverage in the build and CI | SD-004 | ✅ | | | |
 | 7.7 | Security and personal-data review | SD-704 | ⬜ | | | |
@@ -652,6 +652,7 @@ profile and the demo script.
 
 Newest first. Use one line per status change: `YYYY-MM-DD · <id> · <status> · <member> · <PR or note>`.
 
+- 2026-11-14 · 7.1, 7.2, 7.3, 7.5 ✅; 7.4 ⛔ waits for M3's 3.7 · M7 · commits 0553de3, 88d9029, 2482a39, 44dc6e6 on `feature/dispatcher`; totals now 33/76
 - 2026-11-14 · 1.10 ✅; courier-approval notes removed from 7.1/7.2; 7.5 path and roles corrected · M7 · synced with `DEV_2` role split; totals now 29/76
 - 2026-11-14 · 1.11, 4.1 ✅; 4.2, 4.3, 4.5, 6.5, 9.1 🟡 · M7 · re-scored against `DEV_2` (PR #4 to #7); totals now 28/76
 - 2026-11-14 · all · tracker created; statuses set from the current code · M7 · —
