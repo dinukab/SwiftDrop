@@ -11,7 +11,10 @@ public interface MerchantRepository extends JpaRepository<Merchant, UUID> {
 
     Optional<Merchant> findByUserId(UUID userId);
 
-    Page<Merchant> findByStatus(MerchantStatus status, Pageable pageable);
+    boolean existsByRegistrationNumber(String registrationNumber);
 
-    boolean existsByUserId(UUID userId);
+    boolean existsByContactEmail(String contactEmail);
+
+    Page<Merchant> findByStatus(MerchantStatus status, Pageable pageable);
 }
+

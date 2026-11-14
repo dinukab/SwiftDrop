@@ -116,21 +116,41 @@ class MigrationConventionTest {
                                 "delivery/V202611031020__delivery_create_delivery_proofs.sql"),
                         tuple("202611031030", "delivery create parcel outbox events",
                                 "delivery/V202611031030__delivery_create_parcel_outbox_events.sql"),
-                        tuple("202611112100", "dispatch create couriers",
+                        tuple(
+                                "202611091200",
+                                "merchant create merchants",
+                                "merchant/V202611091200__merchant_create_merchants.sql"),
+                        tuple(
+                                "202611091210",
+                                "merchant create api keys",
+                                "merchant/V202611091210__merchant_create_api_keys.sql"),
+                        tuple(
+                                "202611091220",
+                                "merchant create webhooks",
+                                "merchant/V202611091220__merchant_create_webhooks.sql"),
+                        tuple(
+                                "202611112100",
+                                "dispatch create couriers",
                                 "dispatch/V202611112100__dispatch_create_couriers.sql"),
-                        tuple("202611130900", "merchant create applications",
+                        tuple(
+                                "202611130900",
+                                "merchant create applications",
                                 "merchant/V202611130900__merchant_create_applications.sql"),
-                        tuple("202611130901", "merchant create merchants",
-                                "merchant/V202611130901__merchant_create_merchants.sql"),
-                        tuple("202611131000", "identity create courier approvals",
+                        tuple(
+                                "202611131000",
+                                "identity create courier approvals",
                                 "identity/V202611131000__identity_create_courier_approvals.sql"),
-                        tuple("202611140901", "merchant ordered inbox",
-                                "merchant/V202611140901__merchant_ordered_inbox.sql"),
-                        tuple("202611140902", "notification ordered inbox",
-                                "notification/V202611140902__notification_ordered_inbox.sql"),
-                        tuple("202611140903", "notification mock messages",
-                                "notification/V202611140903__notification_mock_messages.sql"),
-                        tuple("202611141600", "merchant webhooks",
-                                "merchant/V202611141600__merchant_webhooks.sql"));
+                        tuple(
+                                "202611131100",
+                                "identity split dispatcher admin role",
+                                "identity/V202611131100__identity_split_dispatcher_admin_role.sql"),
+                        tuple(
+                                "202611131200",
+                                "identity drop courier approvals",
+                                "identity/V202611131200__identity_drop_courier_approvals.sql"),
+                        tuple(
+                                "202611142000",
+                                "pricing seed sri lanka provinces",
+                                "pricing/V202611142000__pricing_seed_sri_lanka_provinces.sql"));
     }
 }

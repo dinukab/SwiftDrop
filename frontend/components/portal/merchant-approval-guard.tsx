@@ -86,7 +86,7 @@ export function MerchantApprovalGuard({ children }: { children: React.ReactNode 
           <CardTitle className="text-xl font-bold text-foreground">Merchant access pending</CardTitle>
           <CardDescription className="text-sm text-muted-foreground">
             {merchant.status === "PENDING"
-              ? "Your merchant application is awaiting administrator approval. Portal features stay locked until a DISPATCHER_ADMIN approves your account."
+              ? "Your merchant application is awaiting administrator approval. Portal features stay locked until a ADMIN approves your account."
               : merchant.status === "REJECTED"
                 ? `Your merchant application was rejected${merchant.rejectionReason ? `: ${merchant.rejectionReason}` : "."}`
                 : "Your merchant account is suspended. Contact an administrator for help."}

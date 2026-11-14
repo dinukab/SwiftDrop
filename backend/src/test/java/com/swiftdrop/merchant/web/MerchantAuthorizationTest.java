@@ -96,19 +96,27 @@ class MerchantAuthorizationTest {
     @MockitoBean
     private MerchantRepository merchantRepository;
     @MockitoBean
-    private com.swiftdrop.identity.domain.CourierApprovalRepository courierApprovals;
+    private com.swiftdrop.dispatch.domain.CourierProfileRepository courierProfiles;
     @MockitoBean
     private MerchantOnboardingService onboardingService;
 
     @BeforeEach
     void setUp() {
-        User adminUser = withId(new User("admin@example.com", "hash", "Admin", Set.of(Role.DISPATCHER_ADMIN)), ADMIN_ID);
+        org.mockito.Mockito.when(users.findById(org.mockito.ArgumentMatchers.any()))
+                .thenAnswer(inv -> {
+                com.swiftdrop.identity.domain.User stubUser = new com.swiftdrop.identity.domain.User(
+                        "stub@example.com", "hash", "Stub User",
+                        java.util.Set.of(com.swiftdrop.identity.domain.Role.CUSTOMER));
+                org.springframework.test.util.ReflectionTestUtils.setField(stubUser, "id", inv.getArgument(0));
+                return java.util.Optional.of(stubUser);
+            });
+        User adminUser = withId(new User("admin@example.com", "hash", "Admin", Set.of(Role.ADMIN)), ADMIN_ID);
         when(users.findById(ADMIN_ID)).thenReturn(Optional.of(adminUser));
 
-        Merchant pending = new Merchant(MERCHANT_USER_ID, "Test Business", null);
+        Merchant pending = new Merchant(MERCHANT_USER_ID, "Test Business", "REG-TEST-1", "merchant@example.com", "0770000000");
         ReflectionTestUtils.setField(pending, "id", MERCHANT_ID);
 
-        when(onboardingService.register(anyString(), anyString(), anyString(), anyString(), any()))
+        when(onboardingService.register(anyString(), anyString(), anyString(), anyString(), anyString(), any()))
                 .thenReturn(pending);
         when(onboardingService.requireOwnMerchant(MERCHANT_USER_ID)).thenReturn(pending);
         when(onboardingService.list(anyInt(), anyInt(), isNull()))
@@ -135,9 +143,11 @@ class MerchantAuthorizationTest {
         String validRegisterBody = """
                 {
                   "fullName": "Ada Merchant",
-                  "email": "ada@shop.example",
-                  "password": "correct-horse",
-                  "businessName": "Ada's Shop"
+                  "businessName": "Ada's Shop",
+                  "registrationNumber": "REG-ADA-1",
+                  "contactEmail": "ada@shop.example",
+                  "contactPhone": "0770000000",
+                  "password": "correct-horse"
                 }
                 """;
         String validRejectBody = "{\"reason\": \"Incomplete documentation\"}";
@@ -212,10 +222,10 @@ class MerchantAuthorizationTest {
                         HttpStatus.FORBIDDEN
                 ),
                 AuthorizationMatrixRow.row(
-                        "GET /api/v1/merchants: DISPATCHER_ADMIN returns 200 OK",
+                        "GET /api/v1/merchants: ADMIN returns 200 OK",
                         HttpMethod.GET,
                         "/api/v1/merchants",
-                        TestPrincipal.dispatcherAdmin(ADMIN_ID),
+                        TestPrincipal.admin(ADMIN_ID),
                         HttpStatus.OK
                 ),
 
@@ -241,10 +251,10 @@ class MerchantAuthorizationTest {
                         HttpStatus.FORBIDDEN
                 ),
                 AuthorizationMatrixRow.row(
-                        "POST /merchants/{id}/approval: DISPATCHER_ADMIN returns 200 OK",
+                        "POST /merchants/{id}/approval: ADMIN returns 200 OK",
                         HttpMethod.POST,
                         "/api/v1/merchants/" + MERCHANT_ID + "/approval",
-                        TestPrincipal.dispatcherAdmin(ADMIN_ID),
+                        TestPrincipal.admin(ADMIN_ID),
                         HttpStatus.OK
                 ),
 
@@ -265,10 +275,10 @@ class MerchantAuthorizationTest {
                         req -> req.contentType(MediaType.APPLICATION_JSON).content(validRejectBody)
                 ),
                 AuthorizationMatrixRow.row(
-                        "POST /merchants/{id}/rejection: DISPATCHER_ADMIN returns 200 OK",
+                        "POST /merchants/{id}/rejection: ADMIN returns 200 OK",
                         HttpMethod.POST,
                         "/api/v1/merchants/" + MERCHANT_ID + "/rejection",
-                        TestPrincipal.dispatcherAdmin(ADMIN_ID),
+                        TestPrincipal.admin(ADMIN_ID),
                         HttpStatus.OK,
                         req -> req.contentType(MediaType.APPLICATION_JSON).content(validRejectBody)
                 )

@@ -60,7 +60,6 @@ import com.swiftdrop.pricing.api.FeeCalculator;
 import com.swiftdrop.pricing.api.ParcelSize;
 import com.swiftdrop.pricing.domain.PricingRuleRepository;
 import com.swiftdrop.merchant.domain.MerchantRepository;
-import com.swiftdrop.identity.domain.CourierApprovalRepository;
 import com.swiftdrop.pricing.domain.ZoneRepository;
 import com.swiftdrop.test.security.TestPrincipal;
 
@@ -118,12 +117,18 @@ class CourierApiTest {
     @MockitoBean
     private MerchantRepository merchants;
 
-    @MockitoBean
-    private CourierApprovalRepository courierApprovals;
     private Parcel parcel;
 
     @BeforeEach
     void setUp() {
+        org.mockito.Mockito.when(users.findById(org.mockito.ArgumentMatchers.any()))
+                .thenAnswer(inv -> {
+                com.swiftdrop.identity.domain.User stubUser = new com.swiftdrop.identity.domain.User(
+                        "stub@example.com", "hash", "Stub User",
+                        java.util.Set.of(com.swiftdrop.identity.domain.Role.CUSTOMER));
+                org.springframework.test.util.ReflectionTestUtils.setField(stubUser, "id", inv.getArgument(0));
+                return java.util.Optional.of(stubUser);
+            });
         ParcelAddress address = new ParcelAddress("Kumari Silva", "+94711234567", "4 Lake View", null, "Kandy",
                 UUID.randomUUID(), null);
         parcel = Parcel.forCustomer("SD7K3M9Q2XWB", UUID.randomUUID(), address, address, ParcelSize.SMALL, 1000, null,
@@ -148,7 +153,7 @@ class CourierApiTest {
     @Test
     void courierEndpointsAreForCouriersOnly() throws Exception {
         for (TestPrincipal other : List.of(TestPrincipal.customer(), TestPrincipal.merchant(),
-                TestPrincipal.dispatcherAdmin())) {
+                TestPrincipal.dispatcher())) {
             mvc.perform(get("/api/v1/courier/parcels").with(other.postProcessor())).andExpect(status().isForbidden());
             mvc.perform(post("/api/v1/parcels/" + PARCEL_ID + "/status-changes").with(other.postProcessor())
                             .contentType(MediaType.APPLICATION_JSON).content("{\"toStatus\":\"PICKED_UP\"}"))

@@ -12,7 +12,7 @@ export default function CourierTasksPage() {
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<"ALL" | "DELIVERED" | "FAILED">("ALL");
 
-  // Fetch courier's parcels (includes today's completed)
+  // Fetch courier's parcels (includes today&apos;s completed)
   useEffect(() => {
     async function fetchCourierParcels() {
       if (!isAuthenticated || !token) {
@@ -135,7 +135,7 @@ export default function CourierTasksPage() {
               No {filter === "ALL" ? "completed" : filter.toLowerCase()} deliveries found.
             </p>
             <p className="text-xs text-muted-foreground mt-1">
-              Note: This view shows today's completed deliveries. For full historical data, a backend endpoint
+              Note: This view shows today&apos;s completed deliveries. For full historical data, a backend endpoint
               with date range filtering may be needed.
             </p>
           </div>
@@ -194,7 +194,7 @@ export default function CourierTasksPage() {
       {/* Info Note */}
       <div className="p-4 bg-blue-50 border border-blue-200 rounded-md">
         <p className="text-sm text-blue-800">
-          <strong>Note:</strong> This view currently shows today's completed and failed deliveries. 
+          <strong>Note:</strong> This view currently shows today&apos;s completed and failed deliveries. 
           For full historical data spanning multiple days, a backend endpoint with date range filtering 
           would need to be implemented (e.g., GET /api/v1/courier/parcels/history?fromDate=&toDate=).
         </p>

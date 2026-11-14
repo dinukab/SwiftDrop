@@ -11,14 +11,18 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
+import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import com.swiftdrop.identity.api.IdentityClaims;
+import com.swiftdrop.identity.api.UserDirectory;
+import com.swiftdrop.merchant.api.MerchantApiKeyFilter;
 
 /**
  * Stateless bearer-token security for the REST API. The {@code JwtDecoder} comes from the identity
@@ -30,25 +34,33 @@ import com.swiftdrop.identity.api.IdentityClaims;
 class SecurityConfiguration {
 
     @Bean
-    SecurityFilterChain apiSecurity(HttpSecurity http) throws Exception {
+    SecurityFilterChain apiSecurity(
+            HttpSecurity http,
+            UserDirectory users,
+            RateLimitingFilter rateLimiting,
+            MerchantApiKeyFilter merchantApiKeyFilter) throws Exception {
         http
                 .authorizeHttpRequests(requests -> requests
-                        .requestMatchers(HttpMethod.POST, "/api/v1/users", "/api/v1/auth/tokens", "/api/v1/auth/google/exchanges",
-                                "/api/v1/merchants", "/api/v1/courier-registrations").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/users", "/api/v1/auth/tokens",
+                                "/api/v1/auth/google/exchanges", "/api/v1/merchants", "/api/v1/merchants/register").permitAll()
                         // Public tracking by tracking number (CUS-6); delivery returns no personal data there
                         .requestMatchers(HttpMethod.GET, "/api/v1/tracked-parcels/**").permitAll()
                         .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
                         // OpenAPI / Swagger UI: public for development; to be protected or restricted under SD-702
                         .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs", "/v3/api-docs/**").permitAll()
                         .requestMatchers("/error").permitAll()
+                        // External merchant API: only requests authenticated by X-API-Key, never by a user JWT
+                        .requestMatchers("/api/v1/merchant-api/**").hasRole("MERCHANT_API")
                         .anyRequest().authenticated())
                 // Tokens travel only in the Authorization header, never in cookies, and there is no
                 // session, so a browser cannot attach credentials to a forged cross-site request.
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(Customizer.withDefaults())
+                .addFilterBefore(rateLimiting, BearerTokenAuthenticationFilter.class)
+                .addFilterBefore(merchantApiKeyFilter, BearerTokenAuthenticationFilter.class)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .oauth2ResourceServer(resourceServer -> resourceServer
-                        .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter())));
+                        .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter(users))));
         return http.build();
     }
 
@@ -65,12 +77,14 @@ class SecurityConfiguration {
         return source;
     }
 
-    private static JwtAuthenticationConverter jwtAuthenticationConverter() {
+    private static org.springframework.core.convert.converter.Converter<Jwt,
+            org.springframework.security.authentication.AbstractAuthenticationToken>
+            jwtAuthenticationConverter(UserDirectory users) {
         JwtGrantedAuthoritiesConverter authorities = new JwtGrantedAuthoritiesConverter();
         authorities.setAuthoritiesClaimName(IdentityClaims.ROLES);
         authorities.setAuthorityPrefix("ROLE_");
-        JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
-        converter.setJwtGrantedAuthoritiesConverter(authorities);
-        return converter;
+        JwtAuthenticationConverter delegate = new JwtAuthenticationConverter();
+        delegate.setJwtGrantedAuthoritiesConverter(authorities);
+        return new AccountStatusJwtAuthenticationConverter(delegate, users);
     }
 }

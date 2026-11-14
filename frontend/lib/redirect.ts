@@ -50,7 +50,10 @@ export function getDashboardPathForRoles(roles: string[] | null | undefined): st
     (roles ?? []).map((role) => role.replace(/^ROLE_/, "").toUpperCase())
   );
 
-  if (normalized.has("DISPATCHER_ADMIN")) {
+  if (normalized.has("DISPATCHER")) {
+    return "/dispatcher";
+  }
+  if (normalized.has("ADMIN")) {
     return "/admin";
   }
   if (normalized.has("COURIER")) {

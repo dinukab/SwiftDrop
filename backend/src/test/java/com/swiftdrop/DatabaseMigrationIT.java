@@ -79,7 +79,7 @@ class DatabaseMigrationIT {
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(
                 "SELECT version, description, type, script, success FROM flyway_schema_history ORDER BY installed_rank ASC");
 
-        assertThat(rows).hasSize(16);
+        assertThat(rows).hasSize(17);
 
         assertThat(rows.get(0))
                 .containsEntry("version", "202610251600")
@@ -109,34 +109,61 @@ class DatabaseMigrationIT {
                 .containsEntry("script", "pricing/V202611021200__pricing_create_zones_and_pricing_rules.sql")
                 .containsEntry("success", true);
 
-        assertThat(rows.subList(4, 9))
+        assertThat(rows.subList(4, 8))
                 .extracting(row -> row.get("script"), row -> row.get("success"))
                 .containsExactly(
                         tuple("delivery/V202611031000__delivery_create_parcels.sql", true),
                         tuple("delivery/V202611031010__delivery_create_parcel_status_history.sql", true),
                         tuple("delivery/V202611031020__delivery_create_delivery_proofs.sql", true),
-                        tuple("delivery/V202611031030__delivery_create_parcel_outbox_events.sql", true),
-                        tuple("dispatch/V202611112100__dispatch_create_couriers.sql", true));
+                        tuple("delivery/V202611031030__delivery_create_parcel_outbox_events.sql", true));
 
-        assertThat(rows.get(9))
+        assertThat(rows.subList(8, 11))
+                .extracting(row -> row.get("script"), row -> row.get("success"))
+                .containsExactly(
+                        tuple("merchant/V202611091200__merchant_create_merchants.sql", true),
+                        tuple("merchant/V202611091210__merchant_create_api_keys.sql", true),
+                        tuple("merchant/V202611091220__merchant_create_webhooks.sql", true));
+
+        assertThat(rows.get(11))
+                .containsEntry("version", "202611112100")
+                .containsEntry("description", "dispatch create couriers")
+                .containsEntry("type", "SQL")
+                .containsEntry("script", "dispatch/V202611112100__dispatch_create_couriers.sql")
+                .containsEntry("success", true);
+
+        assertThat(rows.get(12))
                 .containsEntry("version", "202611130900")
                 .containsEntry("description", "merchant create applications")
                 .containsEntry("type", "SQL")
                 .containsEntry("script", "merchant/V202611130900__merchant_create_applications.sql")
                 .containsEntry("success", true);
 
-        assertThat(rows.get(10))
-                .containsEntry("version", "202611130901")
-                .containsEntry("description", "merchant create merchants")
-                .containsEntry("type", "SQL")
-                .containsEntry("script", "merchant/V202611130901__merchant_create_merchants.sql")
-                .containsEntry("success", true);
-
-        assertThat(rows.get(11))
+        assertThat(rows.get(13))
                 .containsEntry("version", "202611131000")
                 .containsEntry("description", "identity create courier approvals")
                 .containsEntry("type", "SQL")
                 .containsEntry("script", "identity/V202611131000__identity_create_courier_approvals.sql")
+                .containsEntry("success", true);
+
+        assertThat(rows.get(14))
+                .containsEntry("version", "202611131100")
+                .containsEntry("description", "identity split dispatcher admin role")
+                .containsEntry("type", "SQL")
+                .containsEntry("script", "identity/V202611131100__identity_split_dispatcher_admin_role.sql")
+                .containsEntry("success", true);
+
+        assertThat(rows.get(15))
+                .containsEntry("version", "202611131200")
+                .containsEntry("description", "identity drop courier approvals")
+                .containsEntry("type", "SQL")
+                .containsEntry("script", "identity/V202611131200__identity_drop_courier_approvals.sql")
+                .containsEntry("success", true);
+
+        assertThat(rows.get(16))
+                .containsEntry("version", "202611142000")
+                .containsEntry("description", "pricing seed sri lanka provinces")
+                .containsEntry("type", "SQL")
+                .containsEntry("script", "pricing/V202611142000__pricing_seed_sri_lanka_provinces.sql")
                 .containsEntry("success", true);
 
         // Assert tables exist in the isolated test database
@@ -144,7 +171,13 @@ class DatabaseMigrationIT {
         assertThat(usersCount).isNotNull().isEqualTo(0);
 
         Integer rolesCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM roles", Integer.class);
-        assertThat(rolesCount).isNotNull().isEqualTo(4);
+        assertThat(rolesCount).isNotNull().isEqualTo(5);
+
+        List<String> roleNames = jdbcTemplate.queryForList("SELECT name FROM roles", String.class);
+        assertThat(roleNames).containsExactlyInAnyOrder(
+                "CUSTOMER", "MERCHANT", "COURIER", "DISPATCHER", "ADMIN");
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM roles WHERE name = 'DISPATCHER_ADMIN'", Integer.class)).isZero();
 
         Integer zonesCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM zones", Integer.class);
         assertThat(zonesCount).isNotNull();
@@ -181,8 +214,9 @@ class DatabaseMigrationIT {
     @Test
     @DisplayName("PricingRule entity persists and can be queried by origin and destination zones")
     void pricingRuleEntityPersistenceAndLookup() {
-        Zone origin = zoneRepository.save(new Zone("WEST", "Western Province"));
-        Zone destination = zoneRepository.save(new Zone("CENTRAL", "Central Province"));
+        // Names must not clash with the seeded "Western Province" / "Central Province" zones (unique name)
+        Zone origin = zoneRepository.save(new Zone("WEST", "Test Western"));
+        Zone destination = zoneRepository.save(new Zone("CENTRAL", "Test Central"));
 
         PricingRule rule = new PricingRule(
                 origin.getId(),
