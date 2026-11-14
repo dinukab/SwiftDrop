@@ -75,7 +75,6 @@ import com.swiftdrop.identity.domain.UserRepository;
 import com.swiftdrop.pricing.api.FeeCalculator;
 import com.swiftdrop.pricing.domain.PricingRuleRepository;
 import com.swiftdrop.merchant.domain.MerchantRepository;
-import com.swiftdrop.identity.domain.CourierApprovalRepository;
 import com.swiftdrop.pricing.domain.ZoneRepository;
 
 /**
@@ -132,12 +131,18 @@ class GoogleLoginApiTest {
     @MockitoBean
     private MerchantRepository merchants;
 
-    @MockitoBean
-    private CourierApprovalRepository courierApprovals;
     private final Map<String, GoogleLoginCode> storedCodes = new HashMap<>();
 
     @BeforeEach
     void setUp() {
+        org.mockito.Mockito.when(users.findById(org.mockito.ArgumentMatchers.any()))
+                .thenAnswer(inv -> {
+                com.swiftdrop.identity.domain.User stubUser = new com.swiftdrop.identity.domain.User(
+                        "stub@example.com", "hash", "Stub User",
+                        java.util.Set.of(com.swiftdrop.identity.domain.Role.CUSTOMER));
+                org.springframework.test.util.ReflectionTestUtils.setField(stubUser, "id", inv.getArgument(0));
+                return java.util.Optional.of(stubUser);
+            });
         storedCodes.clear();
         when(users.findByEmail(any())).thenReturn(Optional.empty());
         when(users.saveAndFlush(any())).thenAnswer(call -> withId(call.getArgument(0)));
@@ -269,7 +274,7 @@ class GoogleLoginApiTest {
 
     @Test
     void privilegedRoleClaimsFromGoogleAreIgnored() throws Exception {
-        callback(claims -> claims.claim("roles", List.of("DISPATCHER_ADMIN", "MERCHANT", "COURIER")))
+        callback(claims -> claims.claim("roles", List.of("ADMIN", "MERCHANT", "COURIER")))
                 .andExpect(status().is3xxRedirection())
                 .andExpect(header().string(HttpHeaders.LOCATION, startsWith("http://localhost:3000/auth/google/callback?code=")));
 

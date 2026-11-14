@@ -4,27 +4,15 @@ import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { RoleGuard, type BackendRole } from "./role-guard";
+import type { PortalNavItem } from "./nav";
 
-export interface PortalNavItem {
-  href: string;
-  label: string;
-  badge?: string;
-  exact?: boolean;
-}
-
-export const DISPATCHER_ADMIN_NAV: PortalNavItem[] = [
-  { href: "/dispatch", label: "Dispatch Fleet", exact: true },
-  { href: "/admin", label: "Overview", exact: true },
-  { href: "/admin/users", label: "User Directory", exact: true },
-  { href: "/admin/pricing", label: "Pricing & Zones", exact: true },
-  { href: "/admin/reports", label: "Reports", exact: true },
-];
+export type { PortalNavItem } from "./nav";
 
 export interface PortalShellProps {
   portalName: string;
   role: BackendRole;
   workspaceBadge: string;
-  navItems: PortalNavItem[];
+  navItems?: PortalNavItem[];
   children: React.ReactNode;
 }
 
@@ -36,7 +24,7 @@ export function PortalShell({
   portalName,
   role,
   workspaceBadge,
-  navItems,
+  navItems = [],
   children,
 }: PortalShellProps) {
   const pathname = usePathname();

@@ -3,7 +3,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
-import { uploadProof, formatApiError, type ParcelStatus } from "@/lib/api";
+import { api, uploadProof, formatApiError, type ParcelStatus } from "@/lib/api";
 
 export default function CourierProofPage() {
   const { token, isAuthenticated } = useAuth();
@@ -15,7 +15,9 @@ export default function CourierProofPage() {
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(
+    parcelId ? null : "No parcel ID provided. Please select a parcel from the courier portal."
+  );
   const [success, setSuccess] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -23,9 +25,6 @@ export default function CourierProofPage() {
   useEffect(() => {
     if (!isAuthenticated) {
       router.push("/login?redirect=/courier/proof");
-    }
-    if (!parcelId) {
-      setError("No parcel ID provided. Please select a parcel from the courier portal.");
     }
   }, [isAuthenticated, parcelId, router]);
 

@@ -24,7 +24,7 @@ public record Viewer(UUID userId, Set<ActorRole> roles) {
     }
 
     public boolean isAdmin() {
-        return roles.contains(ActorRole.DISPATCHER_ADMIN);
+        return roles.contains(ActorRole.DISPATCHER);
     }
 
     public boolean owns(Parcel parcel) {
