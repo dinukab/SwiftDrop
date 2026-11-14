@@ -394,7 +394,7 @@ step. Also leads the security review, the test report and the contribution sheet
 | 7.2 | Unassigned parcels and courier assignment | SD-306 | ✅ | `feature/dispatcher` | | 2026-11-14 |
 | 7.3 | Courier workload view | SD-307 | ✅ | `feature/dispatcher` | | 2026-11-14 |
 | 7.4 | Assignment history per parcel (needs 3.7) | — | ⬜ | | | |
-| 7.5 | Dispatcher UI | SD-308 | ⬜ | | | |
+| 7.5 | Dispatcher UI | SD-308 | ✅ | `feature/dispatcher` | | 2026-11-14 |
 | 7.6 | JaCoCo code coverage in the build and CI | SD-004 | ✅ | | | |
 | 7.7 | Security and personal-data review | SD-704 | ⬜ | | | |
 | 7.8 | Test report, coverage summary and contribution sheet | SD-703, SD-908, SD-909 | ⬜ | | | |
