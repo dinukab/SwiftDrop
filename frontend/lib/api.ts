@@ -90,6 +90,20 @@ export interface ZoneResponse {
   name: string;
 }
 
+// Admin zone maintenance (ADM-3, sub-part 8.4): includes inactive zones
+export interface AdminZoneResponse {
+  id: string;
+  code: string;
+  name: string;
+  active: boolean;
+}
+
+export interface AdminZoneRequest {
+  code: string;
+  name: string;
+  active: boolean;
+}
+
 export interface BookingAddress {
   contactName: string;
   phone: string;
