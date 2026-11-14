@@ -26,6 +26,7 @@ import com.swiftdrop.delivery.domain.DeliveryProofRepository;
 import com.swiftdrop.delivery.domain.OutboxEventRepository;
 import com.swiftdrop.delivery.domain.ParcelRepository;
 import com.swiftdrop.delivery.domain.ParcelStatusHistoryRepository;
+import com.swiftdrop.dispatch.domain.CourierProfileRepository;
 import com.swiftdrop.identity.domain.ExternalIdentityRepository;
 import com.swiftdrop.identity.domain.GoogleLoginCodeRepository;
 import com.swiftdrop.identity.domain.UserRepository;
@@ -73,6 +74,8 @@ class TrackingApiTest {
     private ZoneRepository zones;
     @MockitoBean
     private PricingRuleRepository pricingRules;
+    @MockitoBean
+    private CourierProfileRepository courierProfiles;
 
     @Test
     void anyoneCanTrackWithoutLoggingIn() throws Exception {
