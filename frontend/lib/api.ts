@@ -35,6 +35,22 @@ export interface CreateStaffUserRequest {
   role?: "COURIER" | "DISPATCHER" | "ADMIN";
 }
 
+export type VehicleType = "BIKE" | "CAR" | "VAN";
+
+/** Courier dispatch profile from /api/v1/couriers (admin only). */
+export interface CourierProfileResponse {
+  id: string;
+  userId: string;
+  fullName: string | null;
+  email: string | null;
+  accountEnabled: boolean;
+  phone: string;
+  vehicleType: VehicleType;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface UpdateUserStatusRequest {
   enabled: boolean;
 }
@@ -246,7 +262,7 @@ export async function getProofPhoto(parcelId: string, token: string): Promise<Bl
   return await response.blob();
 }
 
-export type MerchantStatus = "PENDING" | "APPROVED" | "REJECTED" | "SUSPENDED";
+export type MerchantStatus = "PENDING_APPROVAL" | "APPROVED" | "REJECTED" | "SUSPENDED";
 
 export interface MerchantResponse {
   id: string;

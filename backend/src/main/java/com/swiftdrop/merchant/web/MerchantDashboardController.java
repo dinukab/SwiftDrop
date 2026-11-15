@@ -19,8 +19,8 @@ import org.springframework.web.server.ResponseStatusException;
 import com.swiftdrop.delivery.api.PageResult;
 import com.swiftdrop.delivery.api.ParcelStatus;
 import com.swiftdrop.delivery.api.ParcelSummary;
-import com.swiftdrop.merchant.application.MerchantApprovalService;
 import com.swiftdrop.merchant.application.MerchantDashboardService;
+import com.swiftdrop.merchant.application.MerchantOnboardingService;
 import com.swiftdrop.merchant.domain.Merchant;
 import com.swiftdrop.shared.web.PageLimit;
 import com.swiftdrop.shared.web.PageResponse;
@@ -35,11 +35,11 @@ import com.swiftdrop.shared.web.PageResponse;
 class MerchantDashboardController {
 
     private final MerchantDashboardService dashboardService;
-    private final MerchantApprovalService approvalService;
+    private final MerchantOnboardingService onboarding;
 
-    MerchantDashboardController(MerchantDashboardService dashboardService, MerchantApprovalService approvalService) {
+    MerchantDashboardController(MerchantDashboardService dashboardService, MerchantOnboardingService onboarding) {
         this.dashboardService = dashboardService;
-        this.approvalService = approvalService;
+        this.onboarding = onboarding;
     }
 
     @GetMapping
@@ -78,9 +78,9 @@ class MerchantDashboardController {
         return MerchantDashboardItemResponse.from(parcel);
     }
 
+    /** Orders are a merchant capability, so they require an APPROVED merchant (D-22). */
     private Merchant getMerchant(Jwt jwt) {
-        UUID userId = UUID.fromString(jwt.getSubject());
-        return approvalService.getMerchantByUserId(userId);
+        return onboarding.requireApproved(UUID.fromString(jwt.getSubject()));
     }
 }
 

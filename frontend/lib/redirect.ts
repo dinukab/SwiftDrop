@@ -78,5 +78,34 @@ export function resolvePostLoginDestination(
     return roleHome;
   }
   const sanitized = sanitizeInternalRedirect(redirectParam, roleHome);
-  return sanitized === "/" ? roleHome : sanitized;
+  if (sanitized === "/" || !canOpenPortalPath(sanitized, roles)) {
+    return roleHome;
+  }
+  return sanitized;
+}
+
+/** Portal path prefixes and the backend role each portal's guard requires. */
+const PORTAL_ROLES: { prefix: string; role: string }[] = [
+  { prefix: "/admin", role: "ADMIN" },
+  { prefix: "/dispatcher", role: "DISPATCHER" },
+  { prefix: "/courier", role: "COURIER" },
+  { prefix: "/merchant", role: "MERCHANT" },
+  { prefix: "/customer", role: "CUSTOMER" },
+];
+
+/**
+ * Whether the roles can open the path. A redirect left over from someone else's session (for
+ * example an admin whose session expired on /admin/users) must not send a courier to a page
+ * their portal guard would refuse. Paths outside the portals, such as /track, are open to all.
+ */
+function canOpenPortalPath(path: string, roles: string[] | null | undefined): boolean {
+  const pathname = path.split(/[?#]/)[0];
+  const portal = PORTAL_ROLES.find(
+    ({ prefix }) => pathname === prefix || pathname.startsWith(`${prefix}/`)
+  );
+  if (!portal) {
+    return true;
+  }
+  const normalized = new Set((roles ?? []).map((role) => role.replace(/^ROLE_/, "").toUpperCase()));
+  return normalized.has(portal.role);
 }

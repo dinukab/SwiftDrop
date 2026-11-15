@@ -9,9 +9,16 @@ import jakarta.validation.constraints.Size;
 import com.swiftdrop.dispatch.domain.CourierProfile;
 import com.swiftdrop.dispatch.domain.VehicleType;
 
-/** Body of {@code POST /api/v1/couriers}; the phone format is checked by the domain. */
+/** Creates a courier profile for an existing {@code COURIER} user (task 7.1). */
 record CreateCourierProfileRequest(
         @NotNull UUID userId,
         @NotBlank @Size(max = CourierProfile.MAX_PHONE_LENGTH) String phone,
-        @NotNull VehicleType vehicleType) {
+        @NotNull VehicleType vehicleType
+) {
+
+    /** Never includes the phone number: it is personal data. */
+    @Override
+    public String toString() {
+        return "CreateCourierProfileRequest[userId=" + userId + ", vehicleType=" + vehicleType + ", ***]";
+    }
 }

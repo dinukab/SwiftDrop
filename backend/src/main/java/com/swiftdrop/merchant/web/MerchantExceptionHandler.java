@@ -12,6 +12,7 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 
 import com.swiftdrop.identity.api.PasswordRejectedException;
 import com.swiftdrop.merchant.application.ApiKeyLimitExceededException;
+import com.swiftdrop.merchant.application.MerchantConflictException;
 import com.swiftdrop.merchant.application.MerchantNotApprovedException;
 import com.swiftdrop.merchant.application.MerchantNotFoundException;
 import com.swiftdrop.merchant.application.RegistrationNumberAlreadyRegisteredException;
@@ -35,6 +36,11 @@ class MerchantExceptionHandler {
 
     @ExceptionHandler(RegistrationNumberAlreadyRegisteredException.class)
     ProblemDetail duplicateRegistration(RegistrationNumberAlreadyRegisteredException e) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, e.getMessage());
+    }
+
+    @ExceptionHandler(MerchantConflictException.class)
+    ProblemDetail conflict(MerchantConflictException e) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, e.getMessage());
     }
 

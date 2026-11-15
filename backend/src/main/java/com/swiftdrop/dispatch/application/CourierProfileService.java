@@ -93,72 +93,50 @@ public class CourierProfileService {
         return profiles.findByUserId(userId);
     }
 
-    /**
-     * Lists profiles, oldest first with ID as tie-breaker; {@code active} null means no filter.
-     * Page and size are clamped with {@link PageLimit}.
-     */
-    public Page<CourierProfile> listProfiles(Boolean active, int page, int size) {
-        Pageable pageable = PageRequest.of(
-                PageLimit.clampPage(page),
-                PageLimit.clampSize(size),
-                Sort.by("createdAt", "id"));
+    /** Pages courier profiles, newest first, optionally filtered by the active flag. */
+    public Page<CourierProfile> listProfiles(int page, int size, Boolean active) {
+        Pageable pageable = PageRequest.of(PageLimit.clampPage(page), PageLimit.clampSize(size),
+                Sort.by(Sort.Direction.DESC, "createdAt"));
         return active == null ? profiles.findAll(pageable) : profiles.findByActive(active, pageable);
     }
 
-    /** @throws CourierProfileNotFoundException if no profile has {@code profileId} */
+    /**
+     * Updates a profile's phone and vehicle type. A {@code null} argument keeps the current value.
+     *
+     * @throws CourierProfileNotFoundException if no profile exists for {@code profileId}
+     */
+    @Transactional
+    public CourierProfile updateProfile(UUID profileId, String phone, VehicleType vehicleType) {
+        CourierProfile profile = requireProfile(profileId);
+        profile.updateDetails(phone != null ? phone : profile.getPhone(),
+                vehicleType != null ? vehicleType : profile.getVehicleType(), clock.instant());
+        return profiles.saveAndFlush(profile);
+    }
+
+    /** Makes the courier available for dispatch again. */
+    @Transactional
+    public CourierProfile activate(UUID profileId) {
+        CourierProfile profile = requireProfile(profileId);
+        profile.activate(clock.instant());
+        return profiles.saveAndFlush(profile);
+    }
+
+    /** Takes the courier out of dispatch without deleting the account or its history. */
+    @Transactional
+    public CourierProfile deactivate(UUID profileId) {
+        CourierProfile profile = requireProfile(profileId);
+        profile.deactivate(clock.instant());
+        return profiles.saveAndFlush(profile);
+    }
+
+    /** @throws CourierProfileNotFoundException if no profile exists for {@code profileId} */
     public CourierProfile getProfile(UUID profileId) {
+        return requireProfile(profileId);
+    }
+
+    private CourierProfile requireProfile(UUID profileId) {
         Objects.requireNonNull(profileId, "profileId must not be null");
         return profiles.findById(profileId).orElseThrow(CourierProfileNotFoundException::new);
-    }
-
-    /**
-     * Replaces phone and vehicle type.
-     *
-     * @throws CourierProfileNotFoundException if no profile has {@code profileId}
-     * @throws IllegalArgumentException if the phone is invalid (nothing is saved)
-     */
-    @Transactional
-    public CourierProfile updateDetails(UUID profileId, String phone, VehicleType vehicleType) {
-        CourierProfile profile = getProfile(profileId);
-        profile.updateDetails(phone, vehicleType, clock.instant());
-        log.info("Courier profile {} details updated", profileId);
-        return profile;
-    }
-
-    /**
-     * Partial update in one transaction: a null argument keeps the current value.
-     *
-     * @throws CourierProfileNotFoundException if no profile has {@code profileId}
-     * @throws IllegalArgumentException if a supplied phone is invalid (nothing is saved)
-     */
-    @Transactional
-    public CourierProfile updateProfile(UUID profileId, String phone, VehicleType vehicleType, Boolean active) {
-        CourierProfile profile = getProfile(profileId);
-        Instant now = clock.instant();
-        if (phone != null || vehicleType != null) {
-            profile.updateDetails(
-                    phone != null ? phone : profile.getPhone(),
-                    vehicleType != null ? vehicleType : profile.getVehicleType(),
-                    now);
-        }
-        if (active != null) {
-            profile.setActive(active, now);
-        }
-        log.info("Courier profile {} updated", profileId);
-        return profile;
-    }
-
-    /**
-     * Activates or deactivates a profile; inactive couriers receive no new assignments.
-     *
-     * @throws CourierProfileNotFoundException if no profile has {@code profileId}
-     */
-    @Transactional
-    public CourierProfile setActive(UUID profileId, boolean active) {
-        CourierProfile profile = getProfile(profileId);
-        profile.setActive(active, clock.instant());
-        log.info("Courier profile {} active={}", profileId, active);
-        return profile;
     }
 }
 

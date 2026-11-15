@@ -1,55 +1,45 @@
 package com.swiftdrop.dispatch.web;
 
-import java.util.List;
-
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
-import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
-import com.swiftdrop.delivery.api.ParcelConflictException;
-import com.swiftdrop.delivery.api.ParcelNotFoundException;
-import com.swiftdrop.dispatch.application.CourierNotEligibleException;
 import com.swiftdrop.dispatch.application.CourierProfileNotFoundException;
 import com.swiftdrop.dispatch.application.CourierUserNotEligibleException;
 import com.swiftdrop.dispatch.application.CourierUserNotFoundException;
 import com.swiftdrop.dispatch.application.DuplicateCourierProfileException;
 
-/**
- * Safe RFC 9457 bodies for dispatch endpoints. Limited to this package and ordered before
- * {@code GlobalExceptionHandler}, whose catch-all would otherwise answer 500.
- */
+/** Maps dispatch exceptions to problem details. Messages never include phone numbers. */
 @RestControllerAdvice(basePackageClasses = DispatchExceptionHandler.class)
 @Order(Ordered.HIGHEST_PRECEDENCE)
 class DispatchExceptionHandler {
 
-    @ExceptionHandler({CourierProfileNotFoundException.class, CourierUserNotFoundException.class,
-            ParcelNotFoundException.class})
-    ProblemDetail notFound(RuntimeException e) {
+    @ExceptionHandler(CourierProfileNotFoundException.class)
+    ProblemDetail profileNotFound(CourierProfileNotFoundException e) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, e.getMessage());
     }
 
-    /** Messages name the broken rule only, never parcel or user data. */
-    @ExceptionHandler({DuplicateCourierProfileException.class, CourierUserNotEligibleException.class,
-            CourierNotEligibleException.class, ParcelConflictException.class})
-    ProblemDetail conflict(RuntimeException e) {
+    @ExceptionHandler(CourierUserNotFoundException.class)
+    ProblemDetail userNotFound(CourierUserNotFoundException e) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, e.getMessage());
+    }
+
+    @ExceptionHandler(DuplicateCourierProfileException.class)
+    ProblemDetail duplicate(DuplicateCourierProfileException e) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, e.getMessage());
     }
 
-    /** Domain validation such as the phone format; the message is not echoed. */
-    @ExceptionHandler(IllegalArgumentException.class)
-    ProblemDetail invalid(IllegalArgumentException e) {
-        return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "Invalid request");
+    @ExceptionHandler(CourierUserNotEligibleException.class)
+    ProblemDetail notEligible(CourierUserNotEligibleException e) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, e.getMessage());
     }
 
-    /** A malformed path or query value, such as a bad UUID. */
-    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
-    ProblemDetail typeMismatch(MethodArgumentTypeMismatchException e) {
-        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "Invalid request");
-        problem.setProperty("invalidFields", List.of(e.getName()));
-        return problem;
+    /** Domain validation, e.g. a phone number that is not in E.164 format; the message is safe to show. */
+    @ExceptionHandler(IllegalArgumentException.class)
+    ProblemDetail invalid(IllegalArgumentException e) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, e.getMessage());
     }
 }
