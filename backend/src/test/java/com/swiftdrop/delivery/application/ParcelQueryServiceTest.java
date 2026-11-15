@@ -92,7 +92,9 @@ class ParcelQueryServiceTest {
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Collection<ParcelStatus>> terminal = ArgumentCaptor.forClass(Collection.class);
         verify(parcels).countActiveByCourier(terminal.capture());
-        assertThat(terminal.getValue()).containsExactlyInAnyOrder(ParcelStatus.DELIVERED, ParcelStatus.FAILED);
+        // A cancelled parcel no longer counts toward a courier's workload; a paused one still does
+        assertThat(terminal.getValue())
+                .containsExactlyInAnyOrder(ParcelStatus.DELIVERED, ParcelStatus.FAILED, ParcelStatus.CANCELLED);
     }
 
     @Test

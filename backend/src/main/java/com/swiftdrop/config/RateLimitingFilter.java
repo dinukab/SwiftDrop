@@ -28,15 +28,20 @@ class RateLimitingFilter extends OncePerRequestFilter {
     private static final int WINDOW_MILLIS = 60_000;
     private static final int MAX_TRACKED_KEYS = 10_000;
 
+    private static final String MERCHANT_API_PREFIX = "/api/v1/merchant-api/";
+
     private final int authLimit;
     private final int registrationLimit;
+    private final int merchantApiLimit;
     private final Map<String, Window> windows = new ConcurrentHashMap<>();
 
     RateLimitingFilter(
             @Value("${swiftdrop.rate-limit.auth-requests-per-minute:10}") int authLimit,
-            @Value("${swiftdrop.rate-limit.registration-requests-per-minute:5}") int registrationLimit) {
+            @Value("${swiftdrop.rate-limit.registration-requests-per-minute:5}") int registrationLimit,
+            @Value("${swiftdrop.rate-limit.merchant-api-requests-per-minute:120}") int merchantApiLimit) {
         this.authLimit = authLimit;
         this.registrationLimit = registrationLimit;
+        this.merchantApiLimit = merchantApiLimit;
     }
 
     @Override
@@ -61,6 +66,10 @@ class RateLimitingFilter extends OncePerRequestFilter {
     }
 
     private Integer limitFor(HttpServletRequest request) {
+        // Every store request counts, not only POST: a store polls order status with GET (Phase 2)
+        if (request.getRequestURI().startsWith(MERCHANT_API_PREFIX)) {
+            return merchantApiLimit;
+        }
         if (!"POST".equals(request.getMethod())) {
             return null;
         }
@@ -75,7 +84,11 @@ class RateLimitingFilter extends OncePerRequestFilter {
     }
 
     private String limitGroup(HttpServletRequest request) {
-        return request.getRequestURI().startsWith("/api/v1/auth") ? "auth" : "registration";
+        String path = request.getRequestURI();
+        if (path.startsWith(MERCHANT_API_PREFIX)) {
+            return "merchant-api";
+        }
+        return path.startsWith("/api/v1/auth") ? "auth" : "registration";
     }
 
     private boolean allow(String key, int limit) {

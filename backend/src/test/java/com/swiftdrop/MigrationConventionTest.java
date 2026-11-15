@@ -167,6 +167,30 @@ class MigrationConventionTest {
                         tuple(
                                 "202611142000",
                                 "pricing seed sri lanka provinces",
-                                "pricing/V202611142000__pricing_seed_sri_lanka_provinces.sql"));
+                                "pricing/V202611142000__pricing_seed_sri_lanka_provinces.sql"),
+                        tuple(
+                                "202611151000",
+                                "delivery add pause cancel statuses",
+                                "delivery/V202611151000__delivery_add_pause_cancel_statuses.sql"),
+                        tuple(
+                                "202611151100",
+                                "delivery mark existing outbox published",
+                                "delivery/V202611151100__delivery_mark_existing_outbox_published.sql"),
+                        tuple(
+                                "202611151110",
+                                "merchant webhook delivery payload",
+                                "merchant/V202611151110__merchant_webhook_delivery_payload.sql"),
+                        tuple(
+                                "202611151200",
+                                "delivery parcel order fingerprint",
+                                "delivery/V202611151200__delivery_parcel_order_fingerprint.sql"),
+                        tuple(
+                                "202611151210",
+                                "merchant api key signing secret",
+                                "merchant/V202611151210__merchant_api_key_signing_secret.sql"),
+                        tuple(
+                                "202611151220",
+                                "merchant webhook manual redeliveries",
+                                "merchant/V202611151220__merchant_webhook_manual_redeliveries.sql"));
     }
 }

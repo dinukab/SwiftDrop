@@ -323,9 +323,9 @@ Owns `merchant` packages `apikey`, `orders`, `webhook.delivery`, and `tools/webh
 | 5.1 | Merchant API keys: create (shown once), list, revoke | SD-403 | ⬜ | | | |
 | 5.2 | API-key authentication in the security chain | SD-404 | ⬜ | | | |
 | 5.3 | Order intake `POST /api/v1/merchant-orders` (safe to retry) | SD-405 | ⬜ | | | |
-| 5.4 | SSRF-safe webhook HTTP client | SD-409 | ⬜ | | | |
-| 5.5 | Merchant event consumer → webhook delivery records | SD-410 | ⬜ | | | |
-| 5.6 | Webhook sender: signing, retries, backoff, manual redelivery | SD-411, SD-412 | ⬜ | | | |
+| 5.4 | SSRF-safe webhook HTTP client | SD-409 | 🟡 | `merchantandecommerce` | | 2026-11-15 |
+| 5.5 | Merchant event consumer → webhook delivery records | SD-410 | 🟡 | `merchantandecommerce` | | 2026-11-15 |
+| 5.6 | Webhook sender: signing, retries, backoff (manual redelivery still to do) | SD-411, SD-412 | 🟡 | `merchantandecommerce` | | 2026-11-15 |
 | 5.7 | Demo webhook receiver and merchant integration guide | SD-413 | ⬜ | | | |
 
 **How to implement**
@@ -393,10 +393,10 @@ step. Also leads the security review, the test report and the contribution sheet
 | ID | Sub-part | SD | Status | Branch | PR | Date |
 |---|---|---|---|---|---|---|
 | 7.1 | Courier profiles: schema, service, admin API | SD-305 | ✅ | `feature/RBAC` | | 2026-11-14 |
-| 7.2 | Unassigned parcels and courier assignment | SD-306 | ⬜ | | | |
-| 7.3 | Courier workload view | SD-307 | ⬜ | | | |
+| 7.2 | Unassigned parcels and courier assignment | SD-306 | 🟡 | `merchantandecommerce` | | 2026-11-15 |
+| 7.3 | Courier workload view | SD-307 | 🟡 | `merchantandecommerce` | | 2026-11-15 |
 | 7.4 | Assignment history per parcel (needs 3.7) | — | ⬜ | | | |
-| 7.5 | Dispatcher UI | SD-308 | ⬜ | | | |
+| 7.5 | Dispatcher UI (queue, assign, workload; courier management tab still to do) | SD-308 | 🟡 | `merchantandecommerce` | | 2026-11-15 |
 | 7.6 | JaCoCo code coverage in the build and CI | SD-004 | ✅ | | | |
 | 7.7 | Security and personal-data review | SD-704 | ⬜ | | | |
 | 7.8 | Test report, coverage summary and contribution sheet | SD-703, SD-908, SD-909 | ⬜ | | | |
@@ -590,7 +590,7 @@ Owns the `notification` module, the outbox relay and `shared.messaging`.
 | ID | Sub-part | SD | Status | Branch | PR | Date |
 |---|---|---|---|---|---|---|
 | 9.1 | RabbitMQ topology (exchange, queues, dead-letter) and broker check | SD-501 | 🟡 | `feature/messaging-and-webhook` | | |
-| 9.2 | Outbox relay: publish `parcel_outbox_events` in order | SD-502 | ⬜ | | | |
+| 9.2 | Outbox relay: publish `parcel_outbox_events` in order (one instance; off by default) | SD-502 | 🟡 | `merchantandecommerce` | | 2026-11-15 |
 | 9.3 | Shared ordered-consumer support (duplicates, gaps) | SD-503 | ⬜ | | | |
 | 9.4 | Notification consumer and mock SMS/email store | SD-504 | ⬜ | | | |
 | 9.5 | Notifications inbox API, page and unread bell | SD-506 | ⬜ | | | |

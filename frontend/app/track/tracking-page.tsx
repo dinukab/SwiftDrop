@@ -14,6 +14,8 @@ const PARCEL_STATUSES = [
   "OUT_FOR_DELIVERY",
   "DELIVERED",
   "FAILED",
+  "PAUSED",
+  "CANCELLED",
 ] as const;
 
 const MILESTONE_STATUSES = [
@@ -91,6 +93,9 @@ function isStatusUpdate(value: unknown): value is StatusUpdate {
 }
 
 function formatStatus(status: ParcelStatus): string {
+  // A seller can hold a parcel before pickup, or cancel it; both are shown in plain words.
+  if (status === "PAUSED") return "On hold";
+  if (status === "CANCELLED") return "Cancelled";
   return status
     .split("_")
     .map((word) => word.charAt(0) + word.slice(1).toLowerCase())
@@ -105,7 +110,7 @@ function formatDate(value: string): string {
 }
 
 function isFinalStatus(status: ParcelStatus): boolean {
-  return status === "DELIVERED" || status === "FAILED";
+  return status === "DELIVERED" || status === "FAILED" || status === "CANCELLED";
 }
 
 function getProgressIndex(view: PublicTrackingView): number {
@@ -396,8 +401,19 @@ export function TrackingPage({ initialCode }: { initialCode: string }) {
                 aria-live="polite"
                 className="text-sm text-muted-foreground"
               >
-                {connectionLabel[connectionState]}
+                {connectionState === "complete" && trackingView.status === "CANCELLED"
+                  ? "Delivery cancelled"
+                  : connectionLabel[connectionState]}
               </p>
+
+              {trackingView.status === "PAUSED" && (
+                <p
+                  role="status"
+                  className="rounded-lg border border-border bg-accent px-3 py-2 text-sm text-foreground"
+                >
+                  This delivery is on hold while the seller prepares the order. It will continue once it is ready.
+                </p>
+              )}
 
               <div className="grid gap-3 text-sm sm:grid-cols-2">
                 <p>
@@ -455,7 +471,7 @@ export function TrackingPage({ initialCode }: { initialCode: string }) {
                 <h2 className="text-sm font-semibold">Status history</h2>
                 <ol className="space-y-3">
                   {trackingView.history.map((item, index) => {
-                    const failed = item.status === "FAILED";
+                    const failed = item.status === "FAILED" || item.status === "CANCELLED";
 
                     return (
                       <li key={`${item.occurredAt}-${index}`} className="flex gap-3 text-sm">

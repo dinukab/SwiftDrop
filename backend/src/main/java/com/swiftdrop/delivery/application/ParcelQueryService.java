@@ -1,10 +1,10 @@
 package com.swiftdrop.delivery.application;
 
-import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import org.springframework.data.domain.Page;
@@ -36,7 +36,7 @@ class ParcelQueryService implements ParcelQueries {
 
     private static final Sort OLDEST_FIRST = Sort.by(Sort.Direction.ASC, "createdAt");
     private static final Sort NEWEST_FIRST = Sort.by(Sort.Direction.DESC, "createdAt");
-    private static final EnumSet<ParcelStatus> TERMINAL = EnumSet.of(ParcelStatus.DELIVERED, ParcelStatus.FAILED);
+    private static final Set<ParcelStatus> TERMINAL = ParcelStatus.finalStatuses();
 
     private final ParcelRepository parcels;
     private final ParcelStatusHistoryRepository history;
