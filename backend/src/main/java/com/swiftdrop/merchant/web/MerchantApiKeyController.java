@@ -21,7 +21,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.swiftdrop.merchant.application.GeneratedApiKey;
 import com.swiftdrop.merchant.application.MerchantApiKeyService;
-import com.swiftdrop.merchant.application.MerchantApprovalService;
+import com.swiftdrop.merchant.application.MerchantOnboardingService;
 import com.swiftdrop.merchant.domain.Merchant;
 
 /**
@@ -34,11 +34,11 @@ import com.swiftdrop.merchant.domain.Merchant;
 class MerchantApiKeyController {
 
     private final MerchantApiKeyService apiKeyService;
-    private final MerchantApprovalService approvalService;
+    private final MerchantOnboardingService onboarding;
 
-    MerchantApiKeyController(MerchantApiKeyService apiKeyService, MerchantApprovalService approvalService) {
+    MerchantApiKeyController(MerchantApiKeyService apiKeyService, MerchantOnboardingService onboarding) {
         this.apiKeyService = apiKeyService;
-        this.approvalService = approvalService;
+        this.onboarding = onboarding;
     }
 
     @GetMapping
@@ -69,7 +69,7 @@ class MerchantApiKeyController {
 
     private Merchant getMerchant(Jwt jwt) {
         UUID userId = UUID.fromString(jwt.getSubject());
-        return approvalService.getMerchantByUserId(userId);
+        return onboarding.requireOwnMerchant(userId);
     }
 }
 

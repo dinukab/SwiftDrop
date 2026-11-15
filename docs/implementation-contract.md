@@ -164,7 +164,7 @@ user (JWT), `MKEY` merchant API key, `COU` Courier, `ADM` Dispatcher/Admin, `PUB
 | `POST /api/v1/parcel-assignments` | dispatch | ADM | Assign / reassign courier (**D-06**) | ADM-1 |
 | `GET /api/v1/courier-workloads` | dispatch | ADM | Active deliveries per courier | ADM-2 |
 | `POST /api/v1/merchants` | merchant | PUB | Register merchant (pending) (**D-22**) | MER-1 |
-| `GET /api/v1/merchants`, `POST /api/v1/merchants/{id}/approval`, `.../rejection` | merchant | ADM | Review | MER-1, ADM-3 |
+| `GET /api/v1/merchants`, `POST /api/v1/merchants/{id}/approval`, `.../rejection`, `.../suspension` | merchant | ADM | Review; suspend an approved merchant | MER-1, ADM-3 |
 | `GET /api/v1/merchants/me` | merchant | MER | Own merchant profile and status | MER-1 |
 | `GET/POST /api/v1/merchants/me/api-keys`, `DELETE .../{id}` | merchant | approved MER | API keys (**D-03**) | MER-2 |
 | `POST /api/v1/merchant-orders` | merchant | MKEY | Create order (**D-03**, **D-25**) | MER-2 |

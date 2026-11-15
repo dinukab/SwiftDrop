@@ -392,7 +392,7 @@ step. Also leads the security review, the test report and the contribution sheet
 
 | ID | Sub-part | SD | Status | Branch | PR | Date |
 |---|---|---|---|---|---|---|
-| 7.1 | Courier profiles: schema, service, admin API | SD-305 | 🟡 | `feature/dispatcher` | | 2026-11-11 |
+| 7.1 | Courier profiles: schema, service, admin API | SD-305 | ✅ | `feature/RBAC` | | 2026-11-14 |
 | 7.2 | Unassigned parcels and courier assignment | SD-306 | 🟡 | `merchantandecommerce` | | 2026-11-15 |
 | 7.3 | Courier workload view | SD-307 | 🟡 | `merchantandecommerce` | | 2026-11-15 |
 | 7.4 | Assignment history per parcel (needs 3.7) | — | ⬜ | | | |
@@ -423,7 +423,14 @@ Couriers created by an admin have no approval row and count as approved.
 **Courier eligibility** (contract §5.4): the user is **enabled**, **and** has the `COURIER`
 role, **and** has an **active** courier profile.
 
-#### 7.1 Courier profiles (SD-305): in progress
+#### 7.1 Courier profiles (SD-305): done on `feature/RBAC` (2026-11-14)
+
+Implemented: `GET/POST /api/v1/couriers` and `PATCH /api/v1/couriers/{id}` (admin only) in
+`CourierProfileController`, service methods `listProfiles`, `updateProfile`, `activate`,
+`deactivate`, `getProfile`, `CourierProfileNotFoundException`, `DispatchExceptionHandler`, unit
+tests and `CourierProfileApiTest` (authorization matrix and error codes). The admin "Onboard
+Staff" dialog asks for phone and vehicle when the role is Courier and creates the profile right
+after the login. The original plan follows for reference.
 
 Already present (commit `setup1`): migration `V202611112100__dispatch_create_couriers.sql`,
 `CourierProfile`, `CourierProfileRepository`, `VehicleType`, `CourierProfileService`

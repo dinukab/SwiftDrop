@@ -100,6 +100,7 @@ class WebhookDeliveryApiTest {
     void theHistoryListsTheMerchantsDeliveriesWithoutTheEventBody() throws Exception {
         WebhookDelivery failed = new WebhookDelivery(endpoint.getId(), merchantId, UUID.randomUUID(),
                 UUID.randomUUID(), "{\"secret-looking-body\":true}");
+        ReflectionTestUtils.setField(failed, "id", UUID.randomUUID());
         failed.recordFailure(404);
         when(deliveries.findByMerchantIdOrderByCreatedAtDesc(any(), any()))
                 .thenReturn(new PageImpl<>(List.of(failed), PageRequest.of(0, 20), 1));
@@ -117,6 +118,7 @@ class WebhookDeliveryApiTest {
     void aFailedDeliveryIsSentAgain() throws Exception {
         WebhookDelivery failed = failedDelivery();
         when(deliveries.findByIdAndMerchantId(failed.getId(), merchantId)).thenReturn(Optional.of(failed));
+        when(deliveries.save(any(WebhookDelivery.class))).thenAnswer(call -> call.getArgument(0));
 
         mvc.perform(post(BASE + "/" + failed.getId() + "/redeliveries")
                         .with(TestPrincipal.merchant(userId).postProcessor()))
@@ -129,6 +131,7 @@ class WebhookDeliveryApiTest {
     void aDeliveryThatDidNotFailIsAConflict() throws Exception {
         WebhookDelivery sent = new WebhookDelivery(endpoint.getId(), merchantId, UUID.randomUUID(),
                 UUID.randomUUID(), "{}");
+        ReflectionTestUtils.setField(sent, "id", UUID.randomUUID());
         sent.recordSuccess(200);
         when(deliveries.findByIdAndMerchantId(sent.getId(), merchantId)).thenReturn(Optional.of(sent));
 
@@ -157,6 +160,7 @@ class WebhookDeliveryApiTest {
     private WebhookDelivery failedDelivery() {
         WebhookDelivery delivery = new WebhookDelivery(endpoint.getId(), merchantId, UUID.randomUUID(),
                 UUID.randomUUID(), "{}");
+        ReflectionTestUtils.setField(delivery, "id", UUID.randomUUID());
         delivery.recordFailure(404);
         return delivery;
     }

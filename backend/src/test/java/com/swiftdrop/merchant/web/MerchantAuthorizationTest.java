@@ -122,6 +122,7 @@ class MerchantAuthorizationTest {
                 .thenReturn(new PageImpl<>(List.of(pending)));
         when(onboardingService.approve(eq(MERCHANT_ID), any())).thenReturn(pending);
         when(onboardingService.reject(eq(MERCHANT_ID), any(), anyString())).thenReturn(pending);
+        when(onboardingService.suspend(eq(MERCHANT_ID), any())).thenReturn(pending);
         when(merchantRepository.findById(MERCHANT_ID)).thenReturn(Optional.of(pending));
         when(merchantRepository.findAll(any(Pageable.class))).thenReturn(new PageImpl<>(List.of(pending)));
     }
@@ -278,6 +279,31 @@ class MerchantAuthorizationTest {
                         TestPrincipal.admin(ADMIN_ID),
                         HttpStatus.OK,
                         req -> req.contentType(MediaType.APPLICATION_JSON).content(validRejectBody)
+                ),
+
+                AuthorizationMatrixRow.row(
+                        "POST /merchants/{id}/suspension: Anonymous returns 401 Unauthorized",
+                        HttpMethod.POST,
+                        "/api/v1/merchants/" + MERCHANT_ID + "/suspension",
+                        TestPrincipal.anonymous(),
+                        HttpStatus.UNAUTHORIZED,
+                        req -> { }
+                ),
+                AuthorizationMatrixRow.row(
+                        "POST /merchants/{id}/suspension: MERCHANT returns 403 Forbidden",
+                        HttpMethod.POST,
+                        "/api/v1/merchants/" + MERCHANT_ID + "/suspension",
+                        TestPrincipal.merchant(MERCHANT_USER_ID),
+                        HttpStatus.FORBIDDEN,
+                        req -> { }
+                ),
+                AuthorizationMatrixRow.row(
+                        "POST /merchants/{id}/suspension: ADMIN returns 200 OK",
+                        HttpMethod.POST,
+                        "/api/v1/merchants/" + MERCHANT_ID + "/suspension",
+                        TestPrincipal.admin(ADMIN_ID),
+                        HttpStatus.OK,
+                        req -> { }
                 )
         );
     }

@@ -187,6 +187,10 @@ class MigrationConventionTest {
                         tuple(
                                 "202611151210",
                                 "merchant api key signing secret",
-                                "merchant/V202611151210__merchant_api_key_signing_secret.sql"));
+                                "merchant/V202611151210__merchant_api_key_signing_secret.sql"),
+                        tuple(
+                                "202611151220",
+                                "merchant webhook manual redeliveries",
+                                "merchant/V202611151220__merchant_webhook_manual_redeliveries.sql"));
     }
 }

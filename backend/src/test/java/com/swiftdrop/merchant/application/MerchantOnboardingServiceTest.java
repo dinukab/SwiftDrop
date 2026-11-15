@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.util.Optional;
@@ -75,6 +76,47 @@ class MerchantOnboardingServiceTest {
         assertThatThrownBy(() -> service.register("Ada", "ada@shop.example", "password12", "Shop", "REG-ADA-2", "0770000000"))
                 .isInstanceOf(MerchantConflictException.class)
                 .hasMessageContaining("already registered");
+    }
+
+    @Test
+    void registerRejectsDuplicateRegistrationNumberBeforeCreatingUser() {
+        when(merchants.existsByRegistrationNumber("REG-ADA-1")).thenReturn(true);
+
+        assertThatThrownBy(() -> service.register("Ada", "ada@shop.example", "password12", "Shop", " REG-ADA-1 ", "0770000000"))
+                .isInstanceOf(RegistrationNumberAlreadyRegisteredException.class)
+                .hasMessageContaining("REG-ADA-1");
+        verifyNoInteractions(userDirectory);
+    }
+
+    @Test
+    void suspendOnlyApprovedMerchants() {
+        Merchant merchant = pendingMerchant();
+        merchant.approve(ADMIN_ID);
+        when(merchants.findById(MERCHANT_ID)).thenReturn(Optional.of(merchant));
+        when(merchants.saveAndFlush(merchant)).thenReturn(merchant);
+
+        Merchant suspended = service.suspend(MERCHANT_ID, ADMIN_ID);
+
+        assertThat(suspended.getStatus()).isEqualTo(MerchantStatus.SUSPENDED);
+        assertThat(suspended.isApproved()).isFalse();
+    }
+
+    @Test
+    void suspendRejectsPending() {
+        when(merchants.findById(MERCHANT_ID)).thenReturn(Optional.of(pendingMerchant()));
+
+        assertThatThrownBy(() -> service.suspend(MERCHANT_ID, ADMIN_ID))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("409");
+    }
+
+    @Test
+    void suspendUnknownMerchantIsNotFound() {
+        when(merchants.findById(MERCHANT_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.suspend(MERCHANT_ID, ADMIN_ID))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("404");
     }
 
     @Test

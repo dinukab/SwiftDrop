@@ -24,9 +24,8 @@ import org.springframework.web.server.ResponseStatusException;
 import com.swiftdrop.delivery.api.PageResult;
 import com.swiftdrop.delivery.api.ParcelStatus;
 import com.swiftdrop.delivery.api.ParcelSummary;
-import com.swiftdrop.merchant.application.MerchantApprovalService;
 import com.swiftdrop.merchant.application.MerchantDashboardService;
-import com.swiftdrop.merchant.application.MerchantNotApprovedException;
+import com.swiftdrop.merchant.application.MerchantOnboardingService;
 import com.swiftdrop.merchant.application.MerchantOrderActionService;
 import com.swiftdrop.merchant.domain.Merchant;
 import com.swiftdrop.shared.web.PageLimit;
@@ -42,13 +41,13 @@ import com.swiftdrop.shared.web.PageResponse;
 class MerchantDashboardController {
 
     private final MerchantDashboardService dashboardService;
-    private final MerchantApprovalService approvalService;
+    private final MerchantOnboardingService onboarding;
     private final MerchantOrderActionService actionService;
 
-    MerchantDashboardController(MerchantDashboardService dashboardService, MerchantApprovalService approvalService,
+    MerchantDashboardController(MerchantDashboardService dashboardService, MerchantOnboardingService onboarding,
             MerchantOrderActionService actionService) {
         this.dashboardService = dashboardService;
-        this.approvalService = approvalService;
+        this.onboarding = onboarding;
         this.actionService = actionService;
     }
 
@@ -143,14 +142,7 @@ class MerchantDashboardController {
 
     /** Orders are a merchant capability, so they require an APPROVED merchant (D-22). */
     private Merchant getMerchant(Jwt jwt) {
-        UUID userId = UUID.fromString(jwt.getSubject());
-        Merchant merchant = approvalService.getMerchantByUserId(userId);
-        if (!merchant.isApproved()) {
-            throw new MerchantNotApprovedException(
-                    "Merchant account is " + merchant.getStatus().name()
-                            + "; an administrator must approve the application before this feature is available");
-        }
-        return merchant;
+        return onboarding.requireApproved(UUID.fromString(jwt.getSubject()));
     }
 }
 

@@ -43,6 +43,8 @@ class WebhookDeliveryHistoryServiceTest {
         endpoint = new WebhookEndpoint(MERCHANT, "https://api.acme.com/hooks", "encrypted");
         ReflectionTestUtils.setField(endpoint, "id", UUID.randomUUID());
         delivery = new WebhookDelivery(endpoint.getId(), MERCHANT, UUID.randomUUID(), UUID.randomUUID(), "{}");
+        // The id is generated when the row is saved, so a unit test sets it like the endpoint's above.
+        ReflectionTestUtils.setField(delivery, "id", UUID.randomUUID());
         delivery.recordFailure(404);
         when(deliveries.findByIdAndMerchantId(delivery.getId(), MERCHANT)).thenReturn(Optional.of(delivery));
         when(deliveries.save(any(WebhookDelivery.class))).thenAnswer(call -> call.getArgument(0));
@@ -72,6 +74,7 @@ class WebhookDeliveryHistoryServiceTest {
     @Test
     void aDeliveryThatDidNotFailIsRefused() {
         WebhookDelivery sent = new WebhookDelivery(endpoint.getId(), MERCHANT, UUID.randomUUID(), UUID.randomUUID(), "{}");
+        ReflectionTestUtils.setField(sent, "id", UUID.randomUUID());
         sent.recordSuccess(200);
         when(deliveries.findByIdAndMerchantId(sent.getId(), MERCHANT)).thenReturn(Optional.of(sent));
 

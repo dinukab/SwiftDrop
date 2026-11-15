@@ -9,6 +9,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,6 +21,7 @@ import com.swiftdrop.dispatch.domain.CourierProfileRepository;
 import com.swiftdrop.dispatch.domain.VehicleType;
 import com.swiftdrop.identity.api.UserDirectory;
 import com.swiftdrop.identity.api.UserSummary;
+import com.swiftdrop.shared.web.PageLimit;
 
 /**
  * Courier operational profile lifecycle for {@code dispatch} (SD-305). Links profiles 1:1 to
@@ -85,6 +90,52 @@ public class CourierProfileService {
     public Optional<CourierProfile> findByUserId(UUID userId) {
         Objects.requireNonNull(userId, "userId must not be null");
         return profiles.findByUserId(userId);
+    }
+
+    /** Pages courier profiles, newest first, optionally filtered by the active flag. */
+    public Page<CourierProfile> listProfiles(int page, int size, Boolean active) {
+        Pageable pageable = PageRequest.of(PageLimit.clampPage(page), PageLimit.clampSize(size),
+                Sort.by(Sort.Direction.DESC, "createdAt"));
+        return active == null ? profiles.findAll(pageable) : profiles.findByActive(active, pageable);
+    }
+
+    /**
+     * Updates a profile's phone and vehicle type. A {@code null} argument keeps the current value.
+     *
+     * @throws CourierProfileNotFoundException if no profile exists for {@code profileId}
+     */
+    @Transactional
+    public CourierProfile updateProfile(UUID profileId, String phone, VehicleType vehicleType) {
+        CourierProfile profile = requireProfile(profileId);
+        profile.updateDetails(phone != null ? phone : profile.getPhone(),
+                vehicleType != null ? vehicleType : profile.getVehicleType(), clock.instant());
+        return profiles.saveAndFlush(profile);
+    }
+
+    /** Makes the courier available for dispatch again. */
+    @Transactional
+    public CourierProfile activate(UUID profileId) {
+        CourierProfile profile = requireProfile(profileId);
+        profile.activate(clock.instant());
+        return profiles.saveAndFlush(profile);
+    }
+
+    /** Takes the courier out of dispatch without deleting the account or its history. */
+    @Transactional
+    public CourierProfile deactivate(UUID profileId) {
+        CourierProfile profile = requireProfile(profileId);
+        profile.deactivate(clock.instant());
+        return profiles.saveAndFlush(profile);
+    }
+
+    /** @throws CourierProfileNotFoundException if no profile exists for {@code profileId} */
+    public CourierProfile getProfile(UUID profileId) {
+        return requireProfile(profileId);
+    }
+
+    private CourierProfile requireProfile(UUID profileId) {
+        Objects.requireNonNull(profileId, "profileId must not be null");
+        return profiles.findById(profileId).orElseThrow(CourierProfileNotFoundException::new);
     }
 }
 

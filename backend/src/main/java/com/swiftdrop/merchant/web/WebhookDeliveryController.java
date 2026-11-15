@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.swiftdrop.merchant.application.MerchantApprovalService;
+import com.swiftdrop.merchant.application.MerchantOnboardingService;
 import com.swiftdrop.merchant.application.WebhookDeliveryHistoryService;
 import com.swiftdrop.merchant.domain.Merchant;
 import com.swiftdrop.shared.web.PageResponse;
@@ -29,11 +29,11 @@ import com.swiftdrop.shared.web.PageResponse;
 class WebhookDeliveryController {
 
     private final WebhookDeliveryHistoryService history;
-    private final MerchantApprovalService approvalService;
+    private final MerchantOnboardingService onboarding;
 
-    WebhookDeliveryController(WebhookDeliveryHistoryService history, MerchantApprovalService approvalService) {
+    WebhookDeliveryController(WebhookDeliveryHistoryService history, MerchantOnboardingService onboarding) {
         this.history = history;
-        this.approvalService = approvalService;
+        this.onboarding = onboarding;
     }
 
     @GetMapping
@@ -59,11 +59,6 @@ class WebhookDeliveryController {
     }
 
     private Merchant getMerchant(Jwt jwt) {
-        UUID userId = UUID.fromString(jwt.getSubject());
-        Merchant merchant = approvalService.getMerchantByUserId(userId);
-        if (!merchant.isApproved()) {
-            throw new com.swiftdrop.merchant.application.MerchantNotApprovedException(merchant.getId());
-        }
-        return merchant;
+        return onboarding.requireApproved(UUID.fromString(jwt.getSubject()));
     }
 }

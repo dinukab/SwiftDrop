@@ -5,6 +5,7 @@ import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -31,6 +32,7 @@ public class WebhookDeliveryHistoryService {
     private final WebhookEndpointRepository endpoints;
     private final Clock clock;
 
+    @Autowired
     public WebhookDeliveryHistoryService(WebhookDeliveryRepository deliveries, WebhookEndpointRepository endpoints) {
         this(deliveries, endpoints, Clock.systemUTC());
     }
