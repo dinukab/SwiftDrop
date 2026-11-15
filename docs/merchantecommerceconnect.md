@@ -1,8 +1,8 @@
 # Connecting the ecommerce site to SwiftDrop (merchant integration)
 
 Status: **In progress**, last updated 2026-11-15. Branch `merchantandecommerce` (SwiftDrop) and
-branch `dev3` (ecommerce store). Nothing from this work is committed or merged to `DEV`/`main` by the
-agent; the team decides that.
+branch `dev3` (ecommerce store). The work is committed and pushed on those branches (SwiftDrop
+latest: `33c1dbb`); merging to `DEV`/`main` is the team's decision.
 
 This document says what is built, how it was checked, and what is still to do. It replaces the
 earlier plan. The approved architecture decisions are in [ADR 0004](adr/0004-messaging-and-integration-reliability.md)
@@ -29,8 +29,8 @@ Buyer -> store checkout -> store creates a Shipment (booking)
   -> merchant may Pause / Resume / Cancel the order, only before pickup
   -> every status change: outbox -> RabbitMQ -> merchant consumer -> signed webhook  SwiftDrop -> store
   -> store updates its Shipment and timeline; buyer sees it on /account/orders and /orders/[n]
-  (fallback: the store polls GET /api/v1/tracked-parcels/{trackingNumber} or
-   GET /api/v1/merchant-api/orders/{reference})
+  (fallback: the store polls the signed GET /api/v1/merchant-api/orders/{reference},
+   which returns sequence numbers; the public tracked-parcels endpoint is no longer used by the store)
 ```
 
 ### Decisions taken (approved in chat)
@@ -54,7 +54,7 @@ Buyer -> store checkout -> store creates a Shipment (booking)
 | 1 | Pause / cancel lifecycle (delivery) | ✅ Built and tested | Courier rules untouched; migration `V202611151000` |
 | 2 | Merchant actions and store status API | ✅ Built and tested | Portal page done; store API `GET /merchant-api/orders/{ref}` |
 | 3 | Dispatcher queue, assignment, workload | 🟡 Built and tested | Courier **admin** API and assignment history missing |
-| 4 | Webhook pipeline (relay, consumer, sender) | 🟡 Built and tested, **off by default** | Webhook history and manual redelivery missing |
+| 4 | Webhook pipeline (relay, consumer, sender) | 🟡 Built and tested, **off by default** | History and redelivery API built; merchant UI view, demo receiver and live run missing |
 | 5 | Store request signatures, duplicate-order check, rate limit | 🟡 Built and tested, **optional by default** | Store does not sign yet |
 | 6 | Ecommerce store changes | ✅ Code complete (uncommitted) | Needs a live end-to-end run and `npm run build` |
 | 7 | Connection runbook | 🟡 Written in section 5; needs the updates listed there | Not yet run end to end with the store |
@@ -194,7 +194,10 @@ Enable with `SWIFTDROP_MESSAGING_RELAY_ENABLED=true` (relay) and `SWIFTDROP_WEBH
   appears in no table row or delivery body.
 
 **Still to do**
-- **Webhook history and manual redelivery** (cap 3), and a merchant-facing history view.
+- **Built (commit `33c1dbb`, migration `V202611151220`):** `GET /api/v1/merchants/me/webhook-deliveries`
+  and `POST /api/v1/merchants/me/webhook-deliveries/{id}/redeliveries`. Only a `FAILED` delivery can be
+  redelivered, at most 3 times (`MAX_MANUAL_REDELIVERIES`). Covered by domain, service and API tests.
+- **Still to do:** a merchant-facing history view in the frontend (no frontend code calls these endpoints yet).
 - **Demo webhook receiver and integration guide** (PROGRESS 5.7).
 - Two-instance safety for the relay and sender is designed (ordering, row locks) but not tested with
   several instances.
@@ -366,7 +369,7 @@ backend can produce them. Both do now.
 1. ~~Store signing and status API~~ (done in code). Next: run it live and require signatures.
 2. **Courier profile admin API** (PROGRESS 7.1). Unblocks real dispatch.
 3. ~~Store zone-code mapping~~ (done in code). Next: run `npm run zones:sync` and schedule the cron call.
-4. **Webhook history and redelivery** (Phase 4 item 6) and the demo receiver (PROGRESS 5.7).
+4. ~~Webhook history and redelivery API~~ (built). Next: the merchant history view and the demo receiver (PROGRESS 5.7).
 5. **Courier management tab and assignment history** (PROGRESS 7.4, 7.5).
 6. **Team review** of ADR 0006 section 1A, then acceptance or changes.
 7. **Full end-to-end run** with the runbook above, and the store's test suite.
@@ -377,7 +380,7 @@ backend can produce them. Both do now.
 
 | Check | Result (last run) |
 |---|---|
-| Backend unit build (`mvnw clean verify`) | 780 tests, 0 failures, 0 errors |
+| Backend unit build (`mvnw clean verify`) | 780 tests, 0 failures, 0 errors (before commit `33c1dbb`, which added webhook history tests; **rerun to get the current count**) |
 | Backend integration profile (`-Pintegration`) | 111 tests; 3 failures, all pre-existing (below) |
 | Migrations on a fresh PostgreSQL | `DatabaseMigrationIT` passes with 22 migrations |
 | Phase 1 to 5 end-to-end scripts | Orders and holds 32/32; dispatch 37/37; webhooks 17/17; signatures 14/14 optional and 14/14 required |
@@ -390,6 +393,20 @@ Pre-existing integration failures, unrelated to this work, still to be fixed:
 - `DispatchPersistenceIT.databaseEnforcesUniqueUserForeignKeyAndVehicleTypeConstraints`: reuses a
   transaction after a failed insert.
 - `RabbitMessagingIT.deadLetterWaitsUntilMissingTargetQueueIsRestored`: timing-dependent; times out.
+
+---
+
+## 8a. Flow review (2026-11-15): is the order and tracking flow consistent with the plan?
+
+Checked by reading code and docs; **no live run**. Header names, the signature formula and the status API
+shape agree between SwiftDrop and the store. Remaining concerns:
+
+- The store and backend have never run together; earlier end-to-end scripts used a test receiver.
+- With default settings (relay and webhooks off), the store learns status only by polling: the cron call
+  must run and the poll interval (default 300 s) must pass, so status can be minutes old.
+- Orders cannot move past `CREATED` for real until a courier profile can be created (Phase 3 gap).
+- Checkout refuses districts until `npm run zones:sync` has run against the live backend.
+- Signatures are optional by default and older keys have no signing secret.
 
 ---
 
