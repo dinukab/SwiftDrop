@@ -5,6 +5,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -14,6 +16,12 @@ public interface WebhookDeliveryRepository extends JpaRepository<WebhookDelivery
     Optional<WebhookDelivery> findByEventIdAndEndpointId(UUID eventId, UUID endpointId);
 
     List<WebhookDelivery> findByMerchantId(UUID merchantId);
+
+    /** One merchant's deliveries, newest first. */
+    Page<WebhookDelivery> findByMerchantIdOrderByCreatedAtDesc(UUID merchantId, Pageable pageable);
+
+    /** A delivery, only if it belongs to this merchant: another merchant's id is simply not found. */
+    Optional<WebhookDelivery> findByIdAndMerchantId(UUID id, UUID merchantId);
 
     /**
      * Pending deliveries that are due, oldest first, locked for this sender. Rows locked by another

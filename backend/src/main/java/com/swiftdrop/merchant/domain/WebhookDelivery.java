@@ -59,6 +59,9 @@ public class WebhookDelivery {
         // for JPA
     }
 
+    @Column(name = "manual_redeliveries", nullable = false)
+    private int manualRedeliveries;
+
     @Column(name = "payload", columnDefinition = "TEXT")
     private String payload;
 
@@ -105,6 +108,34 @@ public class WebhookDelivery {
         this.lastHttpStatus = httpStatus;
         this.lastAttemptAt = Instant.now();
         this.updatedAt = Instant.now();
+    }
+
+    /** Most manual redeliveries one delivery may get (ADR 0004 section 7, Phase 4). */
+    public static final int MAX_MANUAL_REDELIVERIES = 3;
+
+    public boolean canRedeliver() {
+        return "FAILED".equals(status) && manualRedeliveries < MAX_MANUAL_REDELIVERIES;
+    }
+
+    /**
+     * Sends a failed delivery again: it is pending now, and gets a fresh series of automatic attempts.
+     * The body and event are unchanged, so the endpoint receives the same event.
+     *
+     * @throws IllegalStateException if the delivery is not failed or the manual limit is used up
+     */
+    public void redeliver(Instant now) {
+        if (!canRedeliver()) {
+            throw new IllegalStateException("Delivery cannot be redelivered");
+        }
+        this.manualRedeliveries++;
+        this.status = "PENDING";
+        this.attemptCount = 0;
+        this.nextAttemptAt = Objects.requireNonNull(now, "now");
+        this.updatedAt = now;
+    }
+
+    public int getManualRedeliveries() {
+        return manualRedeliveries;
     }
 
     public UUID getId() {

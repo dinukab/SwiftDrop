@@ -17,6 +17,7 @@ import com.swiftdrop.merchant.application.ApiKeyLimitExceededException;
 import com.swiftdrop.merchant.application.MerchantNotApprovedException;
 import com.swiftdrop.merchant.application.MerchantNotFoundException;
 import com.swiftdrop.merchant.application.RegistrationNumberAlreadyRegisteredException;
+import com.swiftdrop.merchant.application.WebhookDeliveryNotRedeliverableException;
 
 /**
  * Safe RFC 9457 ProblemDetail bodies for merchant module endpoints.
@@ -52,6 +53,12 @@ class MerchantExceptionHandler {
     }
 
     /** The message names the broken lifecycle rule only, never order data. */
+    /** The rule that refused the redelivery; the message names only that rule. */
+    @ExceptionHandler(WebhookDeliveryNotRedeliverableException.class)
+    ProblemDetail notRedeliverable(WebhookDeliveryNotRedeliverableException e) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, e.getMessage());
+    }
+
     @ExceptionHandler(ParcelConflictException.class)
     ProblemDetail orderConflict(ParcelConflictException e) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, e.getMessage());

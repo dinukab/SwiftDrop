@@ -56,7 +56,7 @@ Buyer -> store checkout -> store creates a Shipment (booking)
 | 3 | Dispatcher queue, assignment, workload | 🟡 Built and tested | Courier **admin** API and assignment history missing |
 | 4 | Webhook pipeline (relay, consumer, sender) | 🟡 Built and tested, **off by default** | Webhook history and manual redelivery missing |
 | 5 | Store request signatures, duplicate-order check, rate limit | 🟡 Built and tested, **optional by default** | Store does not sign yet |
-| 6 | Ecommerce store changes | 🟡 Part 1 done (committed on `dev3`) | Signing, polling via new API, zone-code mapping, cron, UI still to do |
+| 6 | Ecommerce store changes | ✅ Code complete (uncommitted) | Needs a live end-to-end run and `npm run build` |
 | 7 | Connection runbook | 🟡 Written in section 5; needs the updates listed there | Not yet run end to end with the store |
 
 Legend: ✅ done and verified · 🟡 partly done · ⬜ not started.
@@ -234,7 +234,7 @@ Enable with `SWIFTDROP_MESSAGING_RELAY_ENABLED=true` (relay) and `SWIFTDROP_WEBH
   a nonce check is not implemented.
 - Keys created before this change have no secret and must be created again before signatures are required.
 
-### Phase 6. Ecommerce store (`D:\ecommerce site\ecommerce`, branch `dev3`) 🟡
+### Phase 6. Ecommerce store (`D:\ecommerce site\ecommerce`, branch `dev3`) ✅ (code)
 
 **Done (committed by the team on `dev3`, commit `08a57cd`)**
 - Prisma schema: `DeliveryStatus` gains `PAUSED` and `CANCELLED`; `ShipmentState` gains `CANCELLED`;
@@ -254,21 +254,35 @@ Enable with `SWIFTDROP_MESSAGING_RELAY_ENABLED=true` (relay) and `SWIFTDROP_WEBH
 - `/track` accepts `PAUSED` and `CANCELLED`, shows the on-hold notice, treats `CANCELLED` as final.
 - Customer history page labels both statuses.
 
-**Still to do**
-1. **Sign store requests** (`src/lib/swiftdrop/live.ts`): add `X-SwiftDrop-Timestamp` and
-   `X-SwiftDrop-Signature` built exactly as in Phase 5 (method and path without query, body as sent),
-   with `SWIFTDROP_SIGNING_SECRET` in `src/lib/env.ts` and `.env.example`. Add vitest cases that
-   check against the same reference value used in SwiftDrop's `ApiRequestSignatureTest`.
-2. **Use the status API for polling**: the poller reads `GET /api/v1/merchant-api/orders/{ref}`
-   (signed) instead of the public tracking endpoint, so the store gets sequence numbers directly.
-3. **Zone codes**: `scripts/sync-zones.ts` must map the store's province codes to SwiftDrop's seeded
-   zone codes: `UVA -> LK-UP`, `SAB -> LK-SGP`, and prefix the rest with `LK-`. Without this, checkout
-   refuses every district (SwiftDrop's seed uses `LK-WP`, `LK-CP`, ...).
-4. **Scheduling**: nothing runs `/api/cron/swiftdrop` (booking retries and polling). Set up Task
-   Scheduler or keep `npm run cron:local` running.
-5. **Buyer dashboard**: show the tracking number on `/account/orders`.
-6. **Admin simulators**: confirm they cover the new states (sequence numbers are in place).
-7. **Repeat the store's own test and build** after the signing change (`npm test`, `npm run build`).
+**Done (uncommitted on `dev3`, 2026-11-15)**
+- **Request signing:** `LiveSwiftDropClient` signs every `/merchant-api/**` call with `X-SwiftDrop-Timestamp` and
+  `X-SwiftDrop-Signature` when `SWIFTDROP_SIGNING_SECRET` is set (`env.ts`, `.env.example`). Method, path
+  without query, and the exact body bytes are signed (`signRequestV1`). With no secret, no signature headers
+  are sent, so it works while SwiftDrop signatures are optional. A vitest case checks the reference value
+  from `ApiRequestSignatureTest`.
+- **Polling via the status API:** the poller, the admin "poll now" action and the booking replay path call
+  `getOrderStatus(merchantRef)` (`GET /api/v1/merchant-api/orders/{ref}`, signed) and apply events with
+  SwiftDrop's own sequence numbers and failure reasons (`applyOrderStatus`). The public tracking call stays
+  in the client but nothing uses it.
+- **Zone codes:** `swiftDropZoneCode` in `src/lib/districts.ts` (`UVA -> LK-UP`, `SAB -> LK-SGP`, others get
+  `LK-`); `scripts/sync-zones.ts` uses it. Tests check all districts map to the nine seeded zones.
+- **Checks:** type-check clean, lint clean, 77 of 77 unit tests pass. `npm run build` was **not run**: the
+  running dev server holds the Prisma engine file (EPERM on `prisma generate`).
+
+- **Buyer dashboard:** `/account/orders` already shows the tracking number of the latest shipment.
+- **Admin simulators (mock mode):** new `simulateHold` action and Hold, Release and Cancel buttons on
+  `/admin/shipments` send `PAUSED`, `CREATED` (release) and `CANCELLED` events with the next sequence
+  number, so the new states can be tried without SwiftDrop. "Next" and "Fail" are unchanged.
+- **Scheduling:** nothing new in code. `npm run cron:local` (every 60 s, needs `CRON_SECRET`) is the
+  local runner; a deployed store must call `GET /api/cron/swiftdrop` with
+  `Authorization: Bearer <CRON_SECRET>` on a schedule (for example every minute).
+
+**Still to do (needs the running system, not code)**
+1. Stop the dev server, then run `npm run build` (it could not regenerate Prisma while the server ran).
+2. Run `npm run zones:sync` against the running backend; check checkout accepts every district.
+3. Create a key with a signing secret, set `SWIFTDROP_SIGNING_SECRET`, and run the end-to-end test with
+   signatures optional and then required (`SWIFTDROP_MERCHANT_API_REQUIRE_SIGNATURE=true`).
+4. Keep `npm run cron:local` running during the test.
 
 Not planned for the store: cancelling an order after payment (refunds are not modelled by either side).
 
@@ -325,10 +339,9 @@ yours; never commit them.
 6. **Store environment** (`.env` of the store; never commit it): `SWIFTDROP_MODE=live`,
    `SWIFTDROP_API_URL=http://localhost:8080`, `SWIFTDROP_API_KEY`, `SWIFTDROP_WEBHOOK_SECRET`,
    `STORE_PICKUP_*`, `STORE_PICKUP_ZONE_ID`, `CRON_SECRET`, and `SWIFTDROP_MERCHANT_EMAIL` /
-   `SWIFTDROP_MERCHANT_PASSWORD` for the zone sync. `SWIFTDROP_SIGNING_SECRET` once Phase 6 step 1 is
-   done. Then `npm run zones:sync`, `npm run dev` (port 3100) and `npm run cron:local`.
+   `SWIFTDROP_MERCHANT_PASSWORD` for the zone sync. `SWIFTDROP_SIGNING_SECRET` (the key's signing secret). Then `npm run zones:sync`, `npm run dev` (port 3100) and `npm run cron:local`.
 7. **Signatures.** Leave `SWIFTDROP_MERCHANT_API_REQUIRE_SIGNATURE=false` until the store signs its
-   requests (Phase 6 step 1). Then set it to `true` and create new keys for the store.
+   requests (done in the store code). Then set it to `true` and create new keys for the store.
 8. **Dispatch.** An admin creates dispatcher and courier accounts (staff endpoint). Courier profiles
    are needed for assignment and cannot be created in the app yet (Phase 3 gap).
 9. **Check.** Place an order on the store, then check the merchant portal and the dispatcher screen.
@@ -350,9 +363,9 @@ backend can produce them. Both do now.
 
 ## 7. Next steps, in order
 
-1. **Store signing and status API** (Phase 6 steps 1 and 2). Unblocks requiring signatures.
+1. ~~Store signing and status API~~ (done in code). Next: run it live and require signatures.
 2. **Courier profile admin API** (PROGRESS 7.1). Unblocks real dispatch.
-3. **Store zone-code mapping and scheduling** (Phase 6 steps 3 and 4). Unblocks checkout for every province.
+3. ~~Store zone-code mapping~~ (done in code). Next: run `npm run zones:sync` and schedule the cron call.
 4. **Webhook history and redelivery** (Phase 4 item 6) and the demo receiver (PROGRESS 5.7).
 5. **Courier management tab and assignment history** (PROGRESS 7.4, 7.5).
 6. **Team review** of ADR 0006 section 1A, then acceptance or changes.
@@ -368,7 +381,7 @@ backend can produce them. Both do now.
 | Backend integration profile (`-Pintegration`) | 111 tests; 3 failures, all pre-existing (below) |
 | Migrations on a fresh PostgreSQL | `DatabaseMigrationIT` passes with 22 migrations |
 | Phase 1 to 5 end-to-end scripts | Orders and holds 32/32; dispatch 37/37; webhooks 17/17; signatures 14/14 optional and 14/14 required |
-| Store unit tests and type-check | 70/70 tests; type-check and lint clean (at step 1) |
+| Store unit tests and type-check | 77/77 tests; type-check and lint clean (after Phase 6). `npm run build` not run (dev server locked Prisma) |
 | Frontend | Type-check clean; lint has pre-existing errors on merchant pages (not from this work) |
 
 Pre-existing integration failures, unrelated to this work, still to be fixed:
