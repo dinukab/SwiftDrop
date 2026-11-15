@@ -112,6 +112,22 @@ public class OutboxEvent {
         return publishedAt != null;
     }
 
+    /** The broker confirmed the event. It is never published again. */
+    public void markPublished(Instant now) {
+        this.publishedAt = java.util.Objects.requireNonNull(now, "now");
+    }
+
+    /**
+     * A publish failed. Counts the attempt and sets when the relay may try again.
+     *
+     * @param failureCategory a short code such as {@code NOT_ROUTED}; never the broker's message text
+     */
+    public void markFailed(String failureCategory, Instant retryAt) {
+        this.attempts++;
+        this.lastFailureCategory = failureCategory;
+        this.nextAttemptAt = java.util.Objects.requireNonNull(retryAt, "retryAt");
+    }
+
     public int getAttempts() {
         return attempts;
     }

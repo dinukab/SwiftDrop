@@ -4,7 +4,6 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
-import java.util.EnumSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -30,7 +29,7 @@ import com.swiftdrop.delivery.domain.ParcelRepository;
 @Transactional(readOnly = true)
 public class CourierParcelService {
 
-    private static final EnumSet<ParcelStatus> TERMINAL = EnumSet.of(ParcelStatus.DELIVERED, ParcelStatus.FAILED);
+    private static final Set<ParcelStatus> TERMINAL = ParcelStatus.finalStatuses();
 
     private final ParcelRepository parcels;
     private final DeliveryProofRepository proofs;

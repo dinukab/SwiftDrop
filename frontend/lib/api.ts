@@ -35,6 +35,22 @@ export interface CreateStaffUserRequest {
   role?: "COURIER" | "DISPATCHER" | "ADMIN";
 }
 
+export type VehicleType = "BIKE" | "CAR" | "VAN";
+
+/** Courier dispatch profile from /api/v1/couriers (admin only). */
+export interface CourierProfileResponse {
+  id: string;
+  userId: string;
+  fullName: string | null;
+  email: string | null;
+  accountEnabled: boolean;
+  phone: string;
+  vehicleType: VehicleType;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface UpdateUserStatusRequest {
   enabled: boolean;
 }
@@ -46,7 +62,16 @@ export interface AccessTokenResponse {
 }
 
 // Courier API types
-export type ParcelStatus = "CREATED" | "PICKED_UP" | "IN_TRANSIT" | "OUT_FOR_DELIVERY" | "DELIVERED" | "FAILED";
+export type ParcelStatus =
+  | "CREATED"
+  | "PICKED_UP"
+  | "IN_TRANSIT"
+  | "OUT_FOR_DELIVERY"
+  | "DELIVERED"
+  | "FAILED"
+  // A merchant can hold (PAUSED) or cancel (CANCELLED) a parcel before it is picked up.
+  | "PAUSED"
+  | "CANCELLED";
 
 export type FailureReason = "RECIPIENT_UNAVAILABLE" | "ADDRESS_NOT_FOUND" | "REFUSED" | "DAMAGED" | "OTHER";
 
@@ -133,6 +158,22 @@ export interface ParcelCreatedResponse {
   fee: { amount: string; currency: string };
   assignedCourierId: string | null;
   createdAt: string;
+}
+
+export type ParcelSource = "CUSTOMER" | "MERCHANT";
+
+export interface ParcelHistoryItem {
+  id: string;
+  trackingNumber: string;
+  status: ParcelStatus;
+  source: ParcelSource;
+  size: ParcelSize;
+  weightGrams: number;
+  pickupCity: string;
+  dropoffCity: string;
+  fee: { amount: string; currency: string };
+  createdAt: string;
+  updatedAt: string;
 }
 
 // Proof of Delivery API types
@@ -230,7 +271,7 @@ export async function getProofPhoto(parcelId: string, token: string): Promise<Bl
   return await response.blob();
 }
 
-export type MerchantStatus = "PENDING" | "APPROVED" | "REJECTED" | "SUSPENDED";
+export type MerchantStatus = "PENDING_APPROVAL" | "APPROVED" | "REJECTED" | "SUSPENDED";
 
 export interface MerchantResponse {
   id: string;

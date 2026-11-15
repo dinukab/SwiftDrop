@@ -73,4 +73,14 @@ public interface ParcelRepository extends JpaRepository<Parcel, UUID> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT p FROM Parcel p WHERE p.id = :id")
     Optional<Parcel> findByIdForUpdate(@Param("id") UUID id);
+
+    /**
+     * Like {@link #findByIdForUpdate} but finds the parcel by a merchant's own order reference, in a
+     * single locked read. Looking the parcel up first without a lock and locking it second would let
+     * a change that commits in between show up as two versions of one entity.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT p FROM Parcel p WHERE p.merchantId = :merchantId AND p.merchantOrderReference = :reference")
+    Optional<Parcel> findByMerchantIdAndMerchantOrderReferenceForUpdate(@Param("merchantId") UUID merchantId,
+            @Param("reference") String reference);
 }

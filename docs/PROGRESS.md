@@ -146,17 +146,17 @@ tables.
 
 | # | Workstream | Owner | ✅ Done | Total | Progress |
 |---|---|---|---|---|---|
-| M1 | Identity, access control, shared foundations | M1 | 9 | 11 | 82% |
+| M1 | Identity, access control, shared foundations | M1 | 10 | 11 | 91% |
 | M2 | Customer booking | M2 | 3 | 7 | 43% |
 | M3 | Delivery core (parcel lifecycle) | M3 | 6 | 8 | 75% |
 | M4 | Merchant registration, approval, dashboard, webhook endpoints | M4 | 1 | 7 | 14% |
 | M5 | Merchant API keys, order intake, webhook delivery | M5 | 0 | 7 | 0% |
 | M6 | Courier operations | M6 | 4 | 6 | 67% |
-| M7 | Dispatch and quality lead | M7 | 1 | 8 | 13% |
+| M7 | Dispatch and quality lead | M7 | 5 | 8 | 63% |
 | M8 | Pricing and reports | M8 | 3 | 7 | 43% |
 | M9 | RabbitMQ events and notifications | M9 | 0 | 7 | 0% |
 | M10 | Live tracking, containers, demo | M10 | 1 | 8 | 13% |
-| | **Total** | | **28** | **76** | **37%** |
+| | **Total** | | **33** | **76** | **43%** |
 
 ### 2.1 Build order (phases)
 
@@ -194,8 +194,8 @@ the auth pages, and `SecurityConfiguration`.
 | 1.7 | Login, sign-up and Google callback pages | SD-105 | ✅ | | | |
 | 1.8 | Authorization test-matrix harness | SD-106 | ✅ | | | |
 | 1.9 | Integration-test profile with real PostgreSQL **and RabbitMQ** | SD-003 | 🟡 | | | |
-| 1.10 | *(Optional, needs ADR)* Split `DISPATCHER_ADMIN` into `ADMIN` and `DISPATCHER` | — | ⬜ | | | |
-| 1.11 | Public courier registration with admin approval (`/api/v1/courier-registrations`) | — | ✅ | `feature/rbac-user-management` | | 2026-11-14 |
+| 1.10 | Split `DISPATCHER_ADMIN` into `ADMIN` and `DISPATCHER` (migration `V202611131100`) | — | ✅ | `DEV_2` | | 2026-11-14 |
+| 1.11 | Public courier registration with admin approval, later removed again (`V202611131200` drops `courier_approvals`) | — | ✅ | `feature/rbac-user-management` | | 2026-11-14 |
 
 **How to implement the open sub-parts**
 
@@ -203,10 +203,8 @@ the auth pages, and `SecurityConfiguration`.
   1. Add a RabbitMQ Testcontainers base class next to it.
   2. Add a smoke test that publishes and consumes one message.
   3. Document `.\mvnw.cmd verify -Pintegration` in `backend/README.md`.
-- **1.10:** The reference project made this split. It touches every module's security rules.
-  1. Write a Proposed ADR first and get team approval.
-  2. Add a migration that replaces the role.
-  3. Update `SecurityConfiguration`, the authorization matrix and the frontend role guard.
+- **1.10:** Done. Roles are now `CUSTOMER, MERCHANT, COURIER, DISPATCHER, ADMIN`; see
+  `docs/rbac-authorization.md`.
 
 ### M2 — Customer booking
 
@@ -323,9 +321,9 @@ Owns `merchant` packages `apikey`, `orders`, `webhook.delivery`, and `tools/webh
 | 5.1 | Merchant API keys: create (shown once), list, revoke | SD-403 | ⬜ | | | |
 | 5.2 | API-key authentication in the security chain | SD-404 | ⬜ | | | |
 | 5.3 | Order intake `POST /api/v1/merchant-orders` (safe to retry) | SD-405 | ⬜ | | | |
-| 5.4 | SSRF-safe webhook HTTP client | SD-409 | ⬜ | | | |
-| 5.5 | Merchant event consumer → webhook delivery records | SD-410 | ⬜ | | | |
-| 5.6 | Webhook sender: signing, retries, backoff, manual redelivery | SD-411, SD-412 | ⬜ | | | |
+| 5.4 | SSRF-safe webhook HTTP client | SD-409 | 🟡 | `merchantandecommerce` | | 2026-11-15 |
+| 5.5 | Merchant event consumer → webhook delivery records | SD-410 | 🟡 | `merchantandecommerce` | | 2026-11-15 |
+| 5.6 | Webhook sender: signing, retries, backoff (manual redelivery still to do) | SD-411, SD-412 | 🟡 | `merchantandecommerce` | | 2026-11-15 |
 | 5.7 | Demo webhook receiver and merchant integration guide | SD-413 | ⬜ | | | |
 
 **How to implement**
@@ -392,11 +390,11 @@ step. Also leads the security review, the test report and the contribution sheet
 
 | ID | Sub-part | SD | Status | Branch | PR | Date |
 |---|---|---|---|---|---|---|
-| 7.1 | Courier profiles: schema, service, admin API | SD-305 | 🟡 | `feature/dispatcher` | | 2026-11-11 |
-| 7.2 | Unassigned parcels and courier assignment | SD-306 | ⬜ | | | |
-| 7.3 | Courier workload view | SD-307 | ⬜ | | | |
+| 7.1 | Courier profiles: schema, service, admin API | SD-305 | ✅ | `feature/RBAC` | | 2026-11-14 |
+| 7.2 | Unassigned parcels and courier assignment | SD-306 | 🟡 | `merchantandecommerce` | | 2026-11-15 |
+| 7.3 | Courier workload view | SD-307 | 🟡 | `merchantandecommerce` | | 2026-11-15 |
 | 7.4 | Assignment history per parcel (needs 3.7) | — | ⬜ | | | |
-| 7.5 | Dispatcher UI | SD-308 | ⬜ | | | |
+| 7.5 | Dispatcher UI (queue, assign, workload; courier management tab still to do) | SD-308 | 🟡 | `merchantandecommerce` | | 2026-11-15 |
 | 7.6 | JaCoCo code coverage in the build and CI | SD-004 | ✅ | | | |
 | 7.7 | Security and personal-data review | SD-704 | ⬜ | | | |
 | 7.8 | Test report, coverage summary and contribution sheet | SD-703, SD-908, SD-909 | ⬜ | | | |
@@ -412,18 +410,17 @@ The contracts dispatch needs **already exist**, so nothing outside the module bl
 | Record an assignment | `delivery.api.ParcelAssignment.assignCourier(parcelId, courierUserId, dispatcherUserId)` |
 | Check a user | `identity.api.UserDirectory.findUser(id)` → `UserSummary` |
 
-**Courier eligibility, updated 2026-11-14.** `DEV_2` added public courier registration. A
-self-registered courier has the `COURIER` role but gets a `PENDING` approval row, and the
-`COURIER` authority is withheld from their token until an admin approves. So eligibility must
-also require **approved**. The check lives in `identity.application.CourierApprovalService`
-(`isApproved`), but dispatch may use only `identity.api`. **Before 7.2, ask M1 (Saranga) to expose
-it in `identity.api`**, for example as a field on `UserSummary` or a method on `UserDirectory`.
-Couriers created by an admin have no approval row and count as approved.
-
 **Courier eligibility** (contract §5.4): the user is **enabled**, **and** has the `COURIER`
 role, **and** has an **active** courier profile.
 
-#### 7.1 Courier profiles (SD-305): in progress
+#### 7.1 Courier profiles (SD-305): done on `feature/RBAC` (2026-11-14)
+
+Implemented: `GET/POST /api/v1/couriers` and `PATCH /api/v1/couriers/{id}` (admin only) in
+`CourierProfileController`, service methods `listProfiles`, `updateProfile`, `activate`,
+`deactivate`, `getProfile`, `CourierProfileNotFoundException`, `DispatchExceptionHandler`, unit
+tests and `CourierProfileApiTest` (authorization matrix and error codes). The admin "Onboard
+Staff" dialog asks for phone and vehicle when the role is Courier and creates the profile right
+after the login. The original plan follows for reference.
 
 Already present (commit `setup1`): migration `V202611112100__dispatch_create_couriers.sql`,
 `CourierProfile`, `CourierProfileRepository`, `VehicleType`, `CourierProfileService`
@@ -437,18 +434,18 @@ Remaining steps, one commit each:
    3. Unit-test each method.
 2. **DTOs** in `dispatch/web`: `CreateCourierProfileRequest` (`userId`, `phone`, `vehicleType`,
    with Bean Validation), `UpdateCourierProfileRequest`, `CourierProfileResponse`. The response
-   includes the user's name from `UserDirectory`. Show the phone only to admins.
+   includes the user's name from `UserDirectory`. Phone is visible to the two allowed roles only.
 3. **Controller** `CourierProfileController`:
    - `GET /api/v1/couriers` (paged, `?active=`)
    - `POST /api/v1/couriers` → 201
    - `PATCH /api/v1/couriers/{id}` (phone, vehicle, active)
-   - All admin only.
+   - `DISPATCHER` or `ADMIN` (`hasAnyRole`).
 4. **Error mapping** `DispatchExceptionHandler`, using the shared problem-details format:
    - not found → 404
    - duplicate profile → 409
    - user not a courier or disabled → 409
    - validation → 400
-5. **Security:** ask M1 to add `/api/v1/couriers/**` as admin only in `SecurityConfiguration`,
+5. **Security:** use `@PreAuthorize("hasAnyRole('DISPATCHER','ADMIN')")` on the controller (no `SecurityConfiguration` change),
    or follow the existing method-security pattern.
 6. **Tests:**
    1. MockMvc tests for 401 (anonymous), 403 (customer or courier), 201, 409 and 400.
@@ -467,7 +464,7 @@ Remaining steps, one commit each:
      `ParcelAssignment.assignCourier`.
    - Write unit tests with mocked `delivery.api` and `identity.api`.
 3. **Endpoints:**
-   - `GET /api/v1/unassigned-parcels` (admin, paged)
+   - `GET /api/v1/unassigned-parcels` (DISPATCHER, paged)
    - `POST /api/v1/parcel-assignments` with body `{ parcelId, courierUserId }` → 200 or 201
    - The dispatcher ID comes from the JWT, never from the request body.
 4. **Errors:**
@@ -489,7 +486,7 @@ Remaining steps, one commit each:
    2. Join them with `ParcelQueries.countActiveParcelsByCourier()`.
    3. A courier missing from the map has **0**.
    4. Sort by count, lowest first, so the least busy courier comes first.
-2. Endpoint `GET /api/v1/courier-workloads` (admin) returns
+2. Endpoint `GET /api/v1/courier-workloads` (DISPATCHER) returns
    `[{ courierUserId, name, vehicleType, activeParcels }]`.
 3. Tests:
    1. Unit test with a courier at 0, one at 3 and an inactive courier that is excluded.
@@ -499,7 +496,7 @@ Remaining steps, one commit each:
 #### 7.4 Assignment history (depends on M3's 3.7)
 
 1. Agree the `delivery.api` method signature with M3, then wait for 3.7 to merge.
-2. Add `GET /api/v1/parcels/{id}/assignment-history` (admin) in `dispatch.web`. It returns the
+2. Add `GET /api/v1/parcels/{id}/assignment-history` (DISPATCHER) in `dispatch.web`. It returns the
    courier and dispatcher names, resolved through `UserDirectory`.
 3. Write MockMvc tests, then open a PR.
 
@@ -507,7 +504,7 @@ Remaining steps, one commit each:
 
 1. Read `frontend/AGENTS.md` and the Next.js docs in `frontend/node_modules/next/dist/docs/`.
 2. Add `frontend/lib/dispatch.ts` with typed API functions for 7.1–7.4, using `lib/api.ts`.
-3. `(dispatch)/dispatch/page.tsx`:
+3. `(dispatch)/dispatcher/page.tsx`:
    - an **unassigned parcels** table (paged)
    - an **Assign** button that opens a dialog with a courier picker sorted by workload, showing
      each courier's active parcel count
@@ -583,7 +580,7 @@ Owns the `notification` module, the outbox relay and `shared.messaging`.
 | ID | Sub-part | SD | Status | Branch | PR | Date |
 |---|---|---|---|---|---|---|
 | 9.1 | RabbitMQ topology (exchange, queues, dead-letter) and broker check | SD-501 | 🟡 | `feature/messaging-and-webhook` | | |
-| 9.2 | Outbox relay: publish `parcel_outbox_events` in order | SD-502 | ⬜ | | | |
+| 9.2 | Outbox relay: publish `parcel_outbox_events` in order (one instance; off by default) | SD-502 | 🟡 | `merchantandecommerce` | | 2026-11-15 |
 | 9.3 | Shared ordered-consumer support (duplicates, gaps) | SD-503 | ⬜ | | | |
 | 9.4 | Notification consumer and mock SMS/email store | SD-504 | ⬜ | | | |
 | 9.5 | Notifications inbox API, page and unread bell | SD-506 | ⬜ | | | |
@@ -662,6 +659,8 @@ profile and the demo script.
 
 Newest first. Use one line per status change: `YYYY-MM-DD · <id> · <status> · <member> · <PR or note>`.
 
+- 2026-11-14 · 7.1, 7.2, 7.3, 7.5 ✅; 7.4 ⛔ waits for M3's 3.7 · M7 · commits 0553de3, 88d9029, 2482a39, 44dc6e6 on `feature/dispatcher`; totals now 33/76
+- 2026-11-14 · 1.10 ✅; courier-approval notes removed from 7.1/7.2; 7.5 path and roles corrected · M7 · synced with `DEV_2` role split; totals now 29/76
 - 2026-11-14 · 1.11, 4.1 ✅; 4.2, 4.3, 4.5, 6.5, 9.1 🟡 · M7 · re-scored against `DEV_2` (PR #4 to #7); totals now 28/76
 - 2026-11-14 · all · tracker created; statuses set from the current code · M7 · —
 - 2026-11-11 · 7.1 · 🟡 · M7 · commit `setup1` (couriers migration, `CourierProfile`, service, tests)

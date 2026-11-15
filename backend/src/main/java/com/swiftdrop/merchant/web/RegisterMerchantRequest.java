@@ -4,8 +4,6 @@ import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
-import com.swiftdrop.merchant.application.MerchantRegistrationCommand;
-
 public record RegisterMerchantRequest(
         @NotBlank @Size(max = 200) String fullName,
         @NotBlank @Size(max = 150) String businessName,
@@ -20,17 +18,6 @@ public record RegisterMerchantRequest(
         registrationNumber = registrationNumber != null ? registrationNumber.trim() : null;
         contactEmail = contactEmail != null ? contactEmail.trim() : null;
         contactPhone = contactPhone != null ? contactPhone.trim() : null;
-    }
-
-    public MerchantRegistrationCommand toCommand() {
-        return new MerchantRegistrationCommand(
-                fullName,
-                businessName,
-                registrationNumber,
-                contactEmail,
-                contactPhone,
-                password
-        );
     }
 
     /** Never includes sensitive credentials in logs or strings. */

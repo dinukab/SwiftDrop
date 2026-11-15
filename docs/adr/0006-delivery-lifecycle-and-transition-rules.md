@@ -2,6 +2,9 @@
 
 - Status: Proposed
 - Date: 2026-10-28
+- Amended: 2026-11-15 (merchant hold and cancellation before pickup; still Proposed, pending team
+  review). See [section 1A](#1a-merchant-hold-release-and-cancellation-amendment). The original text
+  below is kept where it still applies; sections 2 and the alternatives list are updated.
 
 ## Context
 
@@ -44,12 +47,50 @@ The `delivery` module strictly enforces the following state transitions:
 | `DELIVERED` | None | None | Terminal state. No further updates permitted. | No |
 | `FAILED` | None | None | Terminal state in v1. No retries, transitions, or reopen. | No |
 
+### 1A. Merchant hold, release and cancellation (amendment)
+
+An external store (the merchant) needs to stop a delivery while it is still preparing the goods, or
+call it off, without involving a courier. Two statuses are added: `PAUSED` (a hold that can be
+released) and `CANCELLED` (final). They are reachable **only by the owning merchant and only before
+pickup**:
+
+| Source Status | Target Status | Authorized Caller | Preconditions & Validation Rules | Outbox Event Published |
+|---|---|---|---|---|
+| `CREATED` | `PAUSED` | Owning merchant | Parcel `source` is `MERCHANT` and `merchant_id` matches. | Yes (`parcel.status-changed`) |
+| `PAUSED` | `CREATED` | Owning merchant | Resume. The assigned courier, if any, is kept. | Yes (`parcel.status-changed`) |
+| `CREATED` | `CANCELLED` | Owning merchant | As for `PAUSED`. | Yes (`parcel.status-changed`) |
+| `PAUSED` | `CANCELLED` | Owning merchant | As for `PAUSED`. | Yes (`parcel.status-changed`) |
+| `CANCELLED` | None | None | Terminal. No reopen. | No |
+
+Rules that keep the rest of the lifecycle intact:
+
+- The courier transition table of section 1 is **unchanged**. A courier can neither move a parcel
+  into or out of `PAUSED`, nor out of `CANCELLED`; a request for those statuses is a `409`.
+- A `PAUSED` parcel cannot be picked up and cannot be assigned or reassigned (assignment stays
+  `CREATED` only). A courier already assigned stays assigned through a hold.
+- Once a parcel is `PICKED_UP` or later, the merchant cannot hold or cancel it (`409`).
+- A merchant that does not own the parcel, and a parcel that is not a merchant parcel, get `404`, as
+  for couriers (section 7).
+- Each change takes the next sequence number, so a hold, a release and a second hold are three
+  distinct events. The merchant's free-text reason is stored in the status history only, never in the
+  event or webhook (ADR 0004).
+- Dispatchers and administrators do **not** gain a hold or cancel power in this amendment.
+- `CANCELLED` is final: it is excluded from courier workloads and the courier's day list, and it
+  closes live tracking streams. `PAUSED` is not final and still counts toward the assigned courier's
+  workload.
+- The new values are an additive change to the `parcel.status-changed` event (`schemaVersion` stays
+  1). Consumers must tolerate statuses they do not know yet; they are rolled out before the backend
+  can produce them.
+- The database CHECK constraints are widened by a new `delivery` migration. This is one-way in
+  practice: once rows use the new statuses the old constraints cannot be restored without fixing data.
+
 ### 2. Terminal States, Cancellations, and Overrides
 
-- `DELIVERED` and `FAILED` are strictly terminal. Once a parcel reaches either status, no further
-  status transitions, cancellations, or edits can occur.
-- In v1, there is no retry flow after failure, no parcel cancellation by customer or merchant, and
-  no manual status override by dispatchers or administrators.
+- `DELIVERED`, `FAILED` and `CANCELLED` are strictly terminal. Once a parcel reaches any of them, no
+  further status transitions, cancellations, or edits can occur. (`CANCELLED` was added by section 1A.)
+- There is no retry flow after failure, no parcel cancellation by a customer, and no manual status
+  override by dispatchers or administrators. A merchant may hold or cancel its own parcel before
+  pickup only (section 1A).
 - If a delivery attempt fails, the parcel terminates as `FAILED`. Subsequent re-delivery attempts or
   follow-up shipments require creating a new parcel delivery request.
 
@@ -148,8 +189,11 @@ Endpoints in the `delivery` module follow standard RFC 9457 Problem Details erro
 
 - **Allowing `FAILED` from `CREATED`:** Rejected. A parcel that has not yet been picked up cannot
   experience a delivery failure; it must either be reassigned or cancelled.
-- **Allowing customer or merchant cancellations in v1:** Deferred. Adds complex outbox cancellation
-  cascades across dispatch and couriers. Deferred to a post-v1 ADR.
+- **Allowing customer or merchant cancellations in v1:** Originally deferred, because cancelling a
+  parcel already in a courier's hands adds complex cascades across dispatch and couriers. The
+  2026-11-15 amendment (section 1A) allows the **merchant** to hold or cancel **before pickup**, where
+  no courier work has started and no cascade exists. **Customer** cancellation, and cancellation after
+  pickup, remain deferred to a later ADR.
 - **Single atomic multipart delivery endpoint:** Combining proof upload and status transition into a
   single request (`POST /api/v1/parcels/{id}/delivered-with-proof`). Rejected in favor of uniform status
   transition JSON bodies across all lifecycle stages.

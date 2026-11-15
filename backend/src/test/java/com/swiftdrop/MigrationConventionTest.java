@@ -132,17 +132,33 @@ class MigrationConventionTest {
                                 "identity/V202611131100__identity_split_dispatcher_admin_role.sql"),
                         tuple("202611131200", "identity drop courier approvals",
                                 "identity/V202611131200__identity_drop_courier_approvals.sql"),
-                        tuple("202611140901", "merchant ordered inbox",
-                                "merchant/V202611140901__merchant_ordered_inbox.sql"),
-                        tuple("202611140902", "notification ordered inbox",
-                                "notification/V202611140902__notification_ordered_inbox.sql"),
-                        tuple("202611140903", "notification mock messages",
-                                "notification/V202611140903__notification_mock_messages.sql"),
-                        tuple("202611141600", "merchant webhooks",
-                                "merchant/V202611141600__merchant_webhooks.sql"),
-                        tuple("202611142000", "pricing seed sri lanka provinces",
+                        tuple(
+                                "202611142000",
+                                "pricing seed sri lanka provinces",
                                 "pricing/V202611142000__pricing_seed_sri_lanka_provinces.sql"),
-                        tuple("202611142100", "merchant webhook redeliveries",
-                                "merchant/V202611142100__merchant_webhook_redeliveries.sql"));
+                        tuple(
+                                "202611151000",
+                                "delivery add pause cancel statuses",
+                                "delivery/V202611151000__delivery_add_pause_cancel_statuses.sql"),
+                        tuple(
+                                "202611151100",
+                                "delivery mark existing outbox published",
+                                "delivery/V202611151100__delivery_mark_existing_outbox_published.sql"),
+                        tuple(
+                                "202611151110",
+                                "merchant webhook delivery payload",
+                                "merchant/V202611151110__merchant_webhook_delivery_payload.sql"),
+                        tuple(
+                                "202611151200",
+                                "delivery parcel order fingerprint",
+                                "delivery/V202611151200__delivery_parcel_order_fingerprint.sql"),
+                        tuple(
+                                "202611151210",
+                                "merchant api key signing secret",
+                                "merchant/V202611151210__merchant_api_key_signing_secret.sql"),
+                        tuple(
+                                "202611151220",
+                                "merchant webhook manual redeliveries",
+                                "merchant/V202611151220__merchant_webhook_manual_redeliveries.sql"));
     }
 }

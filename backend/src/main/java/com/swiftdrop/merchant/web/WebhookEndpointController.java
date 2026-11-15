@@ -23,7 +23,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.swiftdrop.merchant.application.MerchantApprovalService;
+import com.swiftdrop.merchant.application.MerchantOnboardingService;
 import com.swiftdrop.merchant.application.WebhookEndpointService;
 import com.swiftdrop.merchant.domain.Merchant;
 import com.swiftdrop.merchant.domain.WebhookEndpoint;
@@ -47,11 +47,11 @@ class WebhookEndpointController {
     }
 
     private final WebhookEndpointService webhookService;
-    private final MerchantApprovalService approvalService;
+    private final MerchantOnboardingService onboarding;
 
-    WebhookEndpointController(WebhookEndpointService webhookService, MerchantApprovalService approvalService) {
+    WebhookEndpointController(WebhookEndpointService webhookService, MerchantOnboardingService onboarding) {
         this.webhookService = webhookService;
-        this.approvalService = approvalService;
+        this.onboarding = onboarding;
     }
 
     @GetMapping
@@ -85,7 +85,7 @@ class WebhookEndpointController {
 
     private Merchant getMerchant(Jwt jwt) {
         UUID userId = UUID.fromString(jwt.getSubject());
-        return approvalService.getMerchantByUserId(userId);
+        return onboarding.requireOwnMerchant(userId);
     }
 }
 
