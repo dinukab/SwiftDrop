@@ -30,6 +30,7 @@ Sources were checked on 2026-10-24.
 | Hibernate ORM | 7.4.x | Boot-managed |
 | PostgreSQL JDBC driver | 42.7.x | Boot-managed |
 | Flyway | 12.x: `spring-boot-starter-flyway` + `org.flywaydb:flyway-database-postgresql` | Boot-managed |
+| Apache HttpClient / HttpCore | 5.6.5 / 5.4.4 | Boot-managed; webhook sender only, approved in ADR 0004 |
 | RabbitMQ Java client (`amqp-client`) | 5.x | Boot-managed |
 | springdoc-openapi (`springdoc-openapi-starter-webmvc-ui`) | **3.2.0** | Pinned (not Boot-managed) |
 | JaCoCo (`jacoco-maven-plugin`) | **0.8.12** | Pinned (not Boot-managed; SD-004) |

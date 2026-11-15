@@ -51,3 +51,11 @@ The default build (`.\mvnw.cmd clean verify` or `.\mvnw.cmd test`) executes only
 
 RabbitMQ topology tests use an isolated broker in the integration profile; see
 [Stage 2 messaging setup](../docs/messaging-stage-2.md) for commands and coverage.
+
+Stage 3 adds opt-in outbox publication and durable ordered consumers. See
+[Stage 3 processing and recovery](../docs/messaging-stage-3.md) for activation, tests and
+the merchant inbox. [Stage 4 secure webhooks](../docs/messaging-stage-4.md) adds the
+webhook-job adapter, merchant APIs, encryption, signing and secure HTTP delivery.
+
+[Stage 5 retries and demo](../docs/messaging-stage-5.md) documents configurable retries,
+audited manual redelivery, receiver tests, and the pending merged-migration blocker.

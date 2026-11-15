@@ -159,7 +159,7 @@ class DatabaseMigrationIT {
                 .containsEntry("script", "identity/V202611131200__identity_drop_courier_approvals.sql")
                 .containsEntry("success", true);
 
-        assertThat(rows.get(16))
+        assertThat(rows.get(20))
                 .containsEntry("version", "202611142000")
                 .containsEntry("description", "pricing seed sri lanka provinces")
                 .containsEntry("type", "SQL")

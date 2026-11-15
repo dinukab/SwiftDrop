@@ -61,6 +61,7 @@ import static org.mockito.Mockito.when;
 @AutoConfigureMockMvc
 class MerchantAuthorizationTest {
 
+
     private static final UUID ADMIN_ID = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
     private static final UUID CUSTOMER_ID = UUID.fromString("cccccccc-cccc-cccc-cccc-cccccccccccc");
     private static final UUID COURIER_ID = UUID.fromString("dddddddd-dddd-dddd-dddd-dddddddddddd");
