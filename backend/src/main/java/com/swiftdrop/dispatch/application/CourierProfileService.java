@@ -1,6 +1,7 @@
 package com.swiftdrop.dispatch.application;
 
 import java.time.Clock;
+import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;

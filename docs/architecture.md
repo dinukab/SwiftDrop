@@ -91,7 +91,7 @@ The frontend and backend share no code. They communicate only over HTTP.
 | `identity` | Signup and login, Google login, JWT, roles, user management | users, roles, user–role links, external identity links |
 | `pricing` | Fee calculation, zones, pricing configuration | zones, pricing rules |
 | `delivery` | Parcels (main aggregate and entity: `Parcel`), status lifecycle and history, current courier assignment, notes, proof, failure reasons, receipts, tracking-number lookup, the two required reports, workload counts | parcels, status history, proof records |
-| `dispatch` | Courier profiles; assignment workflow and courier eligibility; workload view | couriers |
+| `dispatch` | Courier profiles; assignment workflow and courier eligibility; workload view. **Implemented:** profile API, unassigned parcels, assignment, workloads (assignment history waits for the delivery-side history contract) | couriers |
 | `merchant` | Registration and approval, API credentials, order intake, dashboard queries, webhook delivery and retries | merchants, API credentials, webhook endpoints, webhook delivery records |
 | `notification` | Notifications triggered by status events | notification messages |
 | `tracking` | Live SSE connections; no history of its own | nothing persistent |
