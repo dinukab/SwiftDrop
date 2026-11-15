@@ -5,7 +5,6 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.UUID;
-import java.util.concurrent.ThreadLocalRandom;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -19,9 +18,16 @@ public final class WebhookWorker {
     private final WebhookHttpSender sender;
     private final Clock clock;
     private final MeterRegistry meters;
+    private final WebhookRetryPolicy policy;
 
     public WebhookWorker(JdbcTemplate jdbc, TransactionTemplate transactions, WebhookSecrets secrets,
             WebhookHttpSender sender, Clock clock, MeterRegistry meters) {
+        this(jdbc, transactions, secrets, sender, clock, meters, WebhookRetryPolicy.defaults());
+    }
+
+    public WebhookWorker(JdbcTemplate jdbc, TransactionTemplate transactions, WebhookSecrets secrets,
+            WebhookHttpSender sender, Clock clock, MeterRegistry meters, WebhookRetryPolicy policy) {
+        this.policy = policy;
         this.jdbc = jdbc;
         this.transactions = transactions;
         this.secrets = secrets;
@@ -48,7 +54,7 @@ public final class WebhookWorker {
     Job claim() {
         return transactions.execute(tx -> {
             var rows = jdbc.query("""
-                    SELECT d.id,d.event_id,d.payload,d.attempts,e.id AS endpoint_id,e.url,
+                    SELECT d.id,d.event_id,d.payload,d.attempts,d.series_attempts,e.id AS endpoint_id,e.url,
                            e.key_id,e.nonce,e.ciphertext,e.active,m.status AS merchant_status
                     FROM merchant_webhook_deliveries d
                     JOIN merchant_webhook_endpoints e ON e.id=d.endpoint_id
@@ -59,7 +65,7 @@ public final class WebhookWorker {
                             rs.getString("payload"), rs.getInt("attempts"), rs.getObject("endpoint_id", UUID.class),
                             rs.getString("url"), new WebhookSecrets.Encrypted(rs.getString("key_id"),
                                     rs.getBytes("nonce"), rs.getBytes("ciphertext")),
-                            rs.getBoolean("active") && "APPROVED".equals(rs.getString("merchant_status")), UUID.randomUUID()),
+                            rs.getBoolean("active") && "APPROVED".equals(rs.getString("merchant_status")), UUID.randomUUID(), rs.getInt("series_attempts")),
                     Timestamp.from(clock.instant()));
             if (rows.isEmpty()) return null;
             Job job = rows.getFirst();
@@ -72,8 +78,8 @@ public final class WebhookWorker {
     }
 
     void send(Job job) {
-        if (!job.active() || job.attempts() >= 8) {
-            jdbc.update("UPDATE merchant_webhook_deliveries SET state='FAILED',lease_token=NULL WHERE id=? AND lease_token=?",
+        if (!job.active() || job.seriesAttempts() >= policy.maxAttempts()) {
+            jdbc.update("UPDATE merchant_webhook_deliveries SET state='FAILED',status='FAILED',lease_token=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=? AND lease_token=?",
                     job.id(), job.token());
             return;
         }
@@ -94,8 +100,8 @@ public final class WebhookWorker {
             Instant started = clock.instant();
             Boolean reserved = transactions.execute(tx -> {
                 int updated = jdbc.update("""
-                        UPDATE merchant_webhook_deliveries SET attempts=? WHERE id=? AND lease_token=?
-                        """, attempt, job.id(), job.token());
+                        UPDATE merchant_webhook_deliveries SET attempts=?,attempt_count=?,series_attempts=series_attempts+1 WHERE id=? AND lease_token=?
+                        """, attempt, attempt, job.id(), job.token());
                 if (updated == 0) return false;
                 // A crash leaves an explicit uncertain attempt; the lease permits a bounded retry.
                 jdbc.update("""
@@ -108,14 +114,15 @@ public final class WebhookWorker {
             long nano = System.nanoTime();
             var result = sender.send(job.url(), job.eventId(), job.payload(), secret);
             long duration = (System.nanoTime() - nano) / 1_000_000;
-            boolean retry = result.retryable() && attempt < 8;
-            Instant next = retry ? clock.instant().plusSeconds(delay(attempt, result.retryAfterSeconds())) : null;
+            boolean retry = result.retryable() && job.seriesAttempts() + 1 < policy.maxAttempts();
+            Instant next = retry ? clock.instant().plusSeconds(policy.delay(job.seriesAttempts() + 1, result.retryAfterSeconds())) : null;
             transactions.executeWithoutResult(tx -> {
                 int updated = jdbc.update("""
-                        UPDATE merchant_webhook_deliveries SET state=?,lease_token=NULL,next_attempt_at=?
+                        UPDATE merchant_webhook_deliveries SET state=?,status=?,lease_token=NULL,next_attempt_at=?,last_http_status=?,last_attempt_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP
                         WHERE id=? AND lease_token=?
                         """, result.outcome().equals("SUCCESS") ? "SUCCEEDED" : retry ? "PENDING" : "FAILED",
-                        Timestamp.from(next == null ? clock.instant() : next), job.id(), job.token());
+                        result.outcome().equals("SUCCESS") ? "SUCCESS" : retry ? "PENDING" : "FAILED",
+                        Timestamp.from(next == null ? clock.instant() : next), result.status(), job.id(), job.token());
                 if (updated == 0) return; // A newer lease owns the record.
                 jdbc.update("""
                         UPDATE merchant_webhook_attempts SET outcome=?,http_status=?,duration_ms=?,next_attempt_at=?
@@ -128,12 +135,15 @@ public final class WebhookWorker {
     }
 
     static long delay(int attempt, long retryAfter) {
-        long jittered = Math.round(30 * (1L << Math.min(attempt - 1, 7)) * ThreadLocalRandom.current().nextDouble(.8, 1.2));
-        return Math.min(3600, Math.max(jittered, retryAfter));
+        return WebhookRetryPolicy.defaults().delay(attempt, retryAfter);
     }
 
     record Job(UUID id, UUID eventId, String payload, int attempts, UUID endpointId, String url,
-            WebhookSecrets.Encrypted encrypted, boolean active, UUID token) {
+            WebhookSecrets.Encrypted encrypted, boolean active, UUID token, int seriesAttempts) {
+        Job(UUID id, UUID eventId, String payload, int attempts, UUID endpointId, String url,
+                WebhookSecrets.Encrypted encrypted, boolean active, UUID token) {
+            this(id, eventId, payload, attempts, endpointId, url, encrypted, active, token, attempts);
+        }
         @Override public String toString() { return "Job[id=" + id + "]"; }
     }
 }

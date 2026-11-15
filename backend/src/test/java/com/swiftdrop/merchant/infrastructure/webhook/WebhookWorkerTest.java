@@ -52,7 +52,7 @@ class WebhookWorkerTest {
 
     @Test void staleLeaseCannotSendOrRecordAnAttempt() {
         var job = job(0, true);
-        when(jdbc.update(contains("SET attempts=?"), any(), any(), any())).thenReturn(0);
+        when(jdbc.update(contains("SET attempts=?"), any(), any(), any(), any())).thenReturn(0);
         worker.send(job);
         verifyNoInteractions(sender);
         verify(jdbc, never()).update(contains("INSERT INTO merchant_webhook_attempts"), any(), any(), any(), any());
@@ -60,12 +60,12 @@ class WebhookWorkerTest {
 
     @Test void successRecordsBoundedMetadataAndPreservesOriginalPayload() {
         var job = job(0, true);
-        when(jdbc.update(contains("SET attempts=?"), any(), any(), any())).thenReturn(1);
-        when(jdbc.update(contains("SET state=?"), any(), any(), any(), any())).thenReturn(1);
+        when(jdbc.update(contains("SET attempts=?"), any(), any(), any(), any())).thenReturn(1);
+        when(jdbc.update(contains("SET state=?"), any(), any(), any(), any(), any(), any())).thenReturn(1);
         when(sender.send(eq(job.url()), eq(job.eventId()), eq("{}"), any())).thenReturn(
                 new WebhookHttpSender.Result("SUCCESS", 204, false, 0));
         worker.send(job);
-        verify(jdbc).update(contains("SET state=?"), eq("SUCCEEDED"), any(), eq(job.id()), eq(job.token()));
+        verify(jdbc).update(contains("SET state=?"), eq("SUCCEEDED"), eq("SUCCESS"), any(), eq(204), eq(job.id()), eq(job.token()));
         verify(jdbc).update(contains("SET outcome=?"), eq("SUCCESS"), eq(204), anyLong(), isNull(), eq(job.id()), eq(1));
     }
 

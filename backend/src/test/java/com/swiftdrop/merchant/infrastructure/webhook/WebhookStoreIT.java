@@ -38,14 +38,63 @@ class WebhookStoreIT {
     }
 
     @BeforeEach void setup() {
+        jdbc.update("DELETE FROM merchant_webhook_redeliveries");
         jdbc.update("DELETE FROM merchant_webhook_attempts");
         jdbc.update("DELETE FROM merchant_webhook_deliveries");
         jdbc.update("DELETE FROM merchant_webhook_endpoints");
         jdbc.update("DELETE FROM merchants");
         user = UUID.randomUUID(); merchant = UUID.randomUUID();
-        jdbc.update("INSERT INTO merchants(id,user_id,business_name,status) VALUES (?,?,'Test merchant','APPROVED')", merchant, user);
+        createMerchant(merchant, user);
         secrets = new WebhookSecrets("test", "test:" + Base64.getEncoder().encodeToString(new byte[32]));
         store = new WebhookStore(jdbc, tx, secrets, new WebhookDestination(true, Set.of()));
+    }
+
+    private void createMerchant(UUID merchantId, UUID userId) {
+        jdbc.update("INSERT INTO users(id,email,full_name,created_at) VALUES (?,?,'Test merchant',now())",
+                userId, userId + "@example.test");
+        jdbc.update("""
+                INSERT INTO merchants(id,user_id,business_name,registration_number,contact_email,contact_phone,
+                                      status,created_at,updated_at)
+                VALUES (?,?,'Test merchant',?,?,'0000000000','APPROVED',now(),now())
+                """, merchantId, userId, merchantId.toString(), userId + "@example.test");
+    }
+
+    @Test void manualRedeliveryKeepsAttemptHistoryAuditsActorAndStopsAtCap() {
+        UUID id = job();
+        var sender = mock(WebhookHttpSender.class);
+        when(sender.send(anyString(), any(), anyString(), any())).thenReturn(
+                new WebhookHttpSender.Result("HTTP_ERROR", 400, false, 0));
+        var worker = worker(sender);
+        worker.poll();
+        for (int number = 1; number <= 3; number++) {
+            store.redeliver(user, false, id);
+            assertThatThrownBy(() -> store.redeliver(user, false, id)).isInstanceOf(ResponseStatusException.class);
+            worker.poll();
+        }
+        assertThat(store.attempts(user, false, id)).extracting(WebhookStore.Attempt::attempt).containsExactly(1,2,3,4);
+        assertThat(jdbc.queryForList("SELECT requested_by FROM merchant_webhook_redeliveries ORDER BY redelivery_number",
+                UUID.class)).containsExactly(user, user, user);
+        assertThatThrownBy(() -> store.redeliver(user, false, id)).isInstanceOf(ResponseStatusException.class);
+        verify(sender, times(4)).send(anyString(), any(), anyString(), any());
+    }
+
+    @Test void concurrentManualRequestsCannotStartTwoSeries() throws Exception {
+        UUID id = job();
+        jdbc.update("UPDATE merchant_webhook_deliveries SET state='FAILED' WHERE id=?", id);
+        try (var threads = java.util.concurrent.Executors.newFixedThreadPool(2)) {
+            var start = new java.util.concurrent.CountDownLatch(1);
+            java.util.concurrent.Callable<Boolean> request = () -> {
+                start.await();
+                try { store.redeliver(user, false, id); return true; }
+                catch (ResponseStatusException ex) { assertThat(ex.getStatusCode().value()).isEqualTo(409); return false; }
+            };
+            var first = threads.submit(request);
+            var second = threads.submit(request);
+            start.countDown();
+            assertThat(java.util.List.of(first.get(10, java.util.concurrent.TimeUnit.SECONDS),
+                    second.get(10, java.util.concurrent.TimeUnit.SECONDS))).containsExactlyInAnyOrder(true, false);
+        }
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM merchant_webhook_redeliveries", Integer.class)).isOne();
     }
 
     ParcelStatusChanged event() {
@@ -68,7 +117,7 @@ class WebhookStoreIT {
         var disabled = store.create(user, "http://localhost:9998/hook");
         store.disable(user, disabled.id(), false);
         UUID other = UUID.randomUUID();
-        jdbc.update("INSERT INTO merchants(id,user_id,business_name,status) VALUES (?,?,'Other','APPROVED')", UUID.randomUUID(), other);
+        createMerchant(UUID.randomUUID(), other);
         store.create(other, "http://localhost:9997/hook");
         var event = event();
         tx.executeWithoutResult(t -> { store.createDeliveries(event); store.createDeliveries(event); });
@@ -86,7 +135,7 @@ class WebhookStoreIT {
     @Test void onlyApprovedMerchantsRegisterAndNoSecretsAreReturnedInLists() {
         store.create(user, "http://localhost:9999");
         assertThat(store.endpoints(user)).hasSize(1);
-        jdbc.update("UPDATE merchants SET status='PENDING' WHERE id=?", merchant);
+        jdbc.update("UPDATE merchants SET status='PENDING_APPROVAL' WHERE id=?", merchant);
         assertThatThrownBy(() -> store.create(user, "http://localhost:9999"))
                 .isInstanceOfSatisfying(ResponseStatusException.class, e -> assertThat(e.getStatusCode().value()).isEqualTo(403));
     }

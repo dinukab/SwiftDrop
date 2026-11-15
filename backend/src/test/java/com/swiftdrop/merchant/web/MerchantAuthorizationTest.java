@@ -60,8 +60,6 @@ import static org.mockito.Mockito.when;
         "swiftdrop.security.google.client-id="})
 @AutoConfigureMockMvc
 class MerchantAuthorizationTest {
-    @MockitoBean
-    private com.swiftdrop.dispatch.domain.CourierProfileRepository courierProfiles;
 
 
     private static final UUID ADMIN_ID = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");

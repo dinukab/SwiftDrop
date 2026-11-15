@@ -58,3 +58,6 @@ desktop.ini
 
 # Temporary/leftover nested folder
 SwiftDrop-main/
+
+# Local webhook demo event state (no credentials).
+.local/webhook-demo/

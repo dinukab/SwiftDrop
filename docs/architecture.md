@@ -413,3 +413,11 @@ whether springdoc and Actuator details are exposed outside local development.
 - [AI agent guidelines](ai-agent-guidelines.md) and [AGENTS.md](../AGENTS.md)
 - [Contributing and task workflow](../CONTRIBUTING.md)
 - [Development setup](development-setup.md)
+
+## Stage 5 integration status
+
+The webhook sender now has configurable bounded retries and audited manual redelivery, and a
+local signed receiver demo with persistent deduplication. See [Stage 5](messaging-stage-5.md).
+The Stage 4 migration now extends the earlier webhook tables and quarantines legacy rows.
+The secure endpoint API is required when sending is enabled. Database integration remains
+unverified in this workspace because Docker is unavailable.

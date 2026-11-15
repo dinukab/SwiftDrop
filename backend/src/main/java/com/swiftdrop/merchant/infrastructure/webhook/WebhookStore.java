@@ -17,11 +17,18 @@ public final class WebhookStore implements MerchantWebhookEffect {
     private final JdbcTemplate jdbc;
     private final TransactionTemplate transactions;
     private final WebhookSecrets secrets;
+    private final WebhookRetryPolicy policy;
     private final WebhookDestination destination;
     private final JsonMapper mapper = JsonMapper.builder().disable(DateTimeFeature.WRITE_DATES_AS_TIMESTAMPS).build();
 
     public WebhookStore(JdbcTemplate jdbc, TransactionTemplate transactions,
             WebhookSecrets secrets, WebhookDestination destination) {
+        this(jdbc, transactions, secrets, destination, WebhookRetryPolicy.defaults());
+    }
+
+    public WebhookStore(JdbcTemplate jdbc, TransactionTemplate transactions,
+            WebhookSecrets secrets, WebhookDestination destination, WebhookRetryPolicy policy) {
+        this.policy = policy;
         this.jdbc = jdbc;
         this.transactions = transactions;
         this.secrets = secrets;
@@ -43,8 +50,8 @@ public final class WebhookStore implements MerchantWebhookEffect {
             try {
                 var encrypted = secrets.encrypt(id, secret);
                 jdbc.update("""
-                        INSERT INTO merchant_webhook_endpoints(id,merchant_id,url,key_id,nonce,ciphertext)
-                        VALUES (?,?,?,?,?,?)
+                        INSERT INTO merchant_webhook_endpoints(id,merchant_id,url,key_id,nonce,ciphertext,active,is_active)
+                        VALUES (?,?,?,?,?,?,true,true)
                         """, id, merchant, url, encrypted.keyId(), encrypted.nonce(), encrypted.ciphertext());
                 return new Created(id, url, java.util.Base64.getEncoder().encodeToString(secret));
             } finally { java.util.Arrays.fill(secret, (byte) 0); }
@@ -58,8 +65,8 @@ public final class WebhookStore implements MerchantWebhookEffect {
 
     public void disable(UUID userId, UUID endpoint, boolean admin) {
         int count = admin
-                ? jdbc.update("UPDATE merchant_webhook_endpoints SET active=false WHERE id=?", endpoint)
-                : jdbc.update("UPDATE merchant_webhook_endpoints SET active=false WHERE id=? AND merchant_id=?", endpoint, owner(userId));
+                ? jdbc.update("UPDATE merchant_webhook_endpoints SET active=false,is_active=false,updated_at=CURRENT_TIMESTAMP WHERE id=?", endpoint)
+                : jdbc.update("UPDATE merchant_webhook_endpoints SET active=false,is_active=false,updated_at=CURRENT_TIMESTAMP WHERE id=? AND merchant_id=?", endpoint, owner(userId));
         if (count == 0) throw new ResponseStatusException(HttpStatus.NOT_FOUND);
     }
 
@@ -90,6 +97,44 @@ public final class WebhookStore implements MerchantWebhookEffect {
                         rs.getTimestamp(6) == null ? null : rs.getTimestamp(6).toInstant()), delivery);
     }
 
+    /** Lock the delivery and endpoint so duplicate requests cannot start concurrent series. */
+    public void redeliver(UUID userId, boolean admin, UUID delivery) {
+        UUID merchant = admin ? null : owner(userId);
+        transactions.executeWithoutResult(tx -> {
+            String scope = admin ? "" : " AND e.merchant_id=?";
+            Object[] args = admin ? new Object[] {delivery} : new Object[] {delivery, merchant};
+            var rows = jdbc.query("""
+                    SELECT d.state,d.attempts,d.redelivery_count,e.active,m.status AS merchant_status
+                    FROM merchant_webhook_deliveries d
+                    JOIN merchant_webhook_endpoints e ON e.id=d.endpoint_id
+                    JOIN merchants m ON m.id=e.merchant_id
+                    WHERE d.id=?
+                    """ + scope + " FOR UPDATE OF d,e,m",
+                    (rs, n) -> new RedeliveryState(rs.getString("state"), rs.getInt("attempts"),
+                            rs.getInt("redelivery_count"), rs.getBoolean("active"),
+                            rs.getString("merchant_status")), args);
+            if (rows.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+            var row = rows.getFirst();
+            if (!row.state().equals("FAILED") || !row.active() || !row.merchantStatus().equals("APPROVED")
+                    || row.count() >= policy.maxRedeliveries()) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Delivery is not eligible for redelivery");
+            }
+            jdbc.update("""
+                    INSERT INTO merchant_webhook_redeliveries
+                        (delivery_id,redelivery_number,requested_by,requested_role,requested_at,first_attempt)
+                    VALUES (?,?,?,?,CURRENT_TIMESTAMP,?)
+                    """, delivery, row.count() + 1, userId, admin ? "ADMIN" : "MERCHANT", row.attempts() + 1);
+            jdbc.update("""
+                    UPDATE merchant_webhook_deliveries
+                    SET state='PENDING',status='PENDING',series_attempts=0,redelivery_count=redelivery_count+1,
+                        next_attempt_at=CURRENT_TIMESTAMP,lease_token=NULL
+                    WHERE id=?
+                    """, delivery);
+        });
+    }
+
+    private record RedeliveryState(String state, int attempts, int count, boolean active, String merchantStatus) {}
+
     private UUID owner(UUID userId) {
         var ids = jdbc.queryForList("SELECT id FROM merchants WHERE user_id=?", UUID.class, userId);
         if (ids.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND);
@@ -103,11 +148,11 @@ public final class WebhookStore implements MerchantWebhookEffect {
         }
         String payload = mapper.writeValueAsString(event);
         jdbc.update("""
-                INSERT INTO merchant_webhook_deliveries(id,endpoint_id,event_id,payload)
-                SELECT gen_random_uuid(),id,?,? FROM merchant_webhook_endpoints
+                INSERT INTO merchant_webhook_deliveries(id,endpoint_id,merchant_id,parcel_id,event_id,payload)
+                SELECT gen_random_uuid(),id,?,?,?,? FROM merchant_webhook_endpoints
                 WHERE merchant_id=? AND active=true
                 ON CONFLICT (event_id,endpoint_id) DO NOTHING
-                """, event.eventId(), payload, event.data().ownerMerchantId());
+                """, event.data().ownerMerchantId(), event.data().parcelId(), event.eventId(), payload, event.data().ownerMerchantId());
         return true;
     }
 

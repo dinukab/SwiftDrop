@@ -32,7 +32,7 @@ class WebhookAuthorizationTest {
 
     @Test void anonymousIsUnauthorizedAndOtherRolesCannotManageWebhooks() throws Exception {
         mvc.perform(get("/api/v1/webhook-deliveries")).andExpect(status().isUnauthorized());
-        for (String role : List.of("CUSTOMER", "COURIER")) {
+        for (String role : List.of("CUSTOMER", "COURIER", "DISPATCHER")) {
             mvc.perform(get("/api/v1/webhook-deliveries").with(jwt().authorities(new SimpleGrantedAuthority("ROLE_" + role))))
                     .andExpect(status().isForbidden());
             mvc.perform(post("/api/v1/merchants/me/webhook-endpoints")
@@ -60,13 +60,30 @@ class WebhookAuthorizationTest {
 
     @Test void adminCanViewAndDisableButCannotCreateMerchantEndpoint() throws Exception {
         UUID id = UUID.randomUUID();
-        var principal = jwt().jwt(j -> j.subject(user.toString())).authorities(new SimpleGrantedAuthority("ROLE_DISPATCHER_ADMIN"));
+        var principal = jwt().jwt(j -> j.subject(user.toString())).authorities(new SimpleGrantedAuthority("ROLE_ADMIN"));
         mvc.perform(get("/api/v1/webhook-deliveries").with(principal)).andExpect(status().isOk());
         verify(store).deliveries(user, true, 0);
         mvc.perform(delete("/api/v1/webhook-endpoints/" + id).with(principal)).andExpect(status().isNoContent());
         verify(store).disable(user, id, true);
         mvc.perform(post("/api/v1/merchants/me/webhook-endpoints").with(principal)
                 .contentType("application/json").content("{\"url\":\"https://example.com\"}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test void redeliveryUsesAuthenticatedOwnerAndAdminRole() throws Exception {
+        UUID delivery = UUID.randomUUID();
+        mvc.perform(post("/api/v1/webhook-deliveries/" + delivery + "/redeliveries")
+                .with(jwt().jwt(j -> j.subject(user.toString()))
+                        .authorities(new SimpleGrantedAuthority("ROLE_MERCHANT"))))
+                .andExpect(status().isAccepted());
+        verify(store).redeliver(user, false, delivery);
+        mvc.perform(post("/api/v1/webhook-deliveries/" + delivery + "/redeliveries")
+                .with(jwt().jwt(j -> j.subject(user.toString()))
+                        .authorities(new SimpleGrantedAuthority("ROLE_ADMIN"))))
+                .andExpect(status().isAccepted());
+        verify(store).redeliver(user, true, delivery);
+        mvc.perform(post("/api/v1/webhook-deliveries/" + delivery + "/redeliveries")
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_CUSTOMER"))))
                 .andExpect(status().isForbidden());
     }
 

@@ -36,27 +36,34 @@ class WebhookController {
     }
 
     @DeleteMapping("/webhook-endpoints/{id}")
-    @PreAuthorize("hasAnyRole('MERCHANT','DISPATCHER_ADMIN')")
+    @PreAuthorize("hasAnyRole('MERCHANT','ADMIN')")
     ResponseEntity<Void> disable(@AuthenticationPrincipal Jwt jwt, Authentication authentication, @PathVariable UUID id) {
         store.disable(UUID.fromString(jwt.getSubject()), id, admin(authentication));
         return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/webhook-deliveries")
-    @PreAuthorize("hasAnyRole('MERCHANT','DISPATCHER_ADMIN')")
+    @PreAuthorize("hasAnyRole('MERCHANT','ADMIN')")
     List<WebhookStore.Delivery> deliveries(@AuthenticationPrincipal Jwt jwt, Authentication authentication,
             @RequestParam(defaultValue = "0") int page) {
         return store.deliveries(UUID.fromString(jwt.getSubject()), admin(authentication), Math.max(0, page));
     }
 
     @GetMapping("/webhook-deliveries/{id}/attempts")
-    @PreAuthorize("hasAnyRole('MERCHANT','DISPATCHER_ADMIN')")
+    @PreAuthorize("hasAnyRole('MERCHANT','ADMIN')")
     List<WebhookStore.Attempt> attempts(@AuthenticationPrincipal Jwt jwt, Authentication authentication, @PathVariable UUID id) {
         return store.attempts(UUID.fromString(jwt.getSubject()), admin(authentication), id);
     }
 
+    @PostMapping("/webhook-deliveries/{id}/redeliveries")
+    @PreAuthorize("hasAnyRole('MERCHANT','ADMIN')")
+    ResponseEntity<Void> redeliver(@AuthenticationPrincipal Jwt jwt, Authentication authentication, @PathVariable UUID id) {
+        store.redeliver(UUID.fromString(jwt.getSubject()), admin(authentication), id);
+        return ResponseEntity.accepted().build();
+    }
+
     private static boolean admin(Authentication authentication) {
-        return authentication.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_DISPATCHER_ADMIN"));
+        return authentication.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
     }
 
     record EndpointRequest(@NotBlank @Size(max = 2048) String url) {

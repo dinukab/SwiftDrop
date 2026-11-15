@@ -18,6 +18,14 @@ import org.springframework.transaction.support.TransactionTemplate;
 @EnableScheduling
 @ConditionalOnProperty(name = "swiftdrop.webhooks.enabled", havingValue = "true")
 class WebhookConfiguration {
+    @Bean WebhookRetryPolicy webhookRetryPolicy(
+            @Value("${swiftdrop.webhooks.max-attempts:8}") int attempts,
+            @Value("${swiftdrop.webhooks.retry-base-seconds:30}") int base,
+            @Value("${swiftdrop.webhooks.retry-cap-seconds:3600}") int cap,
+            @Value("${swiftdrop.webhooks.max-redeliveries:3}") int redeliveries) {
+        return new WebhookRetryPolicy(attempts, base, cap, redeliveries);
+    }
+
     @Bean WebhookSecrets webhookSecrets(
             @Value("${swiftdrop.webhooks.active-key-id:}") String active,
             @Value("${swiftdrop.webhooks.keys:}") String keys) {
@@ -34,8 +42,8 @@ class WebhookConfiguration {
     }
 
     @Bean WebhookStore webhookStore(JdbcTemplate jdbc, PlatformTransactionManager manager,
-            WebhookSecrets secrets, WebhookDestination destination) {
-        return new WebhookStore(jdbc, new TransactionTemplate(manager), secrets, destination);
+            WebhookSecrets secrets, WebhookDestination destination, WebhookRetryPolicy policy) {
+        return new WebhookStore(jdbc, new TransactionTemplate(manager), secrets, destination, policy);
     }
 
     @Bean WebhookHttpSender webhookHttpSender(WebhookDestination destination) {
@@ -43,7 +51,7 @@ class WebhookConfiguration {
     }
 
     @Bean WebhookWorker webhookWorker(JdbcTemplate jdbc, PlatformTransactionManager manager,
-            WebhookSecrets secrets, WebhookHttpSender sender, MeterRegistry meters) {
-        return new WebhookWorker(jdbc, new TransactionTemplate(manager), secrets, sender, Clock.systemUTC(), meters);
+            WebhookSecrets secrets, WebhookHttpSender sender, MeterRegistry meters, WebhookRetryPolicy policy) {
+        return new WebhookWorker(jdbc, new TransactionTemplate(manager), secrets, sender, Clock.systemUTC(), meters, policy);
     }
 }
