@@ -62,7 +62,8 @@ class RabbitMessagingIT {
         withBroker((template, admin) -> {
             Message original = sampleMessage();
             publish(template, original, "parcel.status-changed");
-            for (String queue : List.of(MERCHANT, NOTIFICATION)) {
+            // Notification is unbound from swiftdrop.events until it has a consumer, so only MERCHANT gets it
+            for (String queue : List.of(MERCHANT)) {
                 Message received = template.receive(queue, 5000);
                 assertThat(received).isNotNull();
                 assertThat(received.getBody()).isEqualTo(original.getBody());
@@ -99,7 +100,7 @@ class RabbitMessagingIT {
             assertThat(deadLetter.getMessageProperties().getHeaders()).containsKey("x-death");
             assertThat(deadLetter.getMessageProperties().getHeaders().get("x-first-death-queue").toString())
                     .isEqualTo(MERCHANT);
-            assertThat(template.receive(NOTIFICATION, 5000)).isNotNull();
+            assertThat(template.receive(NOTIFICATION, 5000)).isNull();
             assertThat(template.receive(NOTIFICATION + ".dlq")).isNull();
         });
     }

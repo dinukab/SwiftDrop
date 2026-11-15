@@ -2,6 +2,7 @@ package com.swiftdrop.merchant.application;
 
 import java.security.SecureRandom;
 import java.time.Instant;
+import java.util.Base64;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Objects;
@@ -20,6 +21,9 @@ import com.swiftdrop.merchant.domain.MerchantRepository;
 
 /**
  * Manages the lifecycle and authentication of merchant API keys (MER-2).
+ *
+ * <p>Each key has a signing secret (Phase 5) that the store uses to sign its requests. The secret is
+ * encrypted with the webhook keyring, because the server needs the plain secret to check a signature.
  */
 @Service
 @Lazy
@@ -28,22 +32,30 @@ public class MerchantApiKeyService {
     public static final String KEY_PREFIX_HEADER = "sd_live_";
     public static final int MAX_ACTIVE_KEYS = 10;
     private static final int RANDOM_BYTES_COUNT = 24;
+    private static final int SIGNING_SECRET_BYTES = 32;
 
     private final MerchantApiKeyRepository apiKeyRepository;
     private final MerchantRepository merchantRepository;
     private final PasswordEncoder passwordEncoder;
+    private final WebhookSecretCipher cipher;
     private final SecureRandom secureRandom = new SecureRandom();
 
     public MerchantApiKeyService(
             MerchantApiKeyRepository apiKeyRepository,
             MerchantRepository merchantRepository,
-            PasswordEncoder passwordEncoder
+            PasswordEncoder passwordEncoder,
+            WebhookSecretCipher cipher
     ) {
         this.apiKeyRepository = apiKeyRepository;
         this.merchantRepository = merchantRepository;
         this.passwordEncoder = passwordEncoder;
+        this.cipher = cipher;
     }
 
+    /**
+     * Creates a key. When encryption is configured, the key also gets a signing secret, returned once.
+     * Without encryption the key has no signing secret and can be used without request signatures only.
+     */
     @Transactional
     public GeneratedApiKey generateKey(UUID merchantId, String label) {
         Objects.requireNonNull(merchantId, "merchantId");
@@ -68,14 +80,36 @@ public class MerchantApiKeyService {
         String prefix = hexSuffix.substring(0, 8);
         String hash = passwordEncoder.encode(rawKey);
 
+        String signingSecret = null;
         MerchantApiKey apiKey = new MerchantApiKey(merchantId, prefix, hash, label.trim());
+        if (cipher.isConfigured()) {
+            byte[] secret = new byte[SIGNING_SECRET_BYTES];
+            secureRandom.nextBytes(secret);
+            signingSecret = Base64.getUrlEncoder().withoutPadding().encodeToString(secret);
+            apiKey.attachSigningSecret(cipher.encrypt(signingSecret, merchantId));
+        }
         MerchantApiKey saved = apiKeyRepository.save(apiKey);
 
-        return new GeneratedApiKey(saved.getId(), saved.getLabel(), saved.getKeyPrefix(), rawKey, saved.getCreatedAt());
+        return new GeneratedApiKey(saved.getId(), saved.getLabel(), saved.getKeyPrefix(), rawKey, signingSecret,
+                saved.getCreatedAt());
     }
 
+    /** A key that passed authentication, with its signing secret when it has one. */
+    public record Authentication(UUID merchantId, String signingSecret) {
+
+        /** Never prints the secret. */
+        @Override
+        public String toString() {
+            return "Authentication[merchantId=" + merchantId + ", signed=" + (signingSecret != null) + "]";
+        }
+    }
+
+    /**
+     * Checks a raw key and returns the merchant and the key's signing secret (null for an old key).
+     * Empty if the key is unknown, revoked, wrong, or its merchant is no longer approved.
+     */
     @Transactional
-    public Optional<UUID> verifyKey(String rawKey) {
+    public Optional<Authentication> authenticate(String rawKey) {
         if (rawKey == null || !rawKey.startsWith(KEY_PREFIX_HEADER)
                 || rawKey.length() < KEY_PREFIX_HEADER.length() + 8) {
             return Optional.empty();
@@ -106,7 +140,15 @@ public class MerchantApiKeyService {
         apiKey.recordUsed(Instant.now());
         apiKeyRepository.save(apiKey);
 
-        return Optional.of(apiKey.getMerchantId());
+        String signingSecret = apiKey.getSigningSecretEncrypted() == null
+                ? null
+                : cipher.decrypt(apiKey.getSigningSecretEncrypted(), apiKey.getMerchantId());
+        return Optional.of(new Authentication(apiKey.getMerchantId(), signingSecret));
+    }
+
+    @Transactional
+    public Optional<UUID> verifyKey(String rawKey) {
+        return authenticate(rawKey).map(Authentication::merchantId);
     }
 
     @Transactional
@@ -127,4 +169,3 @@ public class MerchantApiKeyService {
         return apiKeyRepository.findByMerchantIdAndActiveTrue(merchantId);
     }
 }
-

@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import java.time.Instant;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -19,10 +18,10 @@ import com.swiftdrop.dispatch.domain.VehicleType;
 import com.swiftdrop.identity.api.UserDirectory;
 import com.swiftdrop.identity.api.UserSummary;
 
+/** Contract §5.4: enabled, COURIER role, and an active profile. Each rule on its own. */
 class CourierEligibilityTest {
 
-    private static final UUID USER_ID = UUID.fromString("00000000-0000-0000-0000-0000000000d1");
-    private static final Instant NOW = Instant.parse("2026-11-14T10:00:00Z");
+    private static final UUID COURIER = UUID.fromString("00000000-0000-0000-0000-0000000000d1");
 
     private UserDirectory users;
     private CourierProfileRepository profiles;
@@ -35,59 +34,71 @@ class CourierEligibilityTest {
         eligibility = new CourierEligibility(users, profiles);
     }
 
-    private static UserSummary user(boolean enabled, String... roles) {
-        return new UserSummary(USER_ID, "Kasun Perera", "kasun@swiftdrop.com", Set.of(roles), enabled);
+    @Test
+    void anEnabledCourierWithAnActiveProfileIsEligible() {
+        user(true, Set.of("COURIER"));
+        profile(true);
+
+        assertThatCode(() -> eligibility.requireEligible(COURIER)).doesNotThrowAnyException();
     }
 
     @Test
-    void acceptsEnabledCourierWithActiveProfile() {
-        when(users.findUser(USER_ID)).thenReturn(Optional.of(user(true, "COURIER")));
-        when(profiles.findByUserId(USER_ID))
-                .thenReturn(Optional.of(new CourierProfile(USER_ID, "+94771234567", VehicleType.BIKE, NOW)));
+    void anUnknownUserIsNotEligible() {
+        when(users.findUser(COURIER)).thenReturn(Optional.empty());
 
-        assertThatCode(() -> eligibility.requireEligible(USER_ID)).doesNotThrowAnyException();
+        assertThatThrownBy(() -> eligibility.requireEligible(COURIER))
+                .isInstanceOf(CourierNotEligibleException.class)
+                .hasMessage("User is not a courier");
     }
 
     @Test
-    void rejectsUnknownUser() {
-        when(users.findUser(USER_ID)).thenReturn(Optional.empty());
+    void aDisabledAccountIsNotEligibleEvenWithTheRoleAndAProfile() {
+        user(false, Set.of("COURIER"));
+        profile(true);
 
-        assertThatThrownBy(() -> eligibility.requireEligible(USER_ID))
-                .isInstanceOf(CourierNotEligibleException.class).hasMessage("Courier not found");
+        assertThatThrownBy(() -> eligibility.requireEligible(COURIER))
+                .isInstanceOf(CourierNotEligibleException.class)
+                .hasMessage("Courier account is disabled");
     }
 
     @Test
-    void rejectsDisabledAccount() {
-        when(users.findUser(USER_ID)).thenReturn(Optional.of(user(false, "COURIER")));
+    void aUserWithoutTheCourierRoleIsNotEligible() {
+        user(true, Set.of("CUSTOMER"));
+        profile(true);
 
-        assertThatThrownBy(() -> eligibility.requireEligible(USER_ID))
-                .isInstanceOf(CourierNotEligibleException.class).hasMessage("Courier account is disabled");
+        assertThatThrownBy(() -> eligibility.requireEligible(COURIER))
+                .isInstanceOf(CourierNotEligibleException.class)
+                .hasMessage("User is not a courier");
     }
 
     @Test
-    void rejectsUserWithoutCourierRole() {
-        when(users.findUser(USER_ID)).thenReturn(Optional.of(user(true, "CUSTOMER")));
+    void aCourierWithoutAProfileIsNotEligible() {
+        user(true, Set.of("COURIER"));
+        when(profiles.findByUserId(COURIER)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> eligibility.requireEligible(USER_ID))
-                .isInstanceOf(CourierNotEligibleException.class).hasMessage("User is not a courier");
+        assertThatThrownBy(() -> eligibility.requireEligible(COURIER))
+                .isInstanceOf(CourierNotEligibleException.class)
+                .hasMessage("Courier profile is not active");
     }
 
     @Test
-    void rejectsCourierWithoutProfile() {
-        when(users.findUser(USER_ID)).thenReturn(Optional.of(user(true, "COURIER")));
-        when(profiles.findByUserId(USER_ID)).thenReturn(Optional.empty());
+    void aCourierWithAnInactiveProfileIsNotEligible() {
+        user(true, Set.of("COURIER"));
+        profile(false);
 
-        assertThatThrownBy(() -> eligibility.requireEligible(USER_ID))
-                .isInstanceOf(CourierNotEligibleException.class).hasMessage("Courier has no profile");
+        assertThatThrownBy(() -> eligibility.requireEligible(COURIER))
+                .isInstanceOf(CourierNotEligibleException.class)
+                .hasMessage("Courier profile is not active");
     }
 
-    @Test
-    void rejectsCourierWithInactiveProfile() {
-        when(users.findUser(USER_ID)).thenReturn(Optional.of(user(true, "COURIER")));
-        when(profiles.findByUserId(USER_ID)).thenReturn(Optional.of(
-                new CourierProfile(USER_ID, "+94771234567", VehicleType.BIKE, false, NOW)));
+    private void user(boolean enabled, Set<String> roles) {
+        when(users.findUser(COURIER)).thenReturn(Optional.of(
+                new UserSummary(COURIER, "Kamal Silva", "kamal@example.com", roles, enabled)));
+    }
 
-        assertThatThrownBy(() -> eligibility.requireEligible(USER_ID))
-                .isInstanceOf(CourierNotEligibleException.class).hasMessage("Courier profile is inactive");
+    private void profile(boolean active) {
+        when(profiles.findByUserId(COURIER)).thenReturn(Optional.of(
+                new CourierProfile(COURIER, "+94771234567", VehicleType.BIKE, active,
+                        java.time.Instant.parse("2026-11-15T10:00:00Z"))));
     }
 }

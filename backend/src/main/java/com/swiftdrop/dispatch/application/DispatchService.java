@@ -1,92 +1,96 @@
 package com.swiftdrop.dispatch.application;
 
-import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import com.swiftdrop.dispatch.domain.CourierProfile;
-import com.swiftdrop.dispatch.domain.CourierProfileRepository;
-import com.swiftdrop.identity.api.UserDirectory;
-import com.swiftdrop.identity.api.UserSummary;
 
 import com.swiftdrop.delivery.api.PageRequest;
 import com.swiftdrop.delivery.api.PageResult;
 import com.swiftdrop.delivery.api.ParcelAssignment;
 import com.swiftdrop.delivery.api.ParcelQueries;
 import com.swiftdrop.delivery.api.ParcelSummary;
-import com.swiftdrop.shared.web.PageLimit;
+import com.swiftdrop.dispatch.domain.CourierProfile;
+import com.swiftdrop.dispatch.domain.CourierProfileRepository;
+import com.swiftdrop.identity.api.UserDirectory;
+import com.swiftdrop.identity.api.UserSummary;
 
 /**
- * Dispatcher use cases (SD-306): find parcels waiting for a courier and assign them. Lifecycle
- * rules stay in {@code delivery}; dispatch only decides who is eligible.
+ * The dispatcher's work (ADM-1, ADM-2): the queue of unassigned parcels, courier assignment, and the
+ * workload per courier. {@code dispatch} decides who may take a parcel; {@code delivery} decides
+ * whether the parcel can still be assigned and records it (ADR 0003, ADR 0006 §3).
  */
 @Service
 public class DispatchService {
 
-    private static final Logger log = LoggerFactory.getLogger(DispatchService.class);
+    /** Upper bound on couriers listed for the workload view; the fleet is small. */
+    static final int MAX_COURIERS = 200;
 
     private final ParcelQueries parcelQueries;
     private final ParcelAssignment parcelAssignment;
     private final CourierEligibility eligibility;
-
     private final CourierProfileRepository profiles;
-    private final UserDirectory userDirectory;
+    private final UserDirectory users;
 
     public DispatchService(ParcelQueries parcelQueries, ParcelAssignment parcelAssignment,
-            CourierEligibility eligibility, CourierProfileRepository profiles, UserDirectory userDirectory) {
+            CourierEligibility eligibility, CourierProfileRepository profiles, UserDirectory users) {
         this.parcelQueries = Objects.requireNonNull(parcelQueries, "parcelQueries");
         this.parcelAssignment = Objects.requireNonNull(parcelAssignment, "parcelAssignment");
         this.eligibility = Objects.requireNonNull(eligibility, "eligibility");
         this.profiles = Objects.requireNonNull(profiles, "profiles");
-        this.userDirectory = Objects.requireNonNull(userDirectory, "userDirectory");
+        this.users = Objects.requireNonNull(users, "users");
+    }
+
+    /** Parcels in {@code CREATED} with no courier, oldest first. */
+    @Transactional(readOnly = true)
+    public PageResult<ParcelSummary> unassigned(int page, int size) {
+        return parcelQueries.findUnassignedParcels(new PageRequest(page, size));
     }
 
     /**
-     * Eligible couriers with their active parcel count (0 when absent from the delivery count),
-     * least busy first, then by name. Same eligibility rule as {@link #assign}.
+     * Assigns a courier after checking eligibility. {@code delivery} then rejects the assignment unless
+     * the parcel is still {@code CREATED}, under the parcel lock.
+     *
+     * @throws CourierNotEligibleException if the courier cannot take deliveries
+     * @throws com.swiftdrop.delivery.api.ParcelNotFoundException if the parcel does not exist
+     * @throws com.swiftdrop.delivery.api.ParcelConflictException if the parcel is past {@code CREATED}
+     */
+    @Transactional
+    public void assign(UUID parcelId, UUID courierUserId, UUID dispatcherUserId) {
+        Objects.requireNonNull(parcelId, "parcelId");
+        Objects.requireNonNull(courierUserId, "courierUserId");
+        Objects.requireNonNull(dispatcherUserId, "dispatcherUserId");
+        eligibility.requireEligible(courierUserId);
+        parcelAssignment.assignCourier(parcelId, courierUserId, dispatcherUserId);
+    }
+
+    /**
+     * Every active courier with the number of parcels they hold, least busy first. A courier with no
+     * active parcels counts as 0.
      */
     @Transactional(readOnly = true)
     public List<CourierWorkload> workloads() {
-        Map<UUID, Long> counts = parcelQueries.countActiveParcelsByCourier();
-        List<CourierWorkload> result = new ArrayList<>();
-        for (CourierProfile profile : profiles.findByActiveTrue()) {
-            UserSummary user = userDirectory.findUser(profile.getUserId()).orElse(null);
-            if (CourierEligibility.isEligible(user, profile)) {
-                result.add(new CourierWorkload(profile.getUserId(), user.fullName(), profile.getVehicleType(),
-                        counts.getOrDefault(profile.getUserId(), 0L)));
-            }
-        }
-        result.sort(Comparator.comparingLong(CourierWorkload::activeParcels)
-                .thenComparing(CourierWorkload::fullName, String.CASE_INSENSITIVE_ORDER));
-        return result;
+        Map<UUID, Long> active = parcelQueries.countActiveParcelsByCourier();
+        List<CourierProfile> activeProfiles = profiles.findByActive(true,
+                org.springframework.data.domain.PageRequest.of(0, MAX_COURIERS)).getContent();
+
+        return activeProfiles.stream()
+                .map(profile -> {
+                    UserSummary user = users.findUser(profile.getUserId()).orElse(null);
+                    String name = user != null ? user.fullName() : "Unknown courier";
+                    long count = active.getOrDefault(profile.getUserId(), 0L);
+                    return new CourierWorkload(profile.getUserId(), name, profile.getVehicleType().name(), count);
+                })
+                .sorted(Comparator.comparingLong(CourierWorkload::activeParcels)
+                        .thenComparing(CourierWorkload::name))
+                .toList();
     }
 
-    /** CREATED parcels without a courier, oldest first; page and size are clamped. */
-    public PageResult<ParcelSummary> unassigned(int page, int size) {
-        return parcelQueries.findUnassignedParcels(
-                new PageRequest(PageLimit.clampPage(page), PageLimit.clampSize(size)));
-    }
-
-    /**
-     * Assigns the parcel to an eligible courier. The parcel is never touched for an ineligible one.
-     *
-     * @throws CourierNotEligibleException if the courier cannot receive parcels
-     * @throws com.swiftdrop.delivery.api.ParcelNotFoundException if the parcel does not exist
-     * @throws com.swiftdrop.delivery.api.ParcelConflictException if the parcel is past CREATED
-     */
-    public void assign(UUID parcelId, UUID courierUserId, UUID dispatcherUserId) {
-        Objects.requireNonNull(parcelId, "parcelId must not be null");
-        Objects.requireNonNull(dispatcherUserId, "dispatcherUserId must not be null");
-        eligibility.requireEligible(courierUserId);
-        parcelAssignment.assignCourier(parcelId, courierUserId, dispatcherUserId);
-        log.info("Parcel {} assigned to courier {} by dispatcher {}", parcelId, courierUserId, dispatcherUserId);
+    /** One courier's load. Names are for the dispatcher's screen only, never for logs. */
+    public record CourierWorkload(UUID courierUserId, String name, String vehicleType, long activeParcels) {
     }
 }

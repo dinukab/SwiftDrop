@@ -3,9 +3,10 @@ package com.swiftdrop.dispatch.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.doThrow;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -18,14 +19,12 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
+import org.springframework.data.domain.PageImpl;
 
-import com.swiftdrop.delivery.api.PageRequest;
-import com.swiftdrop.delivery.api.PageResult;
 import com.swiftdrop.delivery.api.ParcelAssignment;
 import com.swiftdrop.delivery.api.ParcelConflictException;
 import com.swiftdrop.delivery.api.ParcelQueries;
-import com.swiftdrop.delivery.api.ParcelSummary;
+import com.swiftdrop.delivery.api.PageResult;
 import com.swiftdrop.dispatch.domain.CourierProfile;
 import com.swiftdrop.dispatch.domain.CourierProfileRepository;
 import com.swiftdrop.dispatch.domain.VehicleType;
@@ -34,107 +33,99 @@ import com.swiftdrop.identity.api.UserSummary;
 
 class DispatchServiceTest {
 
-    private static final UUID PARCEL_ID = UUID.fromString("5a0e0000-0000-0000-0000-000000000001");
-    private static final UUID COURIER_ID = UUID.fromString("00000000-0000-0000-0000-0000000000d1");
-    private static final UUID DISPATCHER_ID = UUID.fromString("00000000-0000-0000-0000-0000000000e1");
+    private static final UUID PARCEL = UUID.fromString("5a0e0000-0000-0000-0000-000000000003");
+    private static final UUID COURIER = UUID.fromString("00000000-0000-0000-0000-0000000000d1");
+    private static final UUID DISPATCHER = UUID.fromString("00000000-0000-0000-0000-0000000000e1");
 
-    private ParcelQueries queries;
-    private ParcelAssignment assignment;
+    private ParcelQueries parcelQueries;
+    private ParcelAssignment parcelAssignment;
     private CourierEligibility eligibility;
     private CourierProfileRepository profiles;
-    private UserDirectory userDirectory;
+    private UserDirectory users;
     private DispatchService service;
 
     @BeforeEach
     void setUp() {
-        queries = mock(ParcelQueries.class);
-        assignment = mock(ParcelAssignment.class);
+        parcelQueries = mock(ParcelQueries.class);
+        parcelAssignment = mock(ParcelAssignment.class);
         eligibility = mock(CourierEligibility.class);
         profiles = mock(CourierProfileRepository.class);
-        userDirectory = mock(UserDirectory.class);
-        service = new DispatchService(queries, assignment, eligibility, profiles, userDirectory);
+        users = mock(UserDirectory.class);
+        service = new DispatchService(parcelQueries, parcelAssignment, eligibility, profiles, users);
     }
 
     @Test
-    void unassignedClampsPagingAndDelegates() {
-        PageResult<ParcelSummary> empty = new PageResult<>(List.of(), 0, 100, 0, 0);
-        when(queries.findUnassignedParcels(any())).thenReturn(empty);
+    void assignChecksEligibilityThenRecordsTheAssignment() {
+        service.assign(PARCEL, COURIER, DISPATCHER);
 
-        assertThat(service.unassigned(-3, 5000)).isSameAs(empty);
-
-        ArgumentCaptor<PageRequest> page = ArgumentCaptor.forClass(PageRequest.class);
-        verify(queries).findUnassignedParcels(page.capture());
-        assertThat(page.getValue()).isEqualTo(new PageRequest(0, 100));
+        var order = org.mockito.Mockito.inOrder(eligibility, parcelAssignment);
+        order.verify(eligibility).requireEligible(COURIER);
+        order.verify(parcelAssignment).assignCourier(PARCEL, COURIER, DISPATCHER);
     }
 
     @Test
-    void assignsAfterEligibilityCheck() {
-        service.assign(PARCEL_ID, COURIER_ID, DISPATCHER_ID);
+    void anIneligibleCourierIsNeverAssigned() {
+        doThrow(new CourierNotEligibleException("Courier profile is not active"))
+                .when(eligibility).requireEligible(COURIER);
 
-        verify(eligibility).requireEligible(COURIER_ID);
-        verify(assignment).assignCourier(PARCEL_ID, COURIER_ID, DISPATCHER_ID);
-    }
-
-    @Test
-    void ineligibleCourierNeverReachesDelivery() {
-        doThrow(new CourierNotEligibleException("Courier profile is inactive"))
-                .when(eligibility).requireEligible(COURIER_ID);
-
-        assertThatThrownBy(() -> service.assign(PARCEL_ID, COURIER_ID, DISPATCHER_ID))
+        assertThatThrownBy(() -> service.assign(PARCEL, COURIER, DISPATCHER))
                 .isInstanceOf(CourierNotEligibleException.class);
-        verify(assignment, never()).assignCourier(any(), any(), any());
+        verify(parcelAssignment, never()).assignCourier(any(), any(), any());
     }
 
     @Test
-    void deliveryConflictPropagates() {
-        doThrow(new ParcelConflictException("Parcel can no longer be assigned"))
-                .when(assignment).assignCourier(PARCEL_ID, COURIER_ID, DISPATCHER_ID);
+    void aParcelPastCreatedIsLeftToDeliveryToRefuse() {
+        doThrow(new ParcelConflictException("A courier can only be assigned before pickup"))
+                .when(parcelAssignment).assignCourier(PARCEL, COURIER, DISPATCHER);
 
-        assertThatThrownBy(() -> service.assign(PARCEL_ID, COURIER_ID, DISPATCHER_ID))
+        assertThatThrownBy(() -> service.assign(PARCEL, COURIER, DISPATCHER))
                 .isInstanceOf(ParcelConflictException.class);
     }
 
-    private static final Instant NOW = Instant.parse("2026-11-14T10:00:00Z");
+    @Test
+    void unassignedDelegatesToDeliveryWithThePage() {
+        PageResult<com.swiftdrop.delivery.api.ParcelSummary> page = new PageResult<>(List.of(), 2, 10, 0, 0);
+        when(parcelQueries.findUnassignedParcels(any())).thenReturn(page);
 
-    private CourierProfile profileFor(UUID userId, String name, boolean profileActive, boolean enabled, String role) {
-        CourierProfile profile = new CourierProfile(userId, "+94771234567", VehicleType.BIKE, profileActive, NOW);
-        when(userDirectory.findUser(userId)).thenReturn(Optional.of(
-                new UserSummary(userId, name, name + "@swiftdrop.com", Set.of(role), enabled)));
-        return profile;
+        assertThat(service.unassigned(2, 10)).isEqualTo(page);
     }
 
     @Test
-    void workloadsListEligibleCouriersLeastBusyFirstWithZeroForAbsent() {
-        UUID busy = UUID.randomUUID();
-        UUID idle = UUID.randomUUID();
-        UUID alsoIdle = UUID.randomUUID();
-        List<CourierProfile> all = List.of(
-                profileFor(busy, "Busy", true, true, "COURIER"),
-                profileFor(idle, "Zed", true, true, "COURIER"),
-                profileFor(alsoIdle, "Amal", true, true, "COURIER"));
-        when(profiles.findByActiveTrue()).thenReturn(all);
-        when(queries.countActiveParcelsByCourier()).thenReturn(Map.of(busy, 3L));
+    void workloadsListActiveCouriersLeastBusyFirstAndCountTheMissingAsZero() {
+        UUID busy = UUID.fromString("00000000-0000-0000-0000-0000000000a1");
+        UUID idle = UUID.fromString("00000000-0000-0000-0000-0000000000a2");
+        UUID none = UUID.fromString("00000000-0000-0000-0000-0000000000a3");
+        when(profiles.findByActive(org.mockito.ArgumentMatchers.eq(true), any()))
+                .thenReturn(new PageImpl<>(List.of(
+                        profile(busy, VehicleType.VAN), profile(idle, VehicleType.CAR), profile(none, VehicleType.BIKE))));
+        when(users.findUser(busy)).thenReturn(Optional.of(user(busy, "Busy Bill")));
+        when(users.findUser(idle)).thenReturn(Optional.of(user(idle, "Idle Ida")));
+        when(users.findUser(none)).thenReturn(Optional.of(user(none, "New Nimal")));
+        when(parcelQueries.countActiveParcelsByCourier()).thenReturn(Map.of(busy, 3L, idle, 1L));
 
-        assertThat(service.workloads())
-                .extracting(w -> w.fullName() + ":" + w.activeParcels())
-                .containsExactly("Amal:0", "Zed:0", "Busy:3");
+        List<DispatchService.CourierWorkload> loads = service.workloads();
+
+        assertThat(loads).extracting(DispatchService.CourierWorkload::name)
+                .containsExactly("New Nimal", "Idle Ida", "Busy Bill");
+        assertThat(loads).extracting(DispatchService.CourierWorkload::activeParcels)
+                .containsExactly(0L, 1L, 3L);
     }
 
     @Test
-    void workloadsExcludeDisabledAccountsWrongRolesAndMissingUsers() {
-        UUID disabled = UUID.randomUUID();
-        UUID notCourier = UUID.randomUUID();
-        UUID missing = UUID.randomUUID();
-        UUID ok = UUID.randomUUID();
-        List<CourierProfile> all = List.of(
-                profileFor(disabled, "Disabled", true, false, "COURIER"),
-                profileFor(notCourier, "Customer", true, true, "CUSTOMER"),
-                new CourierProfile(missing, "+94771234567", VehicleType.VAN, NOW),
-                profileFor(ok, "Ok", true, true, "COURIER"));
-        when(profiles.findByActiveTrue()).thenReturn(all);
-        when(userDirectory.findUser(missing)).thenReturn(Optional.empty());
-        when(queries.countActiveParcelsByCourier()).thenReturn(Map.of());
+    void theWorkloadViewAsksOnlyForActiveProfiles() {
+        when(profiles.findByActive(org.mockito.ArgumentMatchers.eq(true), any()))
+                .thenReturn(new PageImpl<>(List.of()));
 
-        assertThat(service.workloads()).extracting(w -> w.courierUserId()).containsExactly(ok);
+        assertThat(service.workloads()).isEmpty();
+        verify(profiles).findByActive(org.mockito.ArgumentMatchers.eq(true), any());
+    }
+
+    private static CourierProfile profile(UUID userId, VehicleType vehicle) {
+        return new CourierProfile(userId, "+94771234567", vehicle, Instant.parse("2026-11-15T10:00:00Z"));
+    }
+
+    private static UserSummary user(UUID id, String name) {
+        return new UserSummary(id, name, name.replace(' ', '.').toLowerCase() + "@example.com",
+                Set.of("COURIER"), true);
     }
 }

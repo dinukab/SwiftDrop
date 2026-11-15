@@ -1,72 +1,38 @@
-/**
- * Typed calls for the dispatcher endpoints (backend `dispatch` module, SD-305 to SD-307).
- * Unassigned parcels, assignment and workloads need the DISPATCHER role; courier profiles accept
- * DISPATCHER or ADMIN.
- */
-import { api, type PageResponse, type ParcelSize } from "@/lib/api";
+import { api, type PageResponse } from "@/lib/api";
 
-export type VehicleType = "BIKE" | "CAR" | "VAN";
-
+/** An order waiting for a courier. Holds no sender or recipient personal data. */
 export interface UnassignedParcel {
   id: string;
   trackingNumber: string;
-  size: ParcelSize;
-  weightGrams: number;
+  status: string;
   source: "CUSTOMER" | "MERCHANT";
+  size: "SMALL" | "MEDIUM" | "LARGE";
+  weightGrams: number;
   merchantOrderReference: string | null;
   createdAt: string;
 }
 
+/** One active courier with the number of parcels they hold. No phone number. */
 export interface CourierWorkload {
   courierUserId: string;
-  fullName: string;
-  vehicleType: VehicleType;
+  name: string;
+  vehicleType: "BIKE" | "CAR" | "VAN";
   activeParcels: number;
 }
 
-export interface CourierProfile {
-  id: string;
-  userId: string;
-  fullName: string | null;
-  email: string | null;
-  phone: string;
-  vehicleType: VehicleType;
-  active: boolean;
-  createdAt: string;
-  updatedAt: string;
+export function getUnassignedParcels(page: number, size: number): Promise<PageResponse<UnassignedParcel>> {
+  const params = new URLSearchParams({ page: String(page), size: String(size) });
+  return api.get<PageResponse<UnassignedParcel>>(`/api/v1/unassigned-parcels?${params.toString()}`);
 }
 
-export interface ParcelAssignment {
-  parcelId: string;
-  courierUserId: string;
+/**
+ * Assigns a courier. The server checks that the courier is eligible and that the parcel is still
+ * waiting for pickup; a refusal arrives as a 409 with the reason in `detail`.
+ */
+export function assignCourier(parcelId: string, courierUserId: string): Promise<{ parcelId: string; courierUserId: string }> {
+  return api.post(`/api/v1/parcel-assignments`, { parcelId, courierUserId });
 }
 
-export const VEHICLE_TYPES: VehicleType[] = ["BIKE", "CAR", "VAN"];
-
-export function getUnassignedParcels(token: string, page: number, size: number) {
-  return api.get<PageResponse<UnassignedParcel>>(`/api/v1/unassigned-parcels?page=${page}&size=${size}`, { token });
-}
-
-export function getCourierWorkloads(token: string) {
-  return api.get<CourierWorkload[]>("/api/v1/courier-workloads", { token });
-}
-
-export function assignParcel(token: string, parcelId: string, courierUserId: string) {
-  return api.post<ParcelAssignment>("/api/v1/parcel-assignments", { parcelId, courierUserId }, { token });
-}
-
-export function getCourierProfiles(token: string, page: number, size: number) {
-  return api.get<PageResponse<CourierProfile>>(`/api/v1/couriers?page=${page}&size=${size}`, { token });
-}
-
-export function createCourierProfile(token: string, body: { userId: string; phone: string; vehicleType: VehicleType }) {
-  return api.post<CourierProfile>("/api/v1/couriers", body, { token });
-}
-
-export function updateCourierProfile(
-  token: string,
-  id: string,
-  body: { phone?: string; vehicleType?: VehicleType; active?: boolean },
-) {
-  return api.patch<CourierProfile>(`/api/v1/couriers/${id}`, body, { token });
+export function getCourierWorkloads(): Promise<CourierWorkload[]> {
+  return api.get<CourierWorkload[]>("/api/v1/courier-workloads");
 }

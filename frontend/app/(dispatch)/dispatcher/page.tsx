@@ -1,414 +1,340 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { useAuth } from "@/lib/auth-context";
+import { AlertCircle, CheckCircle2, ChevronLeft, ChevronRight, Loader2, RefreshCw, Truck, X } from "lucide-react";
 import { formatApiError, type PageResponse } from "@/lib/api";
 import {
-  VEHICLE_TYPES,
-  assignParcel,
-  createCourierProfile,
-  getCourierProfiles,
+  assignCourier,
   getCourierWorkloads,
   getUnassignedParcels,
-  updateCourierProfile,
-  type CourierProfile,
   type CourierWorkload,
   type UnassignedParcel,
-  type VehicleType,
 } from "@/lib/dispatch";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 
-const PAGE_SIZE = 20;
-type Tab = "unassigned" | "couriers";
+const PAGE_SIZE = 10;
 
-function formatDate(value: string): string {
-  return new Date(value).toLocaleString();
+interface Board {
+  queue: PageResponse<UnassignedParcel>;
+  couriers: CourierWorkload[];
 }
 
-function Alert({ children }: { children: React.ReactNode }) {
-  return (
-    <p role="alert" className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
-      {children}
-    </p>
-  );
+/** The queue for one page and the courier loads, fetched together. */
+function fetchBoard(page: number): Promise<Board> {
+  return Promise.all([getUnassignedParcels(page, PAGE_SIZE), getCourierWorkloads()]).then(([queue, couriers]) => ({
+    queue,
+    couriers,
+  }));
 }
 
-export default function DispatchPortalPage() {
-  const { token, isAuthenticated } = useAuth();
-  const [tab, setTab] = useState<Tab>("unassigned");
-  const [reloadKey, setReloadKey] = useState(0);
+export default function DispatcherPage() {
+  const [parcels, setParcels] = useState<UnassignedParcel[]>([]);
+  const [page, setPage] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [totalItems, setTotalItems] = useState(0);
+  const [workloads, setWorkloads] = useState<CourierWorkload[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const reload = () => setReloadKey((key) => key + 1);
+  const [assigning, setAssigning] = useState<UnassignedParcel | null>(null);
+
+  /** Applies one loaded board to the screen. Called only after the fetch has completed. */
+  const apply = (board: Board) => {
+    setParcels(board.queue.items);
+    setTotalPages(board.queue.totalPages);
+    setTotalItems(board.queue.totalItems);
+    setWorkloads(board.couriers);
+    setError(null);
+  };
+
+  // Reload whenever the page changes. State is only set inside the promise callbacks, after the fetch.
+  useEffect(() => {
+    let current = true;
+    fetchBoard(page)
+      .then((board) => {
+        if (current) apply(board);
+      })
+      .catch((err: unknown) => {
+        if (current) setError(formatApiError(err));
+      })
+      .finally(() => {
+        if (current) setLoading(false);
+      });
+    return () => {
+      current = false;
+    };
+  }, [page]);
+
+  /** Reloads on demand (after the Refresh button or an assignment), from an event handler. */
+  const reload = () => {
+    setLoading(true);
+    fetchBoard(page)
+      .then(apply)
+      .catch((err: unknown) => setError(formatApiError(err)))
+      .finally(() => setLoading(false));
+  };
+
+  const refresh = () => {
+    setNotice(null);
+    reload();
+  };
+
+  const onAssigned = (parcel: UnassignedParcel, courier: CourierWorkload) => {
+    setAssigning(null);
+    setNotice(`${parcel.trackingNumber} assigned to ${courier.name}.`);
+    reload();
+  };
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold">Fleet dispatch</h1>
-        <p className="text-sm text-muted-foreground">
-          Assign waiting parcels to the least busy courier and manage courier profiles.
-        </p>
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Dispatch</h1>
+          <p className="text-muted-foreground text-sm">
+            Assign couriers to parcels waiting for pickup. A parcel is held or cancelled by its merchant,
+            and drops out of this queue automatically.
+          </p>
+        </div>
+        <Button variant="outline" size="sm" onClick={refresh} disabled={loading}>
+          <RefreshCw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+          Refresh
+        </Button>
       </div>
 
+      {error && (
+        <div role="alert" className="p-4 bg-destructive/10 border border-destructive/20 text-destructive rounded-lg flex items-center gap-3">
+          <AlertCircle className="w-5 h-5 flex-shrink-0" />
+          <p className="text-sm">{error}</p>
+        </div>
+      )}
       {notice && (
-        <p role="status" className="rounded-lg border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-800">
-          {notice}
-        </p>
+        <div role="status" className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg flex items-center gap-3">
+          <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
+          <p className="text-sm">{notice}</p>
+        </div>
       )}
 
-      <div role="tablist" aria-label="Dispatch sections" className="flex gap-2 border-b">
-        {(["unassigned", "couriers"] as Tab[]).map((id) => (
-          <button
-            key={id}
-            role="tab"
-            aria-selected={tab === id}
-            onClick={() => setTab(id)}
-            className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium ${
-              tab === id ? "border-primary text-foreground" : "border-transparent text-muted-foreground"
-            }`}
-          >
-            {id === "unassigned" ? "Unassigned parcels" : "Couriers"}
-          </button>
-        ))}
+      <div className="grid gap-6 lg:grid-cols-3">
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle>Waiting for a courier</CardTitle>
+            <CardDescription>{totalItems} parcel{totalItems === 1 ? "" : "s"} to assign, oldest first</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {loading && parcels.length === 0 && (
+              <div className="flex justify-center py-12">
+                <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+              </div>
+            )}
+
+            {!loading && parcels.length === 0 && !error && (
+              <div className="text-center py-12 space-y-2">
+                <Truck className="w-10 h-10 text-muted-foreground mx-auto" />
+                <p className="text-sm font-medium">Nothing waiting for a courier</p>
+              </div>
+            )}
+
+            {parcels.length > 0 && (
+              <div className="space-y-4">
+                <div className="overflow-x-auto border rounded-lg">
+                  <table className="w-full text-sm text-left">
+                    <thead className="bg-muted/50 text-xs text-muted-foreground uppercase">
+                      <tr>
+                        <th className="px-4 py-3">Tracking</th>
+                        <th className="px-4 py-3">Source</th>
+                        <th className="px-4 py-3">Size / Weight</th>
+                        <th className="px-4 py-3">Created</th>
+                        <th className="px-4 py-3"><span className="sr-only">Actions</span></th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {parcels.map((parcel) => (
+                        <tr key={parcel.id} className="hover:bg-muted/30">
+                          <td className="px-4 py-3 font-mono font-medium">{parcel.trackingNumber}</td>
+                          <td className="px-4 py-3 text-muted-foreground">
+                            {parcel.source === "MERCHANT"
+                              ? `Store · ${parcel.merchantOrderReference ?? ""}`
+                              : "Customer"}
+                          </td>
+                          <td className="px-4 py-3 text-muted-foreground">
+                            {parcel.size} ({(parcel.weightGrams / 1000).toFixed(1)} kg)
+                          </td>
+                          <td className="px-4 py-3 text-muted-foreground text-xs">
+                            {new Date(parcel.createdAt).toLocaleString()}
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <Button
+                              size="xs"
+                              variant="outline"
+                              onClick={() => setAssigning(parcel)}
+                              disabled={workloads.length === 0}
+                            >
+                              Assign
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>Page {page + 1} of {Math.max(1, totalPages)}</span>
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" disabled={page === 0 || loading} onClick={() => setPage((p) => Math.max(0, p - 1))}>
+                      <ChevronLeft className="w-4 h-4 mr-1" />
+                      Previous
+                    </Button>
+                    <Button variant="outline" size="sm" disabled={page + 1 >= totalPages || loading} onClick={() => setPage((p) => p + 1)}>
+                      Next
+                      <ChevronRight className="w-4 h-4 ml-1" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Courier workload</CardTitle>
+            <CardDescription>Least busy first</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {workloads.length === 0 && !loading && (
+              <p className="text-sm text-muted-foreground">No active couriers yet.</p>
+            )}
+            <ul className="space-y-2">
+              {workloads.map((courier) => (
+                <li key={courier.courierUserId} className="flex items-center justify-between rounded-lg border px-3 py-2">
+                  <div>
+                    <p className="text-sm font-medium">{courier.name}</p>
+                    <p className="text-xs text-muted-foreground">{courier.vehicleType.toLowerCase()}</p>
+                  </div>
+                  <span className="text-sm font-semibold tabular-nums">{courier.activeParcels}</span>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
       </div>
 
-      {isAuthenticated && token ? (
-        tab === "unassigned" ? (
-          <UnassignedTab token={token} reloadKey={reloadKey} onChanged={reload} onNotice={setNotice} />
-        ) : (
-          <CouriersTab token={token} reloadKey={reloadKey} onChanged={reload} onNotice={setNotice} />
-        )
-      ) : null}
+      {assigning && (
+        <AssignDialog
+          parcel={assigning}
+          couriers={workloads}
+          onClose={() => setAssigning(null)}
+          onAssigned={onAssigned}
+        />
+      )}
     </div>
   );
 }
 
-interface TabProps {
-  token: string;
-  reloadKey: number;
-  onChanged: () => void;
-  onNotice: (message: string | null) => void;
-}
-
-function UnassignedTab({ token, reloadKey, onChanged, onNotice }: TabProps) {
-  const [page, setPage] = useState(0);
-  const [parcels, setParcels] = useState<PageResponse<UnassignedParcel> | null>(null);
-  const [workloads, setWorkloads] = useState<CourierWorkload[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [choice, setChoice] = useState<Record<string, string>>({});
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [rowError, setRowError] = useState<{ id: string; message: string } | null>(null);
+/** Picks a courier for one parcel. Shows each courier's load so the least busy is an easy choice. */
+function AssignDialog({
+  parcel,
+  couriers,
+  onClose,
+  onAssigned,
+}: {
+  parcel: UnassignedParcel;
+  couriers: CourierWorkload[];
+  onClose: () => void;
+  onAssigned: (parcel: UnassignedParcel, courier: CourierWorkload) => void;
+}) {
+  const [selected, setSelected] = useState<string | null>(couriers[0]?.courierUserId ?? null);
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
-    Promise.all([getUnassignedParcels(token, page, PAGE_SIZE), getCourierWorkloads(token)])
-      .then(([list, load]) => {
-        if (cancelled) return;
-        setParcels(list);
-        setWorkloads(load);
-        setError(null);
-      })
-      .catch((err) => {
-        if (!cancelled) setError(formatApiError(err));
-      });
-    return () => {
-      cancelled = true;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !busy) onClose();
     };
-  }, [token, page, reloadKey]);
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [busy, onClose]);
 
-  async function assign(parcel: UnassignedParcel) {
-    const courierUserId = choice[parcel.id] ?? workloads?.[0]?.courierUserId;
-    if (!courierUserId) return;
-    setBusyId(parcel.id);
-    setRowError(null);
+  const confirm = async () => {
+    const courier = couriers.find((c) => c.courierUserId === selected);
+    if (!courier) return;
+    setBusy(true);
+    setProblem(null);
     try {
-      await assignParcel(token, parcel.id, courierUserId);
-      const courier = workloads?.find((w) => w.courierUserId === courierUserId);
-      onNotice(`${parcel.trackingNumber} assigned to ${courier?.fullName ?? "the courier"}.`);
-      onChanged();
+      await assignCourier(parcel.id, courier.courierUserId);
+      onAssigned(parcel, courier);
     } catch (err) {
-      // 409 (courier no longer eligible, parcel already picked up) is shown on the row
-      setRowError({ id: parcel.id, message: formatApiError(err) });
-      onChanged();
-    } finally {
-      setBusyId(null);
+      // 409 carries the reason (not eligible, or already picked up); show it as it is
+      setProblem(formatApiError(err));
+      setBusy(false);
     }
-  }
+  };
 
   return (
-    <div className="space-y-6">
-      {error && <Alert>Could not load dispatch data: {error}</Alert>}
-
-      <section className="rounded-xl border bg-card p-4 sm:p-6">
-        <h2 className="font-semibold">Courier workload</h2>
-        {!workloads ? (
-          <p className="mt-2 text-sm text-muted-foreground">Loading couriers...</p>
-        ) : workloads.length === 0 ? (
-          <p className="mt-2 text-sm text-muted-foreground">
-            No eligible couriers. Create or activate a courier profile on the Couriers tab.
-          </p>
-        ) : (
-          <ul className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {workloads.map((w) => (
-              <li key={w.courierUserId} className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm">
-                <span className="flex min-w-0 items-baseline gap-2">
-                  <span className="truncate">{w.fullName}</span>
-                  <span className="text-xs text-muted-foreground">{w.vehicleType}</span>
-                </span>
-                <span className="font-medium">{w.activeParcels} active</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <section className="overflow-hidden rounded-xl border bg-card">
-        <div className="border-b px-4 py-4 sm:px-6">
-          <h2 className="font-semibold">Waiting for a courier</h2>
-          {parcels && (
-            <p className="mt-1 text-sm text-muted-foreground">
-              {parcels.totalItems} {parcels.totalItems === 1 ? "parcel" : "parcels"}, oldest first
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => !busy && onClose()}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="assign-title"
+        className="w-full max-w-md space-y-4 rounded-xl border bg-background p-6 shadow-lg"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div className="space-y-1">
+            <h2 id="assign-title" className="text-lg font-semibold">Assign a courier</h2>
+            <p className="text-sm text-muted-foreground">
+              <span className="font-mono">{parcel.trackingNumber}</span>
+              {parcel.source === "MERCHANT" && parcel.merchantOrderReference ? ` · ${parcel.merchantOrderReference}` : ""}
             </p>
-          )}
+          </div>
+          <button type="button" aria-label="Close" onClick={onClose} disabled={busy} className="text-muted-foreground hover:text-foreground">
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
-        {!parcels ? (
-          <p className="px-4 py-10 text-center text-sm text-muted-foreground">Loading parcels...</p>
-        ) : parcels.items.length === 0 ? (
-          <p className="px-4 py-10 text-center text-sm text-muted-foreground">Every parcel has a courier.</p>
+        {couriers.length === 0 ? (
+          <p className="text-sm text-muted-foreground">There are no active couriers to assign.</p>
         ) : (
-          <>
-            <ul className="divide-y">
-              {parcels.items.map((parcel) => (
-                <li key={parcel.id} className="space-y-3 px-4 py-4 sm:px-6">
-                  <div className="flex flex-wrap items-baseline justify-between gap-2">
-                    <span className="font-mono font-medium">{parcel.trackingNumber}</span>
-                    <span className="text-xs text-muted-foreground">Booked {formatDate(parcel.createdAt)}</span>
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    {parcel.size} · {parcel.weightGrams.toLocaleString()} g · {parcel.source.toLowerCase()}
-                    {parcel.merchantOrderReference ? ` · order ${parcel.merchantOrderReference}` : ""}
-                  </p>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <label className="sr-only" htmlFor={`courier-${parcel.id}`}>
-                      Courier for {parcel.trackingNumber}
-                    </label>
-                    <select
-                      id={`courier-${parcel.id}`}
-                      className="h-8 min-w-0 flex-1 rounded-lg border border-input bg-transparent px-2 text-sm sm:max-w-xs"
-                      value={choice[parcel.id] ?? workloads?.[0]?.courierUserId ?? ""}
-                      onChange={(event) => setChoice((current) => ({ ...current, [parcel.id]: event.target.value }))}
-                      disabled={!workloads || workloads.length === 0}
-                    >
-                      {(workloads ?? []).map((w) => (
-                        <option key={w.courierUserId} value={w.courierUserId}>
-                          {w.fullName} ({w.activeParcels} active)
-                        </option>
-                      ))}
-                    </select>
-                    <Button
-                      size="sm"
-                      onClick={() => assign(parcel)}
-                      disabled={busyId === parcel.id || !workloads || workloads.length === 0}
-                    >
-                      {busyId === parcel.id ? "Assigning..." : "Assign"}
-                    </Button>
-                  </div>
-                  {rowError?.id === parcel.id && <Alert>{rowError.message}</Alert>}
-                </li>
-              ))}
-            </ul>
-
-            {parcels.totalPages > 1 && (
-              <div className="flex items-center justify-between border-t px-4 py-3 sm:px-6">
-                <p className="text-xs text-muted-foreground">
-                  Page {parcels.page + 1} of {parcels.totalPages}
-                </p>
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>
-                    Previous
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={page + 1 >= parcels.totalPages}
-                    onClick={() => setPage((p) => p + 1)}
-                  >
-                    Next
-                  </Button>
-                </div>
-              </div>
-            )}
-          </>
+          <fieldset className="space-y-2">
+            <legend className="sr-only">Courier</legend>
+            {couriers.map((courier) => (
+              <label
+                key={courier.courierUserId}
+                className={`flex cursor-pointer items-center justify-between rounded-lg border px-3 py-2 ${
+                  selected === courier.courierUserId ? "border-primary bg-primary/5" : ""
+                }`}
+              >
+                <span className="flex items-center gap-3">
+                  <input
+                    type="radio"
+                    name="courier"
+                    value={courier.courierUserId}
+                    checked={selected === courier.courierUserId}
+                    onChange={() => setSelected(courier.courierUserId)}
+                  />
+                  <span className="text-sm font-medium">{courier.name}</span>
+                  <span className="text-xs text-muted-foreground">{courier.vehicleType.toLowerCase()}</span>
+                </span>
+                <span className="text-xs text-muted-foreground">{courier.activeParcels} active</span>
+              </label>
+            ))}
+          </fieldset>
         )}
-      </section>
-    </div>
-  );
-}
 
-function CouriersTab({ token, reloadKey, onChanged, onNotice }: TabProps) {
-  const [page, setPage] = useState(0);
-  const [profiles, setProfiles] = useState<PageResponse<CourierProfile> | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [userId, setUserId] = useState("");
-  const [phone, setPhone] = useState("");
-  const [vehicleType, setVehicleType] = useState<VehicleType>("BIKE");
-  const [saving, setSaving] = useState(false);
+        {problem && (
+          <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{problem}</p>
+        )}
 
-  useEffect(() => {
-    let cancelled = false;
-    getCourierProfiles(token, page, PAGE_SIZE)
-      .then((result) => {
-        if (cancelled) return;
-        setProfiles(result);
-        setError(null);
-      })
-      .catch((err) => {
-        if (!cancelled) setError(formatApiError(err));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [token, page, reloadKey]);
-
-  async function create(event: React.FormEvent) {
-    event.preventDefault();
-    setSaving(true);
-    setActionError(null);
-    try {
-      await createCourierProfile(token, { userId: userId.trim(), phone: phone.trim(), vehicleType });
-      setUserId("");
-      setPhone("");
-      onNotice("Courier profile created.");
-      onChanged();
-    } catch (err) {
-      setActionError(formatApiError(err));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function toggle(profile: CourierProfile) {
-    setActionError(null);
-    try {
-      await updateCourierProfile(token, profile.id, { active: !profile.active });
-      onNotice(`${profile.fullName ?? "Courier"} ${profile.active ? "deactivated" : "activated"}.`);
-      onChanged();
-    } catch (err) {
-      setActionError(formatApiError(err));
-    }
-  }
-
-  return (
-    <div className="space-y-6">
-      {error && <Alert>Could not load couriers: {error}</Alert>}
-      {actionError && <Alert>{actionError}</Alert>}
-
-      <section className="rounded-xl border bg-card p-4 sm:p-6">
-        <h2 className="font-semibold">Add a courier profile</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          The courier account must already exist with the COURIER role (an admin creates it). Paste the account&apos;s
-          user ID.
-        </p>
-        <form onSubmit={create} className="mt-4 grid gap-3 sm:grid-cols-2">
-          <div className="space-y-1 sm:col-span-2">
-            <Label htmlFor="courier-user-id">User ID</Label>
-            <Input id="courier-user-id" value={userId} onChange={(e) => setUserId(e.target.value)} required />
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="courier-phone">Phone (international format)</Label>
-            <Input
-              id="courier-phone"
-              type="tel"
-              placeholder="+94771234567"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              required
-            />
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="courier-vehicle">Vehicle</Label>
-            <select
-              id="courier-vehicle"
-              className="h-8 w-full rounded-lg border border-input bg-transparent px-2 text-sm"
-              value={vehicleType}
-              onChange={(e) => setVehicleType(e.target.value as VehicleType)}
-            >
-              {VEHICLE_TYPES.map((v) => (
-                <option key={v} value={v}>
-                  {v}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="sm:col-span-2">
-            <Button type="submit" disabled={saving}>
-              {saving ? "Saving..." : "Create profile"}
-            </Button>
-          </div>
-        </form>
-      </section>
-
-      <section className="overflow-hidden rounded-xl border bg-card">
-        <div className="border-b px-4 py-4 sm:px-6">
-          <h2 className="font-semibold">Courier profiles</h2>
-          {profiles && <p className="mt-1 text-sm text-muted-foreground">{profiles.totalItems} total</p>}
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={onClose} disabled={busy}>Cancel</Button>
+          <Button size="sm" onClick={confirm} disabled={busy || !selected}>
+            {busy && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+            Assign
+          </Button>
         </div>
-        {!profiles ? (
-          <p className="px-4 py-10 text-center text-sm text-muted-foreground">Loading couriers...</p>
-        ) : profiles.items.length === 0 ? (
-          <p className="px-4 py-10 text-center text-sm text-muted-foreground">No courier profiles yet.</p>
-        ) : (
-          <>
-            <ul className="divide-y">
-              {profiles.items.map((profile) => (
-                <li key={profile.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-6">
-                  <div className="min-w-0">
-                    <p className="font-medium">{profile.fullName ?? "Unknown account"}</p>
-                    <p className="truncate text-xs text-muted-foreground">
-                      {profile.email} · {profile.phone} · {profile.vehicleType}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span
-                      className={`rounded-full px-2 py-1 text-xs font-medium ${
-                        profile.active ? "bg-emerald-100 text-emerald-800" : "bg-muted text-muted-foreground"
-                      }`}
-                    >
-                      {profile.active ? "Active" : "Inactive"}
-                    </span>
-                    <Button variant="outline" size="sm" onClick={() => toggle(profile)}>
-                      {profile.active ? "Deactivate" : "Activate"}
-                    </Button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-            {profiles.totalPages > 1 && (
-              <div className="flex items-center justify-between border-t px-4 py-3 sm:px-6">
-                <p className="text-xs text-muted-foreground">
-                  Page {profiles.page + 1} of {profiles.totalPages}
-                </p>
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>
-                    Previous
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={page + 1 >= profiles.totalPages}
-                    onClick={() => setPage((p) => p + 1)}
-                  >
-                    Next
-                  </Button>
-                </div>
-              </div>
-            )}
-          </>
-        )}
-      </section>
+      </div>
     </div>
   );
 }

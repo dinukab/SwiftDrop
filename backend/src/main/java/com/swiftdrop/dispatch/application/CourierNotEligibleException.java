@@ -1,8 +1,8 @@
 package com.swiftdrop.dispatch.application;
 
 /**
- * Thrown when a courier cannot receive assignments. The message names the broken rule only, never
- * personal data.
+ * The user cannot be assigned deliveries: disabled, not a courier, or without an active courier
+ * profile (contract §5.4). The message names the rule only, never the user.
  */
 public class CourierNotEligibleException extends RuntimeException {
 

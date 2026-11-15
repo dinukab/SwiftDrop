@@ -5,6 +5,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -15,7 +17,17 @@ public interface WebhookDeliveryRepository extends JpaRepository<WebhookDelivery
 
     List<WebhookDelivery> findByMerchantId(UUID merchantId);
 
-    @Query("SELECT d FROM WebhookDelivery d WHERE d.status = 'PENDING' AND d.nextAttemptAt <= :now ORDER BY d.nextAttemptAt ASC")
-    List<WebhookDelivery> findDueDeliveries(@Param("now") Instant now);
-}
+    /** One merchant's deliveries, newest first. */
+    Page<WebhookDelivery> findByMerchantIdOrderByCreatedAtDesc(UUID merchantId, Pageable pageable);
 
+    /** A delivery, only if it belongs to this merchant: another merchant's id is simply not found. */
+    Optional<WebhookDelivery> findByIdAndMerchantId(UUID id, UUID merchantId);
+
+    /**
+     * Pending deliveries that are due, oldest first, locked for this sender. Rows locked by another
+     * sender are skipped, so two senders never send the same delivery. Must run inside a transaction.
+     */
+    @Query(value = "SELECT * FROM merchant_webhook_deliveries WHERE status = 'PENDING' AND next_attempt_at <= :now "
+            + "ORDER BY next_attempt_at LIMIT :limit FOR UPDATE SKIP LOCKED", nativeQuery = true)
+    List<WebhookDelivery> lockDueDeliveries(@Param("now") Instant now, @Param("limit") int limit);
+}

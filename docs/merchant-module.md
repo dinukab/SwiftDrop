@@ -76,6 +76,12 @@ Three Flyway SQL migrations exist under `backend/src/main/resources/db/migration
 | `POST` | `/api/v1/merchant-api/orders` | `X-API-Key` (`ROLE_MERCHANT_API`) | Create parcel (`201 Created`) or idempotent retry (`200 OK`) |
 | `GET` | `/api/v1/merchants/me/orders` | JWT (`ROLE_MERCHANT`) | Paginated orders with optional `status` filter |
 | `GET` | `/api/v1/merchants/me/orders/{orderReference}` | JWT (`ROLE_MERCHANT`) | Look up order by merchant reference |
+| `POST` | `/api/v1/merchants/me/orders/{orderReference}/holds` | JWT (`ROLE_MERCHANT`, approved) | Pause the order before pickup; optional body `{"reason"}` (max 500, kept in history only). `200` with the updated order, `409` if past `CREATED`, `404` if not this merchant's (ADR 0006 §1A) |
+| `DELETE` | `/api/v1/merchants/me/orders/{orderReference}/holds` | JWT (`ROLE_MERCHANT`, approved) | Release a hold (`PAUSED` to `CREATED`); `409` unless paused |
+| `POST` | `/api/v1/merchants/me/orders/{orderReference}/cancellations` | JWT (`ROLE_MERCHANT`, approved) | Cancel before pickup (final); `409` once picked up or already cancelled |
+| `GET` | `/api/v1/merchant-api/orders/{merchantOrderReference}` | `X-API-Key` (`ROLE_MERCHANT_API`) | Store-facing status: current status, `lastSequence` and the full sequenced history (IDs, codes and times only, no recipient details). Only the key's own merchant's orders; others are `404`. Not reachable with a login token |
+
+The order list and detail responses carry `allowedActions` (`PAUSE`, `RESUME`, `CANCEL`) so a client never has to know the lifecycle rules. `PAUSED` and `CANCELLED` are new order statuses; a courier can neither set nor leave them.
 | `GET` | `/api/v1/merchants/me/webhooks` | JWT (`ROLE_MERCHANT`) | List active webhook subscriptions |
 | `POST` | `/api/v1/merchants/me/webhooks` | JWT (`ROLE_MERCHANT`) | Register webhook URL + secret |
 | `DELETE` | `/api/v1/merchants/me/webhooks/{id}` | JWT (`ROLE_MERCHANT`) | Deactivate a webhook endpoint |
@@ -87,7 +93,7 @@ Three Flyway SQL migrations exist under `backend/src/main/resources/db/migration
 The Merchant Workspace portal routes are wrapped in [layout.tsx](../frontend/app/(merchant)/layout.tsx) using `PortalShell` (`role="MERCHANT"`):
 
 - `/merchant` ([page.tsx](../frontend/app/(merchant)/merchant/page.tsx)): Loads `GET /api/v1/merchants/me`, shows business name, registration number, approval status badge (`APPROVED`, `REJECTED`, `PENDING_APPROVAL`), navigation cards, and a sample `curl` snippet for `POST /api/v1/merchant-api/orders`.
-- `/merchant/orders` ([orders/page.tsx](../frontend/app/(merchant)/merchant/orders/page.tsx)): Fetches `GET /api/v1/merchants/me/orders` with status filter tabs (`ALL`, `CREATED`, `PICKED_UP`, `IN_TRANSIT`, `OUT_FOR_DELIVERY`, `DELIVERED`, `FAILED`) and pagination.
+- `/merchant/orders` ([orders/page.tsx](../frontend/app/(merchant)/merchant/orders/page.tsx)): Fetches `GET /api/v1/merchants/me/orders` with status filter tabs (`ALL`, `CREATED`, `PAUSED` shown as "On hold", `PICKED_UP`, `IN_TRANSIT`, `OUT_FOR_DELIVERY`, `DELIVERED`, `FAILED`, `CANCELLED`) and pagination. Each row has Pause, Resume and Cancel buttons driven by the server's `allowedActions`; Pause and Cancel open a confirm dialog with an optional reason, and the tracking number links to the public tracking page.
 - `/merchant/api-keys` ([api-keys/page.tsx](../frontend/app/(merchant)/merchant/api-keys/page.tsx)): Lists keys via `GET /api/v1/merchants/me/api-keys`, creates keys via `POST`, displays the one-time `rawKey` with a copy button, and revokes keys via `DELETE`.
 - `/merchant/webhooks` ([webhooks/page.tsx](../frontend/app/(merchant)/merchant/webhooks/page.tsx)): Lists endpoints via `GET /api/v1/merchants/me/webhooks`, registers URL + secret via `POST`, and deactivates endpoints via `DELETE`.
 
@@ -107,10 +113,33 @@ The Merchant Workspace portal routes are wrapped in [layout.tsx](../frontend/app
 
 ---
 
+### 4.1 Store API request signatures (Phase 5)
+
+Every request to `/api/v1/merchant-api/**` is authenticated with `X-API-Key`. A key created with
+encryption configured also has a **signing secret**, returned once together with the key. The store
+signs each request:
+
+```
+X-SwiftDrop-Timestamp: <unix seconds>
+X-SwiftDrop-Signature: v1=hex(HMAC-SHA256(signingSecret, timestamp + "." + METHOD + "." + path + "." + sha256hex(body)))
+```
+
+`path` is the request path without the query string; `body` is empty for `GET`. The timestamp must be
+within 5 minutes of the server clock. Signatures are optional while
+`SWIFTDROP_MERCHANT_API_REQUIRE_SIGNATURE=false`; once it is `true`, every request must be signed and
+keys without a secret are refused. A repeated order reference with the same content returns the existing
+parcel (`200`); with different content it is refused (`409`), so an old request cannot silently change an
+order. Store-API requests are limited to `SWIFTDROP_RATE_LIMIT_MERCHANT_API_PER_MINUTE` per client address.
+
+Checked end to end on a running backend, with signatures optional and then required: a valid signature is
+accepted; a wrong secret, a stale timestamp, a signature moved to a different body, a missing signature
+(when required) and a key without a secret are refused; a reused reference with different content gets
+`409`. Known limit: a captured signed request can be sent again within the 5-minute window; for orders this
+returns the same parcel, but a nonce check is not implemented.
+
 ## 7. Remaining Work (Not Yet Implemented)
 
-1. **Webhook Event Dispatcher (MER-3 / ADR 0004 §7):** `merchant_webhook_deliveries` table, `WebhookDelivery` entity, and `WebhookDeliveryRepository` exist, but the RabbitMQ consumer (`parcel.status-changed`) and outbound signed HTTP delivery / retry worker have not been implemented yet.
-2. **Symmetric Encryption for Webhook Secrets (ADR 0004 §7.2):** `WebhookEndpointService` currently Base64-encodes `secret_encrypted`; authenticated encryption (e.g., AES-GCM with a configured secret key) should replace Base64 before production use.
-3. **Admin suspend button:** Merchant signup (`/signup`, merchant tab) and approve/reject (Admin → Users) exist in the frontend; the admin UI has no button for `POST /api/v1/merchants/{id}/suspension` yet.
-4. **Frontend Build / Lint Check:** `frontend` lint/typecheck has not yet been executed in this repository after installing `node_modules`.
+1. **Merchant webhook history view:** the backend is built (`GET /api/v1/merchants/me/webhook-deliveries` and `POST /api/v1/merchants/me/webhook-deliveries/{id}/redeliveries`, manual redelivery capped at 3), but the merchant webhooks page (`frontend/app/(merchant)/merchant/webhooks/page.tsx`) has no delivery history or redeliver control yet.
+2. **Admin suspend button:** merchant signup (`/signup`, merchant tab) and approve/reject (Admin → Users) exist in the frontend; the admin UI has no button for `POST /api/v1/merchants/{id}/suspension` yet.
+3. **Frontend Build / Lint Check:** `frontend` lint/typecheck has not yet been executed in this repository after installing `node_modules`.
 
