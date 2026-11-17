@@ -30,8 +30,12 @@ public final class ParcelLifecycle {
 
     static {
         COURIER_MOVES.put(ParcelStatus.CREATED, EnumSet.of(ParcelStatus.PICKED_UP));
-        COURIER_MOVES.put(ParcelStatus.PICKED_UP, EnumSet.of(ParcelStatus.IN_TRANSIT, ParcelStatus.FAILED));
-        COURIER_MOVES.put(ParcelStatus.IN_TRANSIT, EnumSet.of(ParcelStatus.OUT_FOR_DELIVERY, ParcelStatus.FAILED));
+        COURIER_MOVES.put(ParcelStatus.PICKED_UP, EnumSet.of(ParcelStatus.HUB_ARRIVED, ParcelStatus.FAILED));
+        COURIER_MOVES.put(ParcelStatus.HUB_ARRIVED,
+                EnumSet.of(ParcelStatus.HUB_SORTED, ParcelStatus.OUT_FOR_DELIVERY, ParcelStatus.FAILED));
+        COURIER_MOVES.put(ParcelStatus.HUB_SORTED,
+                EnumSet.of(ParcelStatus.IN_TRANSIT, ParcelStatus.OUT_FOR_DELIVERY, ParcelStatus.FAILED));
+        COURIER_MOVES.put(ParcelStatus.IN_TRANSIT, EnumSet.of(ParcelStatus.HUB_ARRIVED, ParcelStatus.FAILED));
         COURIER_MOVES.put(ParcelStatus.OUT_FOR_DELIVERY, EnumSet.of(ParcelStatus.DELIVERED, ParcelStatus.FAILED));
         COURIER_MOVES.put(ParcelStatus.DELIVERED, EnumSet.noneOf(ParcelStatus.class));
         COURIER_MOVES.put(ParcelStatus.FAILED, EnumSet.noneOf(ParcelStatus.class));

@@ -195,6 +195,14 @@ class MigrationConventionTest {
                         tuple(
                                 "202611171000",
                                 "dispatch create hubs",
-                                "dispatch/V202611171000__dispatch_create_hubs.sql"));
+                                "dispatch/V202611171000__dispatch_create_hubs.sql"),
+                        tuple(
+                                "202611171100",
+                                "dispatch add hub fields to couriers",
+                                "dispatch/V202611171100__dispatch_add_hub_fields_to_couriers.sql"),
+                        tuple(
+                                "202611171200",
+                                "delivery create shipment legs",
+                                "delivery/V202611171200__delivery_create_shipment_legs.sql"));
     }
 }

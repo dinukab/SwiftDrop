@@ -63,6 +63,12 @@ public class HubService {
                 .filter(Hub::isActive);
     }
 
+    /** Throws if hub not found. */
+    public Hub requireHub(UUID hubId) {
+        Objects.requireNonNull(hubId, "hubId must not be null");
+        return hubs.findById(hubId).orElseThrow(HubNotFoundException::new);
+    }
+
     /**
      * Binds an enabled dispatcher to an active hub, or moves them if already bound.
      *

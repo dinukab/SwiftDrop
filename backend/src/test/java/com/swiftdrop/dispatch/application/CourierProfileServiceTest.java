@@ -20,6 +20,7 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.ObjectFactory;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
@@ -49,7 +50,10 @@ class CourierProfileServiceTest {
     void setUp() {
         profiles = mock(CourierProfileRepository.class);
         userDirectory = mock(UserDirectory.class);
-        service = new CourierProfileService(profiles, userDirectory, Clock.fixed(NOW, ZoneOffset.UTC));
+        @SuppressWarnings("unchecked")
+        ObjectFactory<HubService> hubs = mock(ObjectFactory.class);
+        when(hubs.getObject()).thenReturn(mock(HubService.class));
+        service = new CourierProfileService(profiles, userDirectory, hubs, Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
     @Test

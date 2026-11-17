@@ -156,12 +156,13 @@ class ParcelTest {
         Instant later = NOW.plusSeconds(60);
 
         parcel.changeStatus(ParcelStatus.PICKED_UP, COURIER_ID, null, false, later);
-        parcel.changeStatus(ParcelStatus.IN_TRANSIT, COURIER_ID, null, false, later);
+        parcel.changeStatus(ParcelStatus.HUB_ARRIVED, COURIER_ID, null, false, later);
+        parcel.changeStatus(ParcelStatus.HUB_SORTED, COURIER_ID, null, false, later);
         parcel.changeStatus(ParcelStatus.OUT_FOR_DELIVERY, COURIER_ID, null, false, later);
         parcel.changeStatus(ParcelStatus.DELIVERED, COURIER_ID, null, true, later);
 
         assertThat(parcel.getStatus()).isEqualTo(ParcelStatus.DELIVERED);
-        assertThat(parcel.getLastSequence()).isEqualTo(5);
+        assertThat(parcel.getLastSequence()).isEqualTo(6);
         assertThat(parcel.getUpdatedAt()).isEqualTo(later);
         assertThat(parcel.getCreatedAt()).isEqualTo(NOW);
     }
@@ -234,7 +235,8 @@ class ParcelTest {
     private static Parcel outForDelivery() {
         Parcel parcel = assignedParcel();
         parcel.changeStatus(ParcelStatus.PICKED_UP, COURIER_ID, null, false, NOW);
-        parcel.changeStatus(ParcelStatus.IN_TRANSIT, COURIER_ID, null, false, NOW);
+        parcel.changeStatus(ParcelStatus.HUB_ARRIVED, COURIER_ID, null, false, NOW);
+        parcel.changeStatus(ParcelStatus.HUB_SORTED, COURIER_ID, null, false, NOW);
         parcel.changeStatus(ParcelStatus.OUT_FOR_DELIVERY, COURIER_ID, null, false, NOW);
         return parcel;
     }
