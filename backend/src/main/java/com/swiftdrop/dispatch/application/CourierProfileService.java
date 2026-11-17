@@ -8,6 +8,7 @@ import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
@@ -38,16 +39,18 @@ public class CourierProfileService {
 
     private final CourierProfileRepository profiles;
     private final UserDirectory userDirectory;
+    private final ObjectFactory<HubService> hubs;
     private final Clock clock;
 
     @Autowired
-    public CourierProfileService(CourierProfileRepository profiles, UserDirectory userDirectory) {
-        this(profiles, userDirectory, Clock.systemUTC());
+    public CourierProfileService(CourierProfileRepository profiles, UserDirectory userDirectory, ObjectFactory<HubService> hubs) {
+        this(profiles, userDirectory, hubs, Clock.systemUTC());
     }
 
-    CourierProfileService(CourierProfileRepository profiles, UserDirectory userDirectory, Clock clock) {
+    CourierProfileService(CourierProfileRepository profiles, UserDirectory userDirectory, ObjectFactory<HubService> hubs, Clock clock) {
         this.profiles = Objects.requireNonNull(profiles, "profiles");
         this.userDirectory = Objects.requireNonNull(userDirectory, "userDirectory");
+        this.hubs = Objects.requireNonNull(hubs, "hubs");
         this.clock = Objects.requireNonNull(clock, "clock");
     }
 
@@ -88,6 +91,24 @@ public class CourierProfileService {
         }
     }
 
+    /**
+     * Creates an active courier profile with home hub assignment.
+     *
+     * @param homeHubId optional hub where courier is based
+     * @throws CourierUserNotFoundException if no user exists
+     * @throws CourierUserNotEligibleException if user is disabled or lacks COURIER role
+     * @throws DuplicateCourierProfileException if profile already exists
+     * @throws HubNotFoundException if home hub not found
+     */
+    @Transactional
+    public CourierProfile createProfile(UUID userId, String phone, VehicleType vehicleType, UUID homeHubId) {
+        CourierProfile profile = createProfile(userId, phone, vehicleType);
+        if (homeHubId != null) {
+            return assignHomeHub(profile.getId(), homeHubId);
+        }
+        return profile;
+    }
+
     public Optional<CourierProfile> findByUserId(UUID userId) {
         Objects.requireNonNull(userId, "userId must not be null");
         return profiles.findByUserId(userId);
@@ -126,6 +147,36 @@ public class CourierProfileService {
     public CourierProfile deactivate(UUID profileId) {
         CourierProfile profile = requireProfile(profileId);
         profile.deactivate(clock.instant());
+        return profiles.saveAndFlush(profile);
+    }
+
+    /**
+     * Assigns a courier to their home hub (where they operate from).
+     *
+     * @throws CourierProfileNotFoundException if no profile exists
+     * @throws HubNotFoundException if hub not found
+     */
+    @Transactional
+    public CourierProfile assignHomeHub(UUID profileId, UUID hubId) {
+        CourierProfile profile = requireProfile(profileId);
+        hubs.getObject().requireHub(hubId); // Validate hub exists
+        profile.assignHomeHub(hubId, clock.instant());
+        log.info("Courier {} assigned home hub {}", profileId, hubId);
+        return profiles.saveAndFlush(profile);
+    }
+
+    /**
+     * Updates courier's current hub location (for multi-hub operations).
+     *
+     * @throws CourierProfileNotFoundException if no profile exists
+     * @throws HubNotFoundException if hub not found
+     */
+    @Transactional
+    public CourierProfile moveToHub(UUID profileId, UUID hubId) {
+        CourierProfile profile = requireProfile(profileId);
+        hubs.getObject().requireHub(hubId); // Validate hub exists
+        profile.moveToHub(hubId, clock.instant());
+        log.info("Courier {} moved to hub {}", profileId, hubId);
         return profiles.saveAndFlush(profile);
     }
 

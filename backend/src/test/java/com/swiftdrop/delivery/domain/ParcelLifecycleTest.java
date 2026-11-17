@@ -4,6 +4,8 @@ import static com.swiftdrop.delivery.api.ParcelStatus.CANCELLED;
 import static com.swiftdrop.delivery.api.ParcelStatus.CREATED;
 import static com.swiftdrop.delivery.api.ParcelStatus.DELIVERED;
 import static com.swiftdrop.delivery.api.ParcelStatus.FAILED;
+import static com.swiftdrop.delivery.api.ParcelStatus.HUB_ARRIVED;
+import static com.swiftdrop.delivery.api.ParcelStatus.HUB_SORTED;
 import static com.swiftdrop.delivery.api.ParcelStatus.IN_TRANSIT;
 import static com.swiftdrop.delivery.api.ParcelStatus.OUT_FOR_DELIVERY;
 import static com.swiftdrop.delivery.api.ParcelStatus.PAUSED;
@@ -26,12 +28,18 @@ import com.swiftdrop.delivery.api.ParcelStatus;
  */
 class ParcelLifecycleTest {
 
-    /** Courier moves. Deliberately unchanged by the amendment: no courier move touches PAUSED or CANCELLED. */
+    /** Courier moves for hub-based delivery: pickup to hub, hub sorting, inter-hub transport, final delivery. */
     private static final Set<String> COURIER_ALLOWED = Set.of(
             "CREATED->PICKED_UP",
-            "PICKED_UP->IN_TRANSIT",
+            "PICKED_UP->HUB_ARRIVED",
             "PICKED_UP->FAILED",
-            "IN_TRANSIT->OUT_FOR_DELIVERY",
+            "HUB_ARRIVED->HUB_SORTED",
+            "HUB_ARRIVED->OUT_FOR_DELIVERY",
+            "HUB_ARRIVED->FAILED",
+            "HUB_SORTED->IN_TRANSIT",
+            "HUB_SORTED->OUT_FOR_DELIVERY",
+            "HUB_SORTED->FAILED",
+            "IN_TRANSIT->HUB_ARRIVED",
             "IN_TRANSIT->FAILED",
             "OUT_FOR_DELIVERY->DELIVERED",
             "OUT_FOR_DELIVERY->FAILED");
@@ -72,7 +80,8 @@ class ParcelLifecycleTest {
 
     @Test
     void aMerchantCanNeverTouchAParcelAfterPickup() {
-        for (ParcelStatus afterPickup : Set.of(PICKED_UP, IN_TRANSIT, OUT_FOR_DELIVERY, DELIVERED, FAILED)) {
+        for (ParcelStatus afterPickup : Set.of(PICKED_UP, HUB_ARRIVED, HUB_SORTED, IN_TRANSIT, OUT_FOR_DELIVERY,
+                DELIVERED, FAILED)) {
             for (ParcelStatus target : ParcelStatus.values()) {
                 assertThat(ParcelLifecycle.canHoldMove(afterPickup, target))
                         .as(afterPickup + " -> " + target).isFalse();
@@ -98,8 +107,13 @@ class ParcelLifecycleTest {
     @Test
     void nextStatusesMatchTheCourierTable() {
         assertThat(ParcelLifecycle.nextStatuses(CREATED)).containsExactly(PICKED_UP);
-        assertThat(ParcelLifecycle.nextStatuses(PICKED_UP)).containsExactlyInAnyOrder(IN_TRANSIT, FAILED);
-        assertThat(ParcelLifecycle.nextStatuses(IN_TRANSIT)).containsExactlyInAnyOrder(OUT_FOR_DELIVERY, FAILED);
+        assertThat(ParcelLifecycle.nextStatuses(PICKED_UP)).containsExactlyInAnyOrder(HUB_ARRIVED, FAILED);
+        assertThat(ParcelLifecycle.nextStatuses(HUB_ARRIVED))
+                .containsExactlyInAnyOrder(HUB_SORTED, OUT_FOR_DELIVERY, FAILED);
+        assertThat(ParcelLifecycle.nextStatuses(HUB_SORTED))
+                .containsExactlyInAnyOrder(IN_TRANSIT, OUT_FOR_DELIVERY, FAILED);
+        assertThat(ParcelLifecycle.nextStatuses(IN_TRANSIT))
+                .containsExactlyInAnyOrder(HUB_ARRIVED, FAILED);
         assertThat(ParcelLifecycle.nextStatuses(OUT_FOR_DELIVERY)).containsExactlyInAnyOrder(DELIVERED, FAILED);
         assertThat(ParcelLifecycle.nextStatuses(DELIVERED)).isEmpty();
         assertThat(ParcelLifecycle.nextStatuses(FAILED)).isEmpty();

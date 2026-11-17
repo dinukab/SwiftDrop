@@ -15,6 +15,10 @@ public enum ParcelStatus {
     CREATED,
     PICKED_UP,
     IN_TRANSIT,
+    /** Parcel arrived at a hub (pickup or intermediate hub transfer). */
+    HUB_ARRIVED,
+    /** Parcel sorted/processed at a hub (ready for next leg or delivery). */
+    HUB_SORTED,
     OUT_FOR_DELIVERY,
     DELIVERED,
     FAILED,
