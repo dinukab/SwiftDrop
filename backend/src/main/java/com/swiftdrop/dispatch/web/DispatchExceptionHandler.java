@@ -13,7 +13,10 @@ import com.swiftdrop.dispatch.application.CourierNotEligibleException;
 import com.swiftdrop.dispatch.application.CourierProfileNotFoundException;
 import com.swiftdrop.dispatch.application.CourierUserNotEligibleException;
 import com.swiftdrop.dispatch.application.CourierUserNotFoundException;
+import com.swiftdrop.dispatch.application.DispatcherNotEligibleException;
+import com.swiftdrop.dispatch.application.DispatcherUserNotFoundException;
 import com.swiftdrop.dispatch.application.DuplicateCourierProfileException;
+import com.swiftdrop.dispatch.application.HubNotFoundException;
 
 /**
  * Safe RFC 9457 bodies for dispatch endpoints. Each message names the broken rule only; no order,
@@ -56,6 +59,16 @@ class DispatchExceptionHandler {
     /** Renamed from {@code notEligible}: the same name is already used for the courier-based check above. */
     @ExceptionHandler(CourierUserNotEligibleException.class)
     ProblemDetail userNotEligible(CourierUserNotEligibleException e) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, e.getMessage());
+    }
+
+    @ExceptionHandler({HubNotFoundException.class, DispatcherUserNotFoundException.class})
+    ProblemDetail hubOrDispatcherNotFound(RuntimeException e) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, e.getMessage());
+    }
+
+    @ExceptionHandler(DispatcherNotEligibleException.class)
+    ProblemDetail dispatcherNotEligible(DispatcherNotEligibleException e) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, e.getMessage());
     }
 

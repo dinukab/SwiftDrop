@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
@@ -51,6 +52,10 @@ class DispatchPersistenceIT {
     private CourierProfileRepository profiles;
     @Autowired
     private CourierProfileService service;
+    @Autowired
+    private HubRepository hubRepository;
+    @Autowired
+    private DispatcherHubRepository dispatcherHubs;
     @Autowired
     private JdbcTemplate jdbc;
     @Autowired
@@ -140,6 +145,43 @@ class DispatchPersistenceIT {
         jdbc.execute("SAVEPOINT expected_violation");
         assertThatThrownBy(() -> jdbc.update(sql, args)).isInstanceOf(DataIntegrityViolationException.class);
         jdbc.execute("ROLLBACK TO SAVEPOINT expected_violation");
+    }
+
+
+    @Test
+    void migrationSeedsNineProvincialHubsWithColomboAsTheOnlyMainHub() {
+        List<Hub> all = hubRepository.findAll();
+
+        assertThat(all).extracting(Hub::getCode).containsExactlyInAnyOrder(
+                "LK-WP", "LK-CP", "LK-SP", "LK-NP", "LK-EP", "LK-NWP", "LK-NCP", "LK-UP", "LK-SGP");
+        assertThat(all).allMatch(Hub::isActive);
+        assertThat(all).filteredOn(Hub::isMain).extracting(Hub::getCode).containsExactly("LK-WP");
+        assertThat(hubRepository.findByActiveTrueOrderByMainDescNameAsc()).first()
+                .extracting(Hub::getCode).isEqualTo("LK-WP");
+    }
+
+    @Test
+    void databaseRejectsASecondMainHub() {
+        assertThatThrownBy(() -> jdbc.update(
+                "INSERT INTO hubs (id, code, name, main, active, created_at) VALUES (?, 'LK-XX', 'Test', TRUE, TRUE, now())",
+                UUID.randomUUID()))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void dispatcherBindingRoundTripsAndIsUniquePerUser() {
+        UUID userId = insertUser("dispatcher-hub", "DISPATCHER", true);
+        Hub uva = hubRepository.findByCode("LK-UP").orElseThrow();
+        dispatcherHubs.saveAndFlush(new DispatcherHub(userId, uva.getId(), NOW));
+        entityManager.clear();
+
+        DispatcherHub loaded = dispatcherHubs.findById(userId).orElseThrow();
+        assertThat(loaded.getHubId()).isEqualTo(uva.getId());
+
+        // A dispatcher with an unknown hub violates fk_dispatcher_hubs_hub
+        UUID other = insertUser("dispatcher-bad-hub", "DISPATCHER", true);
+        assertThatThrownBy(() -> dispatcherHubs.saveAndFlush(new DispatcherHub(other, UUID.randomUUID(), NOW)))
+                .isInstanceOf(DataIntegrityViolationException.class);
     }
 
     private UUID insertUser(String prefix, String roleName, boolean enabled) {
