@@ -1,6 +1,6 @@
 # Dispatcher module
 
-> Verified against branch `DEV3` at commit `7636dbe`, 2026-11-17. Backend `./mvnw clean verify` passes.
+> Verified against branch `feature/dispatcher` at commit `9aad858` (code identical to `DEV3`), 2026-11-17. Backend `./mvnw clean verify` passes.
 > Statuses: see [implementation-status.md](implementation-status.md).
 
 ## 1. Responsibilities
@@ -23,6 +23,9 @@ inter-hub and final-mile assignments for that hub only.
 | application | `CourierEligibility` | Enabled account + `COURIER` role + active profile |
 | application | `CourierProfileService` | Create, list, get, update, activate, deactivate profiles |
 | domain | `CourierProfile`, `CourierProfileRepository`, `VehicleType` | Table `couriers` |
+| domain | `Hub`, `HubRepository`, `DispatcherHub`, `DispatcherHubRepository` | Tables `hubs` (9 seeded rows, one Main Hub) and `dispatcher_hubs` |
+| application | `HubService` | List hubs, find a dispatcher's hub, bind or move a dispatcher (enabled `DISPATCHER` only) |
+| web | `HubController` | Hub list, own hub, admin binding |
 
 Dispatch may depend only on `identity.api`, `delivery.api` and `shared` (enforced by `ModuleBoundaryTest`).
 It reaches parcels through `delivery.api.ParcelQueries` and `ParcelAssignment`.
@@ -45,6 +48,9 @@ It reaches parcels through `delivery.api.ParcelQueries` and `ParcelAssignment`.
 | `POST /api/v1/parcel-assignments` `{parcelId, courierUserId}` | DISPATCHER | 200 `{parcelId, courierUserId}`. Dispatcher is the token subject. |
 | `GET /api/v1/courier-workloads` | DISPATCHER | `[{courierUserId, name, vehicleType, activeParcels}]`, least busy first |
 | `GET /api/v1/couriers?active=&page=&size=` | ADMIN | Page of profiles with name, email, phone |
+| `GET /api/v1/hubs` | DISPATCHER, ADMIN | Active hubs, Main Hub first: `[{code, name, main}]` |
+| `GET /api/v1/dispatchers/me` | DISPATCHER | `{userId, hub}`; hub is `null` until an admin binds one. Taken from the token |
+| `PUT /api/v1/dispatchers/{userId}/hub` `{hubCode}` | ADMIN | Binds or moves a dispatcher; 404 unknown user or hub, 409 not an enabled dispatcher |
 | `POST /api/v1/couriers` | ADMIN | 201 |
 | `PATCH /api/v1/couriers/{id}` | ADMIN | Partial update of phone, vehicle type, active |
 
@@ -67,7 +73,7 @@ Merchant-paused or cancelled parcels are not `CREATED`, so they never appear in 
 
 - JWT bearer token; roles `CUSTOMER, MERCHANT, COURIER, DISPATCHER, ADMIN` (`docs/rbac-authorization.md`).
 - Assignment, queue and workloads use `@PreAuthorize("hasRole('DISPATCHER')")`; an `ADMIN` gets 403.
-- Courier profile endpoints are `ADMIN` only on `DEV3`, so a dispatcher cannot list or edit profiles.
+- Courier profile endpoints are `ADMIN` only, so a dispatcher cannot list or edit profiles.
 - **No hub authorization exists.** Any dispatcher sees every unassigned parcel and may assign any courier.
 
 ## 7. Integration
@@ -96,7 +102,7 @@ assignment, frontend tests (the project has none).
 
 None of the following exists in code (no "hub" appears in `backend/src/main` or `frontend/app`):
 
-- Hub reference data (nine provincial hubs, Colombo = Main Hub) and dispatcher-to-hub binding.
+- ~~Hub reference data and dispatcher-to-hub binding~~: added in Phase 1 (section 12); still not enforced anywhere.
 - Hub-based filtering and backend enforcement of the dispatcher's hub.
 - Pickup, inter-hub and final-mile assignments (shipment legs); assignment history.
 - Hub arrival and handover confirmation.
@@ -110,9 +116,23 @@ None of the following exists in code (no "hub" appears in `backend/src/main` or 
 2. A dispatcher cannot read courier profiles (ADMIN only), so the UI shows names from the workload list only.
 3. The 400 handler echoes `IllegalArgumentException` messages (for example the phone format text).
 4. No test for two dispatchers assigning the same parcel at once.
-5. Another dispatch implementation exists on branch `feature/dispatcher` (same endpoints, `DISPATCHER`-or-`ADMIN`
-   on `/couriers`, eligibility-filtered workloads, atomic PATCH). It has not been merged; see section 11.
+5. The earlier parallel dispatch implementation on `feature/dispatcher` was merged away (PR #18 and #22): the
+   code on this branch is the `DEV3` version. Its small improvements (dispatcher-or-admin on `/couriers`, atomic
+   PATCH, fixed 400 text) are not in the code.
 
 ## 11. Remaining tasks
 
 See [implementation-status.md](implementation-status.md) for the ordered list.
+
+## 12. Phase 1 notes (hub reference data and dispatcher binding)
+
+- Migration `V202611171000__dispatch_create_hubs.sql` creates `hubs` (code = province code such as `LK-UP`, a unique
+  partial index allows a single Main Hub) and `dispatcher_hubs` (one row per dispatcher user), and seeds the nine
+  hubs. Codes, not zone UUIDs, so dispatch needs no access to pricing tables.
+- `HubService` and `HubController` are `@Lazy`, the same pattern as `DispatchController`: about 25 existing
+  `@SpringBootTest` classes exclude JPA and mock repositories, so an eager bean needing the new repositories would
+  break all of them. If a later phase makes `DispatchService` depend on `HubService`, keep that dependency lazy or
+  add the repository mocks to those tests.
+- Tests: `HubServiceTest` (10), `HubApiTest` (8), seed and constraint tests in `DispatchPersistenceIT` (3, need
+  Docker, not yet run), updated `MigrationConventionTest` and `DatabaseMigrationIT` (23 migrations).
+- Known gap: nothing enforces the binding yet; the queue and assignment still ignore the hub (Phase 4).

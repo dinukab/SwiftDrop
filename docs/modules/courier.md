@@ -1,6 +1,6 @@
 # Courier module
 
-> Verified against branch `DEV3` at commit `7636dbe`, 2026-11-17. The courier module is **owned by another
+> Verified against branch `feature/dispatcher` at commit `9aad858` (code identical to `DEV3`), 2026-11-17. The courier module is **owned by another
 > team member**; this document only describes it. Do not change courier code without agreement.
 > Statuses: see [implementation-status.md](implementation-status.md).
 

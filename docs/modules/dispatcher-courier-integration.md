@@ -1,6 +1,6 @@
 # Dispatcher and courier integration
 
-> Verified against branch `DEV3` at commit `7636dbe`, 2026-11-17. Sections marked **Planned** describe the
+> Verified against branch `feature/dispatcher` at commit `9aad858` (code identical to `DEV3`), 2026-11-17. Sections marked **Planned** describe the
 > target hub workflow and do not exist in code yet.
 
 ## 1. How the modules interact today
