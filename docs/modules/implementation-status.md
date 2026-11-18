@@ -1,7 +1,7 @@
 # Dispatcher and courier implementation status
 
 > Verified against branch `feature/dispatcher` at commit `fecb6e7` (includes courier PR #24), 2026-11-18 by reading the code and
-> running `./mvnw clean verify` (passes). Docker integration tests (`*IT`) were not run (Docker was off).
+> running `./mvnw clean verify` (passes) and, with Docker, `DatabaseMigrationIT` and `DispatchPersistenceIT` (pass, 26 migrations on PostgreSQL). `CourierFlowIT` fails (see `courier.md` section 8).
 
 Legend: COMPLETED, PARTIALLY IMPLEMENTED, NOT IMPLEMENTED, PLANNED, BLOCKED.
 

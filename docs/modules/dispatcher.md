@@ -93,7 +93,7 @@ Merchant-paused or cancelled parcels are not `CREATED`, so they never appear in 
 | `CourierProfileTest` | 4 | Domain rules (phone) |
 | `DispatchApiTest` | 8 | Roles, 400/404/409 mapping, dispatcher from token |
 | `CourierProfileApiTest` | 9 | Profile API roles and errors |
-| `DispatchPersistenceIT` | 4 | Needs Docker (`-Pintegration`); not run in this analysis |
+| `DispatchPersistenceIT` | 6 | Real PostgreSQL via Testcontainers: courier constraints, hub seed (9 hubs, one main), second-main-hub rejection, dispatcher binding. Passes (2026-11-18) |
 
 Not covered: concurrent assignment of one parcel, a dispatcher from another hub, hub handover, multi-leg
 assignment, frontend tests (the project has none).

@@ -1,7 +1,7 @@
 # Courier module
 
 > Verified against branch `feature/dispatcher` at commit `fecb6e7` (includes PR #24 `feature/courier-new`),
-> 2026-11-18. Backend `./mvnw clean verify` passes; Docker tests (`*IT`) were not run (Docker was off).
+> 2026-11-18. Backend `./mvnw clean verify` passes. With Docker: `DatabaseMigrationIT` and `DispatchPersistenceIT` pass, `CourierFlowIT` fails.
 > The courier module is **owned by another team member**; this document only describes it. Do not change
 > courier code without agreement. Statuses: see [implementation-status.md](implementation-status.md).
 
@@ -73,13 +73,14 @@ Final states have no exits; PAUSED and CANCELLED are merchant-only.
 |---|---|
 | `delivery/web/CourierApiTest` | 10 (unchanged by PR #24: no test for the new endpoints) |
 | `delivery/application/CourierParcelServiceTest` | 4 |
-| `delivery/application/CourierFlowIT` | 5 (Docker; not run) |
+| `delivery/application/CourierFlowIT` | 4, **2 fail on PostgreSQL**: they still expect PICKED_UP to IN_TRANSIT to OUT_FOR_DELIVERY, which PR #24 removed (409 instead of 200); the test was not updated |
 | `delivery/domain/ParcelLifecycleTest`, `ParcelTest` | updated for the new statuses |
 | `CourierHubService`, `FinalMileService`, `ShipmentLeg` | **no tests** |
 | Profile tests | see [dispatcher.md](dispatcher.md) |
 
 ## 8. Known issues (to raise with the courier owner)
 
+0. **`CourierFlowIT` fails** (2 of 4 tests): the courier lifecycle change broke the courier owner's own end-to-end test. Run: `./mvnw test -Dtest=CourierFlowIT` with Docker.
 1. **Database rejects the new statuses.** `ck_parcels_status` and the two `parcel_status_history` CHECK
    constraints (last changed in `V202611151000`) list only the eight old statuses. No migration adds
    `HUB_ARRIVED` or `HUB_SORTED`, so the first hub arrival fails on PostgreSQL with a constraint violation (a

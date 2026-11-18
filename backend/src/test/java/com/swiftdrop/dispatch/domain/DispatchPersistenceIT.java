@@ -103,14 +103,12 @@ class DispatchPersistenceIT {
         profiles.saveAndFlush(new CourierProfile(userId, "+94771234567", VehicleType.CAR, NOW));
 
         // Duplicate user_id violates uq_couriers_user_id
-        assertThatThrownBy(() -> profiles.saveAndFlush(
-                new CourierProfile(userId, "+94779999999", VehicleType.BIKE, NOW)))
-                .isInstanceOf(DataIntegrityViolationException.class);
+        assertEntityViolation(() -> profiles.saveAndFlush(
+                new CourierProfile(userId, "+94779999999", VehicleType.BIKE, NOW)));
 
         // Non-existent user_id violates fk_couriers_user
-        assertThatThrownBy(() -> profiles.saveAndFlush(
-                new CourierProfile(UUID.randomUUID(), "+94771234567", VehicleType.VAN, NOW)))
-                .isInstanceOf(DataIntegrityViolationException.class);
+        assertEntityViolation(() -> profiles.saveAndFlush(
+                new CourierProfile(UUID.randomUUID(), "+94771234567", VehicleType.VAN, NOW)));
 
         // Invalid vehicle_type violates ck_couriers_vehicle_type
         UUID secondUserId = insertUser("courier-bad-vehicle", "COURIER", true);
@@ -139,6 +137,17 @@ class DispatchPersistenceIT {
 
         assertThatThrownBy(() -> service.createProfile(disabledCourierId, "+94771234567", VehicleType.BIKE))
                 .isInstanceOf(CourierUserNotEligibleException.class);
+    }
+
+    /**
+     * A failed statement aborts the whole PostgreSQL transaction, so each expected violation runs behind a
+     * savepoint, and the failed entity is dropped from the persistence context.
+     */
+    private void assertEntityViolation(Runnable action) {
+        jdbc.execute("SAVEPOINT expected_entity_violation");
+        assertThatThrownBy(action::run).isInstanceOf(DataIntegrityViolationException.class);
+        jdbc.execute("ROLLBACK TO SAVEPOINT expected_entity_violation");
+        entityManager.clear();
     }
 
     private void assertViolation(String sql, Object... args) {
