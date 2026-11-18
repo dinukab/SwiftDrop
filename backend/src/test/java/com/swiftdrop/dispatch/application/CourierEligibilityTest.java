@@ -1,5 +1,6 @@
 package com.swiftdrop.dispatch.application;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
@@ -89,6 +90,23 @@ class CourierEligibilityTest {
         assertThatThrownBy(() -> eligibility.requireEligible(COURIER))
                 .isInstanceOf(CourierNotEligibleException.class)
                 .hasMessage("Courier profile is not active");
+    }
+
+    @Test
+    void theBooleanRuleMatchesRequireEligible() {
+        CourierProfile active = new CourierProfile(COURIER, "+94771234567", VehicleType.BIKE, java.time.Instant.EPOCH);
+        CourierProfile inactive = new CourierProfile(COURIER, "+94771234567", VehicleType.BIKE, false,
+                java.time.Instant.EPOCH);
+        UserSummary courier = new UserSummary(COURIER, "Kasun", "k@example.com", Set.of("COURIER"), true);
+
+        assertThat(CourierEligibility.isEligible(courier, active)).isTrue();
+        assertThat(CourierEligibility.isEligible(courier, inactive)).isFalse();
+        assertThat(CourierEligibility.isEligible(courier, null)).isFalse();
+        assertThat(CourierEligibility.isEligible(null, active)).isFalse();
+        assertThat(CourierEligibility.isEligible(
+                new UserSummary(COURIER, "Kasun", "k@example.com", Set.of("COURIER"), false), active)).isFalse();
+        assertThat(CourierEligibility.isEligible(
+                new UserSummary(COURIER, "Kasun", "k@example.com", Set.of("CUSTOMER"), true), active)).isFalse();
     }
 
     private void user(boolean enabled, Set<String> roles) {

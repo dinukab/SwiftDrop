@@ -111,8 +111,7 @@ None of the following exists in code (no "hub" appears in `backend/src/main` or 
 
 ## 10. Known issues
 
-1. **Workloads are not filtered by eligibility.** `DispatchService.workloads()` lists every *active profile*,
-   including a courier whose account is disabled or lost the `COURIER` role; assigning them then returns 409.
+1. ~~Workloads were not filtered by eligibility~~: fixed in Phase 2 (`CourierEligibility.isEligible`).
 2. A dispatcher cannot read courier profiles (ADMIN only), so the UI shows names from the workload list only.
 3. The 400 handler echoes `IllegalArgumentException` messages (for example the phone format text).
 4. No test for two dispatchers assigning the same parcel at once.
@@ -136,3 +135,11 @@ See [implementation-status.md](implementation-status.md) for the ordered list.
 - Tests: `HubServiceTest` (10), `HubApiTest` (8), seed and constraint tests in `DispatchPersistenceIT` (3, need
   Docker, not yet run), updated `MigrationConventionTest` and `DatabaseMigrationIT` (23 migrations).
 - Known gap: nothing enforces the binding yet; the queue and assignment still ignore the hub (Phase 4).
+
+## 13. Phase 2 notes (eligible-only workloads)
+
+`DispatchService.workloads()` now drops couriers whose account is disabled, who lack the `COURIER` role or whose
+user no longer exists, using the shared rule `CourierEligibility.isEligible(user, profile)`; `requireEligible`
+(used by assignment) has the same conditions. Tests: `DispatchServiceTest` (7), `CourierEligibilityTest` (7).
+No API or schema change. The courier PR #24 (hub statuses, `ShipmentLeg`, courier hub fields) was analysed at
+the same time; see [courier.md](courier.md) section 8 for the issues found.

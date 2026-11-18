@@ -69,8 +69,10 @@ public class DispatchService {
     }
 
     /**
-     * Every active courier with the number of parcels they hold, least busy first. A courier with no
-     * active parcels counts as 0.
+     * Every <em>eligible</em> courier with the number of parcels they hold, least busy first, so the
+     * picker never offers a courier that {@link #assign} would refuse. Eligible means the same as for
+     * assignment ({@link CourierEligibility#isEligible}): enabled account, {@code COURIER} role and an
+     * active profile. A courier with no active parcels counts as 0.
      */
     @Transactional(readOnly = true)
     public List<CourierWorkload> workloads() {
@@ -81,10 +83,14 @@ public class DispatchService {
         return activeProfiles.stream()
                 .map(profile -> {
                     UserSummary user = users.findUser(profile.getUserId()).orElse(null);
-                    String name = user != null ? user.fullName() : "Unknown courier";
+                    if (!CourierEligibility.isEligible(user, profile)) {
+                        return null;
+                    }
                     long count = active.getOrDefault(profile.getUserId(), 0L);
-                    return new CourierWorkload(profile.getUserId(), name, profile.getVehicleType().name(), count);
+                    return new CourierWorkload(profile.getUserId(), user.fullName(),
+                            profile.getVehicleType().name(), count);
                 })
+                .filter(Objects::nonNull)
                 .sorted(Comparator.comparingLong(CourierWorkload::activeParcels)
                         .thenComparing(CourierWorkload::name))
                 .toList();

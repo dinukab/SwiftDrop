@@ -112,6 +112,28 @@ class DispatchServiceTest {
     }
 
     @Test
+    void workloadsLeaveOutCouriersThatAssignmentWouldRefuse() {
+        UUID ok = UUID.fromString("00000000-0000-0000-0000-0000000000b1");
+        UUID disabled = UUID.fromString("00000000-0000-0000-0000-0000000000b2");
+        UUID customer = UUID.fromString("00000000-0000-0000-0000-0000000000b3");
+        UUID gone = UUID.fromString("00000000-0000-0000-0000-0000000000b4");
+        when(profiles.findByActive(org.mockito.ArgumentMatchers.eq(true), any()))
+                .thenReturn(new PageImpl<>(List.of(
+                        profile(ok, VehicleType.BIKE), profile(disabled, VehicleType.BIKE),
+                        profile(customer, VehicleType.BIKE), profile(gone, VehicleType.BIKE))));
+        when(users.findUser(ok)).thenReturn(Optional.of(user(ok, "Eligible Eli")));
+        when(users.findUser(disabled)).thenReturn(Optional.of(
+                new UserSummary(disabled, "Disabled Dan", "dan@example.com", Set.of("COURIER"), false)));
+        when(users.findUser(customer)).thenReturn(Optional.of(
+                new UserSummary(customer, "Plain Pat", "pat@example.com", Set.of("CUSTOMER"), true)));
+        when(users.findUser(gone)).thenReturn(Optional.empty());
+        when(parcelQueries.countActiveParcelsByCourier()).thenReturn(Map.of());
+
+        assertThat(service.workloads()).extracting(DispatchService.CourierWorkload::courierUserId)
+                .containsExactly(ok);
+    }
+
+    @Test
     void theWorkloadViewAsksOnlyForActiveProfiles() {
         when(profiles.findByActive(org.mockito.ArgumentMatchers.eq(true), any()))
                 .thenReturn(new PageImpl<>(List.of()));
