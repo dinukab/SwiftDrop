@@ -51,12 +51,19 @@ class RabbitMessagingConfigurationTest {
                 assertThat(dlq.getArguments()).containsExactlyEntriesOf(Map.of("x-queue-type", "quorum"));
                 List<Binding> bindings = declarations.stream().filter(Binding.class::isInstance)
                         .map(Binding.class::cast).filter(b -> b.getDestination().startsWith(name)).toList();
-                assertThat(bindings).hasSize(2);
+                if (consumer.equals("merchant")) {
+                    assertThat(bindings).hasSize(2);
+                    assertThat(bindings).anySatisfy(b -> {
+                        assertThat(b.getDestination()).isEqualTo(name);
+                        assertThat(b.getExchange()).isEqualTo("swiftdrop.events");
+                        assertThat(b.getRoutingKey()).isEqualTo("parcel.status-changed");
+                    });
+                } else {
+                    // Notification is not bound to swiftdrop.events yet: nothing consumes it (see
+                    // NotificationMessagingConfiguration). Only its dead-letter binding exists.
+                    assertThat(bindings).hasSize(1);
+                }
                 assertThat(bindings).anySatisfy(b -> {
-                    assertThat(b.getDestination()).isEqualTo(name);
-                    assertThat(b.getExchange()).isEqualTo("swiftdrop.events");
-                    assertThat(b.getRoutingKey()).isEqualTo("parcel.status-changed");
-                }).anySatisfy(b -> {
                     assertThat(b.getDestination()).isEqualTo(name + ".dlq");
                     assertThat(b.getExchange()).isEqualTo("swiftdrop.dead-letter");
                     assertThat(b.getRoutingKey()).isEqualTo(name);

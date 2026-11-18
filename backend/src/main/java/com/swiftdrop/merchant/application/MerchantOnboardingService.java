@@ -41,6 +41,11 @@ public class MerchantOnboardingService {
     @Transactional
     public Merchant register(String fullName, String email, String rawPassword, String businessName,
             String registrationNumber, String contactPhone) {
+        // Checked before the login user is created so a duplicate leaves no account behind; the unique
+        // constraint below still catches a concurrent duplicate.
+        if (merchants.existsByRegistrationNumber(registrationNumber.trim())) {
+            throw new RegistrationNumberAlreadyRegisteredException(registrationNumber.trim());
+        }
         UUID userId;
         try {
             userId = userDirectory.createMerchantUser(fullName, email, rawPassword);
@@ -103,10 +108,22 @@ public class MerchantOnboardingService {
         return merchants.saveAndFlush(merchant);
     }
 
+    /** Suspends an APPROVED merchant; its API keys and portal features stop working immediately. */
+    @Transactional
+    public Merchant suspend(UUID merchantId, UUID adminId) {
+        Merchant merchant = requireStatus(merchantId, MerchantStatus.APPROVED);
+        merchant.suspend(adminId);
+        return merchants.saveAndFlush(merchant);
+    }
+
     private Merchant requirePending(UUID merchantId) {
+        return requireStatus(merchantId, MerchantStatus.PENDING_APPROVAL);
+    }
+
+    private Merchant requireStatus(UUID merchantId, MerchantStatus expected) {
         Merchant merchant = merchants.findById(merchantId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Merchant not found"));
-        if (merchant.getStatus() != MerchantStatus.PENDING_APPROVAL) {
+        if (merchant.getStatus() != expected) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Merchant is already " + merchant.getStatus().name().toLowerCase());
         }

@@ -8,7 +8,9 @@ import org.springframework.stereotype.Service;
 
 import com.swiftdrop.delivery.api.CreatedParcel;
 import com.swiftdrop.delivery.api.NewMerchantParcel;
+import com.swiftdrop.delivery.api.ParcelConflictException;
 import com.swiftdrop.delivery.api.ParcelCreation;
+import com.swiftdrop.delivery.domain.OrderFingerprint;
 import com.swiftdrop.delivery.domain.Parcel;
 import com.swiftdrop.delivery.domain.ParcelRepository;
 
@@ -40,14 +42,29 @@ class MerchantParcelCreation implements ParcelCreation {
         }
         Optional<Parcel> existing = findExisting(order);
         if (existing.isPresent()) {
-            return toCreated(existing.get(), false);
+            return toCreated(sameOrder(existing.get(), order), false);
         }
         try {
             return toCreated(booking.bookForMerchant(order), true);
         } catch (DataIntegrityViolationException e) {
-            // Lost a race with an identical order; return the winner's parcel
-            return findExisting(order).map(parcel -> toCreated(parcel, false)).orElseThrow(() -> e);
+            // Lost a race with an identical order; return the winner's parcel if it is the same order
+            return findExisting(order)
+                    .map(parcel -> toCreated(sameOrder(parcel, order), false))
+                    .orElseThrow(() -> e);
         }
+    }
+
+    /**
+     * A repeated reference with the same content returns the parcel (idempotent retry). With different
+     * content it is refused: the reference was already used for another order, and silently returning
+     * the first one would hide the change. Parcels created before fingerprints keep the old behaviour.
+     */
+    private static Parcel sameOrder(Parcel parcel, NewMerchantParcel order) {
+        String stored = parcel.getOrderFingerprint();
+        if (stored != null && !stored.equals(OrderFingerprint.of(order))) {
+            throw new ParcelConflictException("This order reference was already used for a different order");
+        }
+        return parcel;
     }
 
     private Optional<Parcel> findExisting(NewMerchantParcel order) {

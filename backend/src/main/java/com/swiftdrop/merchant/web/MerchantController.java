@@ -36,6 +36,7 @@ import com.swiftdrop.shared.web.PageResponse;
  *   <li>{@code GET /api/v1/merchants} — admin directory</li>
  *   <li>{@code POST /api/v1/merchants/{id}/approval} — admin approve</li>
  *   <li>{@code POST /api/v1/merchants/{id}/rejection} — admin reject</li>
+ *   <li>{@code POST /api/v1/merchants/{id}/suspension} — admin suspend an approved merchant</li>
  * </ul>
  */
 @RestController
@@ -105,6 +106,16 @@ class MerchantController {
             @AuthenticationPrincipal Jwt jwt) {
         UUID adminId = UUID.fromString(jwt.getSubject());
         return MerchantResponse.from(onboarding.reject(id, adminId, request.reason()));
+    }
+
+    /** Suspends an APPROVED merchant. Restricted to ADMIN. */
+    @PostMapping("/{id}/suspension")
+    @PreAuthorize("hasRole('ADMIN')")
+    MerchantResponse suspend(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal Jwt jwt) {
+        UUID adminId = UUID.fromString(jwt.getSubject());
+        return MerchantResponse.from(onboarding.suspend(id, adminId));
     }
 
     private static MerchantStatus parseStatus(String status) {

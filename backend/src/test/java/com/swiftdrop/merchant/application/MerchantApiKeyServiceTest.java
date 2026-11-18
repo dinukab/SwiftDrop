@@ -40,7 +40,10 @@ class MerchantApiKeyServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new MerchantApiKeyService(apiKeyRepository, merchantRepository, passwordEncoder);
+        // The same test-only key the build passes to every test run (see pom.xml)
+        WebhookSecretCipher cipher = new WebhookSecretCipher(
+                "test=9YNCoF61LK2O35ShQ1pKG+Roty+tHmUplzzjcEjNz2M=", "test");
+        service = new MerchantApiKeyService(apiKeyRepository, merchantRepository, passwordEncoder, cipher);
     }
 
     @Test

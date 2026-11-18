@@ -70,7 +70,9 @@ class CourierParcelServiceTest {
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Collection<ParcelStatus>> terminal = ArgumentCaptor.forClass(Collection.class);
         verify(parcels).findCourierDay(eq(COURIER_ID), terminal.capture(), eq(Instant.parse("2026-11-02T18:30:00Z")));
-        assertThat(terminal.getValue()).containsExactlyInAnyOrder(ParcelStatus.DELIVERED, ParcelStatus.FAILED);
+        // A cancelled parcel leaves the courier's list like a delivered or failed one; a paused one stays
+        assertThat(terminal.getValue())
+                .containsExactlyInAnyOrder(ParcelStatus.DELIVERED, ParcelStatus.FAILED, ParcelStatus.CANCELLED);
     }
 
     @Test

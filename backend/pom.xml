@@ -30,6 +30,11 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-amqp</artifactId>
         </dependency>
+        <!-- Webhook delivery to merchant endpoints: timeouts, no redirects, DNS policy (ADR 0004 section 7.3) -->
+        <dependency>
+            <groupId>org.apache.httpcomponents.client5</groupId>
+            <artifactId>httpclient5</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-jpa</artifactId>
@@ -143,6 +148,17 @@
                 <artifactId>spring-boot-maven-plugin</artifactId>
             </plugin>
             <plugin>
+                <!-- Test-only webhook encryption key (not a secret: it protects test data only). -->
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <systemPropertyVariables>
+                        <swiftdrop.webhooks.keys>test=9YNCoF61LK2O35ShQ1pKG+Roty+tHmUplzzjcEjNz2M=</swiftdrop.webhooks.keys>
+                        <swiftdrop.webhooks.active-key-id>test</swiftdrop.webhooks.active-key-id>
+                    </systemPropertyVariables>
+                </configuration>
+            </plugin>
+            <plugin>
                 <groupId>org.jacoco</groupId>
                 <artifactId>jacoco-maven-plugin</artifactId>
                 <version>${jacoco-maven-plugin.version}</version>
@@ -179,6 +195,12 @@
                     <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-failsafe-plugin</artifactId>
+                        <configuration>
+                            <systemPropertyVariables>
+                                <swiftdrop.webhooks.keys>test=9YNCoF61LK2O35ShQ1pKG+Roty+tHmUplzzjcEjNz2M=</swiftdrop.webhooks.keys>
+                                <swiftdrop.webhooks.active-key-id>test</swiftdrop.webhooks.active-key-id>
+                            </systemPropertyVariables>
+                        </configuration>
                         <executions>
                             <execution>
                                 <goals>
