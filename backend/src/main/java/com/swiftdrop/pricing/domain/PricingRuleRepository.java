@@ -22,5 +22,9 @@ public interface PricingRuleRepository extends JpaRepository<PricingRule, UUID> 
     List<PricingRule> findByOriginZoneId(UUID originZoneId);
 
     List<PricingRule> findByActiveTrue();
+
+    boolean existsByOriginZoneIdAndActiveTrue(UUID originZoneId);
+
+    boolean existsByDestinationZoneIdAndActiveTrue(UUID destinationZoneId);
 }
 
