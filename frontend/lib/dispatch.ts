@@ -39,6 +39,8 @@ export interface DispatcherHub {
 /** One assignment in a parcel's history; `endedAt` and `endReason` are null while it is active. */
 export interface AssignmentHistoryEntry {
   id: string;
+  /** Position of the leg in the journey, starting at 1. */
+  legSequence: number;
   legType: "PICKUP" | "INTER_HUB" | "FINAL_MILE";
   courierUserId: string;
   courierName: string;
@@ -69,13 +71,15 @@ export function provinceName(code: string | null): string {
   return PROVINCE_NAMES[code] ?? code;
 }
 
-const LEG_NAMES: Record<AssignmentHistoryEntry["legType"], string> = {
+export type LegType = AssignmentHistoryEntry["legType"];
+
+const LEG_NAMES: Record<LegType, string> = {
   PICKUP: "Pickup",
   INTER_HUB: "Between hubs",
   FINAL_MILE: "Final delivery",
 };
 
-export function legName(leg: AssignmentHistoryEntry["legType"]): string {
+export function legName(leg: LegType): string {
   return LEG_NAMES[leg] ?? leg;
 }
 
@@ -120,4 +124,32 @@ export function getDispatcherHubs(): Promise<DispatcherHub[]> {
 /** Binds a dispatcher to a hub, or moves them (admin only). 409 if the account is disabled or not a dispatcher. */
 export function assignDispatcherHub(userId: string, hubCode: string): Promise<DispatcherHub> {
   return api.put<DispatcherHub>(`/api/v1/dispatchers/${encodeURIComponent(userId)}/hub`, { hubCode });
+}
+
+/** A leg that waits for a courier at the dispatcher's hub: the parcel has arrived and the previous leg is done. */
+export interface WaitingLeg {
+  legId: string;
+  parcelId: string;
+  trackingNumber: string;
+  legType: LegType;
+  sequence: number;
+  /** Hub codes are province codes such as "LK-UP". */
+  sourceHubCode: string;
+  destinationHubCode: string;
+  size: "SMALL" | "MEDIUM" | "LARGE";
+  weightGrams: number;
+}
+
+/** Parcels waiting at the dispatcher's hub for their next leg (the pickup leg is assigned from the queue). */
+export function getWaitingLegs(page: number, size: number): Promise<PageResponse<WaitingLeg>> {
+  const params = new URLSearchParams({ page: String(page), size: String(size) });
+  return api.get<PageResponse<WaitingLeg>>(`/api/v1/waiting-legs?${params.toString()}`);
+}
+
+/**
+ * Hands the parcel to a courier for its next leg. 404 if the leg starts at another hub; 409 with the reason
+ * if the courier is not eligible or not based at this hub, or the parcel is not waiting at a hub.
+ */
+export function assignLegCourier(parcelId: string, legId: string, courierUserId: string): Promise<unknown> {
+  return api.post(`/api/v1/leg-assignments`, { parcelId, legId, courierUserId });
 }

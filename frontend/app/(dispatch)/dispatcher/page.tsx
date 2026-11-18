@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { AlertCircle, CheckCircle2, ChevronLeft, ChevronRight, History, Loader2, RefreshCw, Truck, X } from "lucide-react";
+import { AlertCircle, CheckCircle2, ChevronLeft, ChevronRight, History, Loader2, RefreshCw, Truck } from "lucide-react";
 import { formatApiError, type PageResponse } from "@/lib/api";
 import {
   assignCourier,
@@ -17,6 +17,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { HubBanner } from "@/components/dispatch/hub-banner";
 import { AssignmentHistoryDialog } from "@/components/dispatch/assignment-history-dialog";
+import { AssignCourierDialog } from "@/components/dispatch/assign-courier-dialog";
+import { WaitingLegsCard } from "@/components/dispatch/waiting-legs-card";
 
 const PAGE_SIZE = 10;
 
@@ -46,6 +48,8 @@ export default function DispatcherPage() {
   const [historyFor, setHistoryFor] = useState<UnassignedParcel | null>(null);
   // undefined while loading, null when an admin has not assigned a hub yet
   const [hub, setHub] = useState<Hub | null | undefined>(undefined);
+  // Bumped by Refresh so the waiting-legs card reloads together with the queue
+  const [refreshKey, setRefreshKey] = useState(0);
 
   /** Applies one loaded board to the screen. Called only after the fetch has completed. */
   const apply = (board: Board) => {
@@ -107,6 +111,7 @@ export default function DispatcherPage() {
 
   const refresh = () => {
     setNotice(null);
+    setRefreshKey((n) => n + 1);
     reload();
   };
 
@@ -270,12 +275,29 @@ export default function DispatcherPage() {
       </div>
       )}
 
-      {assigning && (
-        <AssignDialog
-          parcel={assigning}
+      {hub && (
+        <WaitingLegsCard
+          hubName={provinceName(hub.code)}
           couriers={workloads}
+          refreshKey={refreshKey}
+          onAssigned={(message) => {
+            setNotice(message);
+            reload();
+          }}
+        />
+      )}
+
+      {assigning && (
+        <AssignCourierDialog
+          title="Assign a courier"
+          subject={
+            assigning.trackingNumber +
+            (assigning.source === "MERCHANT" && assigning.merchantOrderReference ? ` · ${assigning.merchantOrderReference}` : "")
+          }
+          couriers={workloads}
+          assign={(courierUserId) => assignCourier(assigning.id, courierUserId)}
           onClose={() => setAssigning(null)}
-          onAssigned={onAssigned}
+          onAssigned={(courier) => onAssigned(assigning, courier)}
         />
       )}
 
@@ -290,108 +312,3 @@ export default function DispatcherPage() {
   );
 }
 
-/** Picks a courier for one parcel. Shows each courier's load so the least busy is an easy choice. */
-function AssignDialog({
-  parcel,
-  couriers,
-  onClose,
-  onAssigned,
-}: {
-  parcel: UnassignedParcel;
-  couriers: CourierWorkload[];
-  onClose: () => void;
-  onAssigned: (parcel: UnassignedParcel, courier: CourierWorkload) => void;
-}) {
-  const [selected, setSelected] = useState<string | null>(couriers[0]?.courierUserId ?? null);
-  const [busy, setBusy] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !busy) onClose();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [busy, onClose]);
-
-  const confirm = async () => {
-    const courier = couriers.find((c) => c.courierUserId === selected);
-    if (!courier) return;
-    setBusy(true);
-    setProblem(null);
-    try {
-      await assignCourier(parcel.id, courier.courierUserId);
-      onAssigned(parcel, courier);
-    } catch (err) {
-      // 409 carries the reason (not eligible, or already picked up); show it as it is
-      setProblem(formatApiError(err));
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => !busy && onClose()}>
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="assign-title"
-        className="w-full max-w-md space-y-4 rounded-xl border bg-background p-6 shadow-lg"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="flex items-start justify-between gap-4">
-          <div className="space-y-1">
-            <h2 id="assign-title" className="text-lg font-semibold">Assign a courier</h2>
-            <p className="text-sm text-muted-foreground">
-              <span className="font-mono">{parcel.trackingNumber}</span>
-              {parcel.source === "MERCHANT" && parcel.merchantOrderReference ? ` · ${parcel.merchantOrderReference}` : ""}
-            </p>
-          </div>
-          <button type="button" aria-label="Close" onClick={onClose} disabled={busy} className="text-muted-foreground hover:text-foreground">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        {couriers.length === 0 ? (
-          <p className="text-sm text-muted-foreground">There are no active couriers to assign.</p>
-        ) : (
-          <fieldset className="space-y-2">
-            <legend className="sr-only">Courier</legend>
-            {couriers.map((courier) => (
-              <label
-                key={courier.courierUserId}
-                className={`flex cursor-pointer items-center justify-between rounded-lg border px-3 py-2 ${
-                  selected === courier.courierUserId ? "border-primary bg-primary/5" : ""
-                }`}
-              >
-                <span className="flex items-center gap-3">
-                  <input
-                    type="radio"
-                    name="courier"
-                    value={courier.courierUserId}
-                    checked={selected === courier.courierUserId}
-                    onChange={() => setSelected(courier.courierUserId)}
-                  />
-                  <span className="text-sm font-medium">{courier.name}</span>
-                  <span className="text-xs text-muted-foreground">{courier.vehicleType.toLowerCase()}</span>
-                </span>
-                <span className="text-xs text-muted-foreground">{courier.activeParcels} active</span>
-              </label>
-            ))}
-          </fieldset>
-        )}
-
-        {problem && (
-          <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{problem}</p>
-        )}
-
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" size="sm" onClick={onClose} disabled={busy}>Cancel</Button>
-          <Button size="sm" onClick={confirm} disabled={busy || !selected}>
-            {busy && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-            Assign
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}

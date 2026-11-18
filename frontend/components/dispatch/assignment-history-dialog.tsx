@@ -105,7 +105,7 @@ export function AssignmentHistoryDialog({
                   </span>
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  {legName(entry.legType)} · {provinceName(entry.hubCode)} hub · assigned by {entry.dispatcherName}
+                  Leg {entry.legSequence}: {legName(entry.legType)} · {provinceName(entry.hubCode)} hub · assigned by {entry.dispatcherName}
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {new Date(entry.assignedAt).toLocaleString()}

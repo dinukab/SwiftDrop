@@ -257,7 +257,7 @@ the same time; see [courier.md](courier.md) section 8 for the issues found.
 - **Bugs found by the tests while building this:** (1) `ParcelStatusService.changeStatus` lost its `@Transactional`
   when split into two overloads (the row lock needs a transaction), fixed; (2) two dispatchers assigning one parcel at
   once both planned legs, so `planLegs` is now idempotent under the parcel lock.
-- **Not covered:** the dispatcher UI for legs (Phase 8 rest), courier availability, retries after `FAILED`, return legs. Legs of parcels created before this change are not planned.
+- **Not covered:** courier availability, retries after `FAILED`, return legs. Legs of parcels created before this change are not planned.
 - Tests: `RoutePlannerTest` (7), `LegProgressTest` (8), `ShipmentLegServiceTest` (10), `DispatchServiceTest` (+8),
   `DispatchApiTest` (+4), `MultiLegJourneyIT` (4: four-courier journey, same province, reassignment, no legs),
   `DispatchPersistenceIT` (per-leg index), migration lists (30).
@@ -279,3 +279,16 @@ the same time; see [courier.md](courier.md) section 8 for the issues found.
   list and the UI.
 - Tests: `CourierLocationTrackerTest` (3), `CourierEligibilityTest` (+2), `DispatchServiceTest` (+1),
   `MultiLegJourneyIT` (current hub after two arrivals; a Southern-based courier refused at Uva). Full build: 989 tests.
+
+## 21. Phase 8 (rest): leg-aware dispatcher UI
+
+- **Waiting for the next leg** card on `/dispatcher` (`components/dispatch/waiting-legs-card.tsx`): lists
+  `GET /api/v1/waiting-legs` (parcels that arrived at the dispatcher's hub), with paging, loading, empty and error
+  states, the leg route, an assignment-history button and an Assign button.
+- **Assign dialog** is now shared (`assign-courier-dialog.tsx`) between pickups and later legs; refusals from the
+  server (not eligible, not based at this hub, parcel not at a hub) are shown as worded. The leg assignment calls
+  `POST /api/v1/leg-assignments`.
+- **History dialog** shows the leg number for each assignment.
+- Checks: `tsc --noEmit` clean, eslint clean on the dispatch files, `next build` passes. **Not checked in a browser
+  or at 360px**, and there are no frontend tests (the project has none). Lint reports 3 errors in other files
+  (for example the register page), which are not part of this work.
