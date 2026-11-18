@@ -73,7 +73,7 @@ North Central, Uva, Sabaragamuwa), with Colombo (Western) as Main Hub. They alre
 |---|---|
 | Several assignments per parcel | One `assigned_courier_id`; assignment only while `CREATED` |
 | Legs and assignment history | `ShipmentLeg` entity and `shipment_legs` table exist (courier PR #24) but nothing creates or reads them; no assignment history |
-| Hub arrival / handover statuses | `HUB_ARRIVED`, `HUB_SORTED` added to the lifecycle, but the database CHECK constraints do not allow them yet (see `courier.md` known issue 1) |
+| Hub arrival / handover statuses | `HUB_ARRIVED`, `HUB_SORTED` added to the lifecycle, but the CHECK constraints now allow them (`V202611171300`) |
 | Dispatcher belongs to a hub | Done in dispatch Phase 1 (`dispatcher_hubs`, `GET /dispatchers/me`); not yet enforced |
 | Parcel hub | `ParcelSummary` has no province; pickup/dropoff zone IDs are in `delivery` |
 | Courier home hub, current hub | Columns, entity and service methods exist (PR #24) but no endpoint, no tests, and `moveToHub` needs no arrival confirmation |
@@ -110,4 +110,4 @@ Decisions needed from the courier and delivery owners before dispatch Phase 5 or
 1. Who confirms a hub arrival: the courier (as built) or the receiving hub's dispatcher (as in the brief).
 2. Whether `shipment_legs` stays in `delivery` (as built) or moves to `dispatch` (as agreed on 2026-11-17), and
    whether `assigned_courier_id` holds the courier user ID or the profile ID.
-3. A migration adding the two statuses to the `parcels` and `parcel_status_history` CHECK constraints.
+3. ~~A migration adding the two statuses to the CHECK constraints~~: done 2026-11-18 (`V202611171300`).

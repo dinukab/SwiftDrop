@@ -1,7 +1,7 @@
 # Courier module
 
 > Verified against branch `feature/dispatcher` at commit `fecb6e7` (includes PR #24 `feature/courier-new`),
-> 2026-11-18. Backend `./mvnw clean verify` passes. With Docker: `DatabaseMigrationIT` and `DispatchPersistenceIT` pass, `CourierFlowIT` fails.
+> 2026-11-18. Backend `./mvnw clean verify` passes. With Docker: `DatabaseMigrationIT` (27 migrations), `DispatchPersistenceIT`, `CourierFlowIT`, `ParcelStatusChangeIT`, `ParcelAuthorizationMatrixIT` pass; `DeliveryQueriesIT` (1 timestamp-precision failure on Windows) and `RabbitMessagingIT` (1 dead-letter timeout) fail for unrelated reasons.
 > The courier module is **owned by another team member**; this document only describes it. Do not change
 > courier code without agreement. Statuses: see [implementation-status.md](implementation-status.md).
 
@@ -73,19 +73,16 @@ Final states have no exits; PAUSED and CANCELLED are merchant-only.
 |---|---|
 | `delivery/web/CourierApiTest` | 10 (unchanged by PR #24: no test for the new endpoints) |
 | `delivery/application/CourierParcelServiceTest` | 4 |
-| `delivery/application/CourierFlowIT` | 4, **2 fail on PostgreSQL**: they still expect PICKED_UP to IN_TRANSIT to OUT_FOR_DELIVERY, which PR #24 removed (409 instead of 200); the test was not updated |
+| `delivery/application/CourierFlowIT` | 5, all pass on PostgreSQL (2026-11-18), including a cross-province route through every hub status and the three hub endpoints |
 | `delivery/domain/ParcelLifecycleTest`, `ParcelTest` | updated for the new statuses |
 | `CourierHubService`, `FinalMileService`, `ShipmentLeg` | **no tests** |
 | Profile tests | see [dispatcher.md](dispatcher.md) |
 
 ## 8. Known issues (to raise with the courier owner)
 
-0. **`CourierFlowIT` fails** (2 of 4 tests): the courier lifecycle change broke the courier owner's own end-to-end test. Run: `./mvnw test -Dtest=CourierFlowIT` with Docker.
-1. **Database rejects the new statuses.** `ck_parcels_status` and the two `parcel_status_history` CHECK
-   constraints (last changed in `V202611151000`) list only the eight old statuses. No migration adds
-   `HUB_ARRIVED` or `HUB_SORTED`, so the first hub arrival fails on PostgreSQL with a constraint violation (a
-   500). Unit tests do not see it because they never touch PostgreSQL. Confirmed by reading the SQL; not
-   reproduced (Docker was off).
+0. **Fixed 2026-11-18, `CourierFlowIT` and two other ITs followed the old lifecycle.** `CourierFlowIT`, `ParcelStatusChangeIT` and `ParcelAuthorizationMatrixIT` still walked PICKED_UP, IN_TRANSIT, OUT_FOR_DELIVERY (409 after PR #24). They now use the same-province path PICKED_UP, HUB_ARRIVED, OUT_FOR_DELIVERY, and `CourierFlowIT` has a new cross-province test through every hub status.
+1. **Fixed 2026-11-18, database rejected the new statuses.** The CHECK constraints on `parcels.status` and `parcel_status_history` listed only the eight old statuses. Migration `V202611171300__delivery_add_hub_statuses.sql` adds `HUB_ARRIVED` and `HUB_SORTED`; verified on PostgreSQL.
+1b. **Fixed 2026-11-18, hub endpoints skipped history, outbox and the proof check.** `CourierHubService` and `FinalMileService` changed the status directly: no history row, no outbox event (so no webhook, notification or live tracking for hub arrival, pickup-for-delivery and delivery), no parcel row lock, and `complete-delivery` passed `proofCaptured=true`, so it accepted DELIVERED without proof. Both now call `ParcelStatusService.changeStatus`.
 2. **A parcel still has one courier.** `Parcel.assignedCourierId` is set only while `CREATED` and every
    courier action requires `courierId == assignedCourierId`. `FinalMileService` therefore only works if the
    pickup courier is also the final-mile courier, so different couriers per leg are impossible.

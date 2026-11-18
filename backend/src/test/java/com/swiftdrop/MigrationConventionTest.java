@@ -203,6 +203,10 @@ class MigrationConventionTest {
                         tuple(
                                 "202611171200",
                                 "delivery create shipment legs",
-                                "delivery/V202611171200__delivery_create_shipment_legs.sql"));
+                                "delivery/V202611171200__delivery_create_shipment_legs.sql"),
+                        tuple(
+                                "202611171300",
+                                "delivery add hub statuses",
+                                "delivery/V202611171300__delivery_add_hub_statuses.sql"));
     }
 }

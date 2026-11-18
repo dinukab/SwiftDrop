@@ -36,8 +36,8 @@ Legend: COMPLETED, PARTIALLY IMPLEMENTED, NOT IMPLEMENTED, PLANNED, BLOCKED.
 | Proof of delivery | COMPLETED | `PUT /parcels/{id}/proof` |
 | Courier UI (day list, tasks, proof) | COMPLETED | `frontend/app/(courier)` |
 | Courier history endpoint | NOT IMPLEMENTED | UI mentions `GET /courier/parcels/history`; backend has none |
-| Hub statuses `HUB_ARRIVED`, `HUB_SORTED` in the lifecycle | PARTIALLY IMPLEMENTED | PR #24 lifecycle and unit tests; **database CHECK constraints reject them** (no migration) |
-| Hub arrival and final-mile endpoints | PARTIALLY IMPLEMENTED | `POST .../hub-arrival`, `.../pickup-for-delivery`, `.../complete-delivery`; no tests; arrival is courier-driven and ignores the hub |
+| Hub statuses `HUB_ARRIVED`, `HUB_SORTED` in the lifecycle | COMPLETED | Lifecycle, unit tests, migration `V202611171300` (CHECK constraints), `CourierFlowIT` on PostgreSQL |
+| Hub arrival and final-mile endpoints | PARTIALLY IMPLEMENTED | Work and are covered by `CourierFlowIT`; now record history and outbox events and require proof. Arrival is still courier-driven and ignores `hubId`; no MockMvc tests |
 | Shipment legs (`ShipmentLeg`, `shipment_legs`) | NOT IMPLEMENTED | Entity and table only; nothing creates or reads legs |
 | Availability / operational status | NOT IMPLEMENTED | Only `active` exists |
 | Home hub / current hub | PARTIALLY IMPLEMENTED | Columns, entity, service methods; no endpoint, no tests, no arrival confirmation |
@@ -48,7 +48,8 @@ Legend: COMPLETED, PARTIALLY IMPLEMENTED, NOT IMPLEMENTED, PLANNED, BLOCKED.
 - [x] Base branch: `feature/dispatcher` at `9aad858`, whose backend and frontend code equals `DEV3`.
 - [x] Hub-to-zone link by province code through `delivery.api` (needs the delivery owner's approval before Phase 3).
 - [x] Legs and assignment history in dispatch tables (needs an ADR amending ADR 0006 before the leg phase).
-- [ ] Courier owner: migration for the two new statuses; who confirms hub arrival; user ID vs profile ID in legs (see `dispatcher-courier-integration.md` section 10).
+- [x] Migration for the two new statuses (done 2026-11-18).
+- [ ] Courier owner: who confirms hub arrival; user ID vs profile ID in legs; whether `shipment_legs` stays in `delivery` (see `dispatcher-courier-integration.md` section 10).
 - [ ] ADR for multi-leg assignment (amends ADR 0006).
 
 ## Recommended order of small tasks
