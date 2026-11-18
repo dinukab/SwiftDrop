@@ -45,6 +45,15 @@ class HubController {
         return new DispatcherHubResponse(userId, hubs.hubForDispatcher(userId).map(HubResponse::from).orElse(null));
     }
 
+    /** Every dispatcher that has a hub, for the admin screen; unbound dispatchers are not listed. */
+    @GetMapping("/api/v1/dispatcher-hubs")
+    @PreAuthorize("hasRole('ADMIN')")
+    List<DispatcherHubResponse> dispatcherHubs() {
+        return hubs.listDispatcherHubs().entrySet().stream()
+                .map(entry -> new DispatcherHubResponse(entry.getKey(), HubResponse.from(entry.getValue())))
+                .toList();
+    }
+
     @PutMapping("/api/v1/dispatchers/{userId}/hub")
     @PreAuthorize("hasRole('ADMIN')")
     DispatcherHubResponse assign(@PathVariable UUID userId, @Valid @RequestBody AssignDispatcherHubRequest request) {

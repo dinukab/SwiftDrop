@@ -202,3 +202,31 @@ the same time; see [courier.md](courier.md) section 8 for the issues found.
   courier's later status changes; legs other than `PICKUP` are reserved, not used.
 - Tests: `AssignmentHistoryServiceTest` (6), `DispatchServiceTest` (+6), `DispatchApiTest` (+3),
   `DispatchPersistenceIT` (+2), `DispatchHubScopeIT` (+3, including the race), migration lists (28 migrations).
+
+## 17. Phase 8 notes (dispatcher UI, first part)
+
+- `lib/dispatch.ts`: types and calls for `GET /dispatchers/me`, the queue (now with pickup and dropoff province),
+  assignment, workloads and `GET /parcels/{id}/assignment-history`; `provinceName` maps the nine province codes.
+- `components/dispatch/hub-banner.tsx`: loading placeholder, the hub name (with a "Main hub" badge), or an alert
+  when an admin has not assigned a hub. Without a hub the page does not call the queue (it would be a 409).
+- `components/dispatch/assignment-history-dialog.tsx`: loads on open; loading, empty and error states; Escape closes;
+  shows courier, leg, hub, assigning dispatcher and when, and marks the current courier.
+- `app/(dispatch)/dispatcher/page.tsx`: hub first, then the queue; a "Route" column (pickup to dropoff province);
+  a history button per row; the queue text names the hub's province. Existing assign dialog, workload panel and
+  paging are unchanged.
+- **No courier management tab:** `/api/v1/couriers` is ADMIN only by design, so it belongs in the admin portal.
+- Hub binding screen: see section 18.
+- Verification: `eslint`, `tsc --noEmit` (0 errors) and `next build` pass. Not yet checked in a browser or at 360 px.
+
+## 18. Admin screen: dispatcher hubs
+
+- **Page** `frontend/app/(admin)/admin/dispatchers/page.tsx`, nav item "Dispatcher Hubs" (`ADMIN_NAV`). Lists dispatcher
+  accounts (`GET /api/v1/users?role=DISPATCHER`), the active hubs (`GET /api/v1/hubs`) and the current bindings
+  (`GET /api/v1/dispatcher-hubs`); each row has a hub select and Save (`PUT /api/v1/dispatchers/{id}/hub`).
+- **States:** loading, error with Refresh, empty (points to "Onboard Staff" on the User Directory page), per-row error
+  (for example a disabled account gives 409), success notice, "no hub yet" hint, disabled accounts cannot be edited.
+- **New backend read** `GET /api/v1/dispatcher-hubs` (ADMIN only): each dispatcher that has an active hub with that hub.
+  Unbound dispatchers are absent; the screen gets them from the user list. Tests: `HubServiceTest`, `HubApiTest`.
+- The existing 1,600-line User Directory page was not touched (it belongs to the admin owner). Choosing a hub inside
+  the "Onboard Staff" dialog would be a later improvement.
+- Verification: `eslint`, `tsc --noEmit`, `next build` pass; not yet checked in a browser.

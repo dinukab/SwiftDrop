@@ -1,17 +1,22 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { AlertCircle, CheckCircle2, ChevronLeft, ChevronRight, Loader2, RefreshCw, Truck, X } from "lucide-react";
+import { AlertCircle, CheckCircle2, ChevronLeft, ChevronRight, History, Loader2, RefreshCw, Truck, X } from "lucide-react";
 import { formatApiError, type PageResponse } from "@/lib/api";
 import {
   assignCourier,
   getCourierWorkloads,
+  getMyHub,
   getUnassignedParcels,
+  provinceName,
   type CourierWorkload,
+  type Hub,
   type UnassignedParcel,
 } from "@/lib/dispatch";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { HubBanner } from "@/components/dispatch/hub-banner";
+import { AssignmentHistoryDialog } from "@/components/dispatch/assignment-history-dialog";
 
 const PAGE_SIZE = 10;
 
@@ -38,6 +43,9 @@ export default function DispatcherPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [assigning, setAssigning] = useState<UnassignedParcel | null>(null);
+  const [historyFor, setHistoryFor] = useState<UnassignedParcel | null>(null);
+  // undefined while loading, null when an admin has not assigned a hub yet
+  const [hub, setHub] = useState<Hub | null | undefined>(undefined);
 
   /** Applies one loaded board to the screen. Called only after the fetch has completed. */
   const apply = (board: Board) => {
@@ -48,8 +56,29 @@ export default function DispatcherPage() {
     setError(null);
   };
 
-  // Reload whenever the page changes. State is only set inside the promise callbacks, after the fetch.
+  // The dispatcher's own hub comes first: the queue is limited to it, so there is nothing to load without one.
   useEffect(() => {
+    let current = true;
+    getMyHub()
+      .then((result) => {
+        if (!current) return;
+        setHub(result.hub);
+        if (!result.hub) setLoading(false);
+      })
+      .catch((err: unknown) => {
+        if (!current) return;
+        setError(formatApiError(err));
+        setHub(null);
+        setLoading(false);
+      });
+    return () => {
+      current = false;
+    };
+  }, []);
+
+  // Reload whenever the page changes (once the hub is known). State is only set inside the promise callbacks.
+  useEffect(() => {
+    if (!hub) return;
     let current = true;
     fetchBoard(page)
       .then((board) => {
@@ -64,10 +93,11 @@ export default function DispatcherPage() {
     return () => {
       current = false;
     };
-  }, [page]);
+  }, [page, hub]);
 
   /** Reloads on demand (after the Refresh button or an assignment), from an event handler. */
   const reload = () => {
+    if (!hub) return;
     setLoading(true);
     fetchBoard(page)
       .then(apply)
@@ -96,11 +126,13 @@ export default function DispatcherPage() {
             and drops out of this queue automatically.
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={refresh} disabled={loading}>
+        <Button variant="outline" size="sm" onClick={refresh} disabled={loading || !hub}>
           <RefreshCw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} />
           Refresh
         </Button>
       </div>
+
+      <HubBanner hub={hub} />
 
       {error && (
         <div role="alert" className="p-4 bg-destructive/10 border border-destructive/20 text-destructive rounded-lg flex items-center gap-3">
@@ -115,11 +147,14 @@ export default function DispatcherPage() {
         </div>
       )}
 
+      {hub && (
       <div className="grid gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle>Waiting for a courier</CardTitle>
-            <CardDescription>{totalItems} parcel{totalItems === 1 ? "" : "s"} to assign, oldest first</CardDescription>
+            <CardDescription>
+              {totalItems} parcel{totalItems === 1 ? "" : "s"} to pick up in {provinceName(hub.code)}, oldest first
+            </CardDescription>
           </CardHeader>
           <CardContent>
             {loading && parcels.length === 0 && (
@@ -131,7 +166,8 @@ export default function DispatcherPage() {
             {!loading && parcels.length === 0 && !error && (
               <div className="text-center py-12 space-y-2">
                 <Truck className="w-10 h-10 text-muted-foreground mx-auto" />
-                <p className="text-sm font-medium">Nothing waiting for a courier</p>
+                <p className="text-sm font-medium">Nothing waiting for pickup in your hub</p>
+                <p className="text-xs text-muted-foreground">New bookings from {provinceName(hub.code)} appear here.</p>
               </div>
             )}
 
@@ -143,6 +179,7 @@ export default function DispatcherPage() {
                       <tr>
                         <th className="px-4 py-3">Tracking</th>
                         <th className="px-4 py-3">Source</th>
+                        <th className="px-4 py-3">Route</th>
                         <th className="px-4 py-3">Size / Weight</th>
                         <th className="px-4 py-3">Created</th>
                         <th className="px-4 py-3"><span className="sr-only">Actions</span></th>
@@ -157,13 +194,24 @@ export default function DispatcherPage() {
                               ? `Store · ${parcel.merchantOrderReference ?? ""}`
                               : "Customer"}
                           </td>
+                          <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
+                            {provinceName(parcel.pickupProvinceCode)} → {provinceName(parcel.dropoffProvinceCode)}
+                          </td>
                           <td className="px-4 py-3 text-muted-foreground">
                             {parcel.size} ({(parcel.weightGrams / 1000).toFixed(1)} kg)
                           </td>
                           <td className="px-4 py-3 text-muted-foreground text-xs">
                             {new Date(parcel.createdAt).toLocaleString()}
                           </td>
-                          <td className="px-4 py-3 text-right">
+                          <td className="px-4 py-3 text-right whitespace-nowrap">
+                            <Button
+                              size="xs"
+                              variant="ghost"
+                              onClick={() => setHistoryFor(parcel)}
+                              aria-label={`Assignment history of ${parcel.trackingNumber}`}
+                            >
+                              <History className="w-3 h-3" />
+                            </Button>{" "}
                             <Button
                               size="xs"
                               variant="outline"
@@ -220,6 +268,7 @@ export default function DispatcherPage() {
           </CardContent>
         </Card>
       </div>
+      )}
 
       {assigning && (
         <AssignDialog
@@ -227,6 +276,14 @@ export default function DispatcherPage() {
           couriers={workloads}
           onClose={() => setAssigning(null)}
           onAssigned={onAssigned}
+        />
+      )}
+
+      {historyFor && (
+        <AssignmentHistoryDialog
+          parcelId={historyFor.id}
+          trackingNumber={historyFor.trackingNumber}
+          onClose={() => setHistoryFor(null)}
         />
       )}
     </div>

@@ -16,7 +16,9 @@ Legend: COMPLETED, PARTIALLY IMPLEMENTED, NOT IMPLEMENTED, PLANNED, BLOCKED.
 | Courier workload | COMPLETED | Phase 2: only eligible couriers (enabled, COURIER role, active profile), same rule as assignment; `DispatchServiceTest`, `CourierEligibilityTest` |
 | Courier profile API | PARTIALLY IMPLEMENTED | ADMIN only; dispatcher cannot manage profiles |
 | Dispatcher UI: queue and assign | COMPLETED | `/dispatcher` |
-| Dispatcher UI: courier management | NOT IMPLEMENTED | Planned in `PROGRESS.md` 7.5 |
+| Dispatcher UI: courier management | NOT IMPLEMENTED (by design) | Courier profile endpoints are ADMIN only (`rbac-authorization.md`), so a dispatcher tab would only show 403. Courier setup belongs in the admin portal ("Onboard Staff") |
+| Dispatcher UI: hub header, no-hub state, route column, assignment history | PARTIALLY IMPLEMENTED | Phase 8: `HubBanner`, `AssignmentHistoryDialog`, province route per row; lint, `tsc` and `next build` pass; not yet checked in a browser (desktop or 360 px) |
+| Admin UI: bind a dispatcher to a hub | PARTIALLY IMPLEMENTED | `/admin/dispatchers` (nav: "Dispatcher Hubs") lists dispatcher accounts, shows each hub, assigns or moves it; new `GET /api/v1/dispatcher-hubs` (ADMIN); backend tests pass; lint, `tsc`, `next build` pass; not yet checked in a browser |
 | Concurrency test (same parcel, two dispatchers) | COMPLETED | `DispatchHubScopeIT` on PostgreSQL (repeated runs stable); it found and fixed a spurious optimistic-lock failure |
 | Assignment history | COMPLETED (pickup leg) | Phase 5: table `parcel_assignments`, `GET /api/v1/parcels/{id}/assignment-history`; unit, API and PostgreSQL tests. Parcels assigned before the migration have no entries. Unblocks `PROGRESS.md` 7.4 |
 | Hub reference data (9 hubs, Colombo main) | PARTIALLY IMPLEMENTED | Phase 1: migration `V202611171000`, `Hub`, `HubService`, `GET /api/v1/hubs`; unit and API tests pass. Migration and seed not yet run on PostgreSQL (Docker was unavailable) |
@@ -62,4 +64,4 @@ Legend: COMPLETED, PARTIALLY IMPLEMENTED, NOT IMPLEMENTED, PLANNED, BLOCKED.
 6. ~~Assignment history and duplicate-active guard~~ (done, Phase 5). Still open: ADR and schema for shipment legs.
 7. Pickup, inter-hub and final-mile assignment on legs; duplicate-active-assignment guard.
 8. Hub arrival/handover confirmation and courier current hub (with courier owner).
-9. Dispatcher UI: hub filter, courier management, history.
+9. Dispatcher UI: hub header, route column and history done (Phase 8, first part). Still open: admin screen to bind a dispatcher to a hub, leg-aware assignment, browser check.
