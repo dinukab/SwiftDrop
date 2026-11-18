@@ -390,6 +390,21 @@ class DispatchServiceTest {
     }
 
     @Test
+    void aCourierBasedAtAnotherHubIsNeitherGivenAPickupNorALeg() {
+        doThrow(new CourierNotEligibleException("Courier is not based at this hub"))
+                .when(eligibility).requireAtHub(COURIER, uva.getId());
+        var toColombo = leg(2, com.swiftdrop.delivery.api.LegType.INTER_HUB, uva.getId(), COLOMBO_HUB_ID);
+        when(parcelLegs.findLegs(PARCEL)).thenReturn(List.of(toColombo));
+
+        assertThatThrownBy(() -> service.assign(PARCEL, COURIER, DISPATCHER))
+                .isInstanceOf(CourierNotEligibleException.class);
+        assertThatThrownBy(() -> service.assignLeg(PARCEL, toColombo.id(), COURIER, DISPATCHER))
+                .isInstanceOf(CourierNotEligibleException.class);
+        verify(parcelAssignment, never()).assignCourier(any(), any(), any());
+        verify(parcelLegs, never()).assignLegCourier(any(), any(), any(), any());
+    }
+
+    @Test
     void legAssignmentAndTheLegQueueNeedAHub() {
         when(hubService.hubForDispatcher(DISPATCHER)).thenReturn(Optional.empty());
 

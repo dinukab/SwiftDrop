@@ -139,6 +139,14 @@ class MultiLegJourneyIT {
         hubArrivals.confirmHubArrival(parcel, uvaHub, pickupCourier);
         move(parcel, pickupCourier, ParcelStatus.HUB_SORTED);
         assertThat(legDone(parcel, 1)).isTrue();
+        // Phase 7: the courier's current hub follows the arrival they confirmed
+        assertThat(currentHub(pickupCourier)).isEqualTo(uvaHub);
+
+        // A courier based at another hub is not given this hub's work
+        UUID southernBased = courier("southern-based");
+        jdbc.update("UPDATE couriers SET home_hub_id = ? WHERE user_id = ?", southernHub, southernBased);
+        assertThatThrownBy(() -> dispatch.assignLeg(parcel, legId(parcel, 2), southernBased, uvaDispatcher))
+                .isInstanceOf(CourierNotEligibleException.class).hasMessage("Courier is not based at this hub");
 
         // 3. Only the dispatcher of the leg's source hub assigns it, and only once the previous leg is done
         assertThat(waitingLegSequences(uvaDispatcher)).containsExactly(2);
@@ -158,6 +166,7 @@ class MultiLegJourneyIT {
         move(parcel, uvaToColomboCourier, ParcelStatus.IN_TRANSIT);
         hubArrivals.confirmHubArrival(parcel, colomboHub, uvaToColomboCourier);
         move(parcel, uvaToColomboCourier, ParcelStatus.HUB_SORTED);
+        assertThat(currentHub(uvaToColomboCourier)).isEqualTo(colomboHub);
 
         // 5. The Colombo dispatcher assigns the next leg
         assertThat(waitingLegSequences(colomboDispatcher)).containsExactly(3);
@@ -270,6 +279,10 @@ class MultiLegJourneyIT {
 
     private void move(UUID parcel, UUID courier, ParcelStatus target) {
         statuses.changeStatus(parcel, new StatusChange(target, null, null), Actor.courier(courier));
+    }
+
+    private UUID currentHub(UUID courierUserId) {
+        return jdbc.queryForObject("SELECT current_hub_id FROM couriers WHERE user_id = ?", UUID.class, courierUserId);
     }
 
     private UUID heldBy(UUID parcel) {

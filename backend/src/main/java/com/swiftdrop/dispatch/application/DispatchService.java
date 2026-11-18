@@ -96,6 +96,7 @@ public class DispatchService {
         Hub hub = requireHub(dispatcherUserId);
         ParcelSummary parcel = requireParcelInHub(parcelId, hub);
         eligibility.requireEligible(courierUserId);
+        eligibility.requireAtHub(courierUserId, hub.getId());
         planLegsIfNeeded(parcel, hub);
         parcelAssignment.assignCourier(parcelId, courierUserId, dispatcherUserId);
         // Same transaction, after delivery holds the parcel lock: one active row per parcel
@@ -223,6 +224,7 @@ public class DispatchService {
             throw new ParcelNotFoundException();
         }
         eligibility.requireEligible(courierUserId);
+        eligibility.requireAtHub(courierUserId, hub.getId());
         legs.getObject().assignLegCourier(parcelId, legId, courierUserId, dispatcherUserId);
         history.getObject().record(parcelId, leg.legType(), leg.sequence(), courierUserId, dispatcherUserId,
                 hub.getId());

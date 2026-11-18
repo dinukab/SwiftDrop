@@ -39,6 +39,24 @@ public class CourierEligibility {
     }
 
     /**
+     * A courier that is based at a hub (home or current) may only be given work by that hub's dispatcher.
+     * A courier with no hub recorded is not restricted, so couriers set up before hubs existed keep working.
+     * Call after {@link #requireEligible}.
+     *
+     * @throws CourierNotEligibleException if the courier is based at other hubs only
+     */
+    public void requireAtHub(UUID courierUserId, UUID hubId) {
+        Objects.requireNonNull(courierUserId, "courierUserId");
+        Objects.requireNonNull(hubId, "hubId");
+        profiles.findByUserId(courierUserId).ifPresent(profile -> {
+            boolean located = profile.getHomeHubId() != null || profile.getCurrentHubId() != null;
+            if (located && !hubId.equals(profile.getHomeHubId()) && !hubId.equals(profile.getCurrentHubId())) {
+                throw new CourierNotEligibleException("Courier is not based at this hub");
+            }
+        });
+    }
+
+    /**
      * @throws CourierNotEligibleException if the user is not an eligible courier
      */
     public void requireEligible(UUID courierUserId) {

@@ -26,7 +26,7 @@ Legend: COMPLETED, PARTIALLY IMPLEMENTED, NOT IMPLEMENTED, PLANNED, BLOCKED.
 | Hub-based parcel filtering and backend enforcement | COMPLETED (pickup queue and assignment) | Phase 4: queue and assignment are scoped to the dispatcher's hub from the server; another hub's parcel gives 404; no hub gives 409. `DispatchServiceTest`, `DispatchApiTest`, and `DispatchHubScopeIT` on PostgreSQL. Courier home hub is not enforced (no endpoint sets it) and workloads are not hub-scoped |
 | Pickup / inter-hub / final-mile assignments (legs) | COMPLETED | Phase 6 (ADR 0007): legs planned at pickup assignment, `GET /waiting-legs`, `POST /leg-assignments`, hub-scoped by the leg's source hub; `MultiLegJourneyIT` runs Uva to Southern with four couriers on PostgreSQL |
 | Duplicate active assignment per leg prevention | COMPLETED (pickup leg) | Partial unique index `uq_parcel_assignments_active` plus ending the previous row on reassignment; tested on PostgreSQL |
-| Hub arrival and handover confirmation | PARTIALLY IMPLEMENTED | Courier confirms arrival naming the hub (as decided); it must be the leg's destination, ends the leg, and unlocks the next one. Courier current hub, availability and a hub-side confirmation are not implemented |
+| Hub arrival and handover confirmation | PARTIALLY IMPLEMENTED | Courier confirms arrival naming the hub (as decided); it must be the leg's destination, ends the leg, and unlocks the next one. Phase 7: the courier's current hub is updated after the arrival and a courier based at another hub is refused. Availability and a hub-side confirmation are not implemented |
 
 ## Courier module (owner: another member; documentation only)
 

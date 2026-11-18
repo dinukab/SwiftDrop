@@ -63,8 +63,7 @@ Final states have no exits; PAUSED and CANCELLED are merchant-only.
 
 - `home_hub_id` and `current_hub_id` exist on the table and entity, with service methods
   `createProfile(..., homeHubId)`, `assignHomeHub` and `moveToHub` (which validate the hub through
-  `HubService.requireHub`). **Nothing calls them**: no endpoint, no response field, no test.
-- `moveToHub` changes the courier's current hub **without any arrival confirmation**, which the brief forbids.
+  `HubService.requireHub`). Phase 7: `moveToHub` is now called by dispatch's `CourierLocationTracker` after a courier confirms a hub arrival, and assignment checks the hubs. There is still no endpoint or response field for them.
 - Availability / operational status: not implemented (only `active`).
 
 ## 7. Testing coverage

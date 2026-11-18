@@ -109,6 +109,34 @@ class CourierEligibilityTest {
                 new UserSummary(COURIER, "Kasun", "k@example.com", Set.of("CUSTOMER"), true), active)).isFalse();
     }
 
+    @Test
+    void aCourierWithNoHubIsNotRestrictedToOne() {
+        profile(true);
+
+        assertThatCode(() -> eligibility.requireAtHub(COURIER, UUID.randomUUID())).doesNotThrowAnyException();
+    }
+
+    @Test
+    void aCourierBasedAtOtherHubsOnlyIsRefusedButHomeOrCurrentHubIsEnough() {
+        UUID uva = UUID.randomUUID();
+        UUID colombo = UUID.randomUUID();
+        UUID southern = UUID.randomUUID();
+        CourierProfile based = new CourierProfile(COURIER, "+94771234567", VehicleType.BIKE,
+                java.time.Instant.EPOCH);
+        based.assignHomeHub(uva, java.time.Instant.EPOCH);
+        when(profiles.findByUserId(COURIER)).thenReturn(Optional.of(based));
+
+        assertThatCode(() -> eligibility.requireAtHub(COURIER, uva)).doesNotThrowAnyException();
+        assertThatThrownBy(() -> eligibility.requireAtHub(COURIER, colombo))
+                .isInstanceOf(CourierNotEligibleException.class).hasMessage("Courier is not based at this hub");
+
+        based.moveToHub(colombo, java.time.Instant.EPOCH);
+        assertThatCode(() -> eligibility.requireAtHub(COURIER, colombo)).doesNotThrowAnyException();
+        assertThatCode(() -> eligibility.requireAtHub(COURIER, uva)).doesNotThrowAnyException();
+        assertThatThrownBy(() -> eligibility.requireAtHub(COURIER, southern))
+                .isInstanceOf(CourierNotEligibleException.class);
+    }
+
     private void user(boolean enabled, Set<String> roles) {
         when(users.findUser(COURIER)).thenReturn(Optional.of(
                 new UserSummary(COURIER, "Kamal Silva", "kamal@example.com", roles, enabled)));

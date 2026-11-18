@@ -106,8 +106,8 @@ None of the following exists in code (no "hub" appears in `backend/src/main` or 
 - ~~Hub reference data and dispatcher-to-hub binding~~: added in Phase 1 (section 12); still not enforced anywhere.
 - ~~Hub-based filtering and backend enforcement of the dispatcher's hub~~: done for the pickup queue and assignment (Phase 4).
 - Pickup, inter-hub and final-mile assignments (shipment legs); assignment history.
-- Hub arrival and handover confirmation.
-- Courier availability and home/current hub (courier-owned data).
+- ~~Hub arrival and handover confirmation~~: courier-confirmed arrival done in Phase 6; current hub tracking and the hub check in Phase 7 (section 20).
+- Courier availability (courier-owned data, needs the courier owner's approval).
 - Dispatcher UI: courier management, hub filter, history.
 
 ## 10. Known issues
@@ -257,8 +257,25 @@ the same time; see [courier.md](courier.md) section 8 for the issues found.
 - **Bugs found by the tests while building this:** (1) `ParcelStatusService.changeStatus` lost its `@Transactional`
   when split into two overloads (the row lock needs a transaction), fixed; (2) two dispatchers assigning one parcel at
   once both planned legs, so `planLegs` is now idempotent under the parcel lock.
-- **Not covered:** the dispatcher UI for legs (Phase 8 rest), courier current hub and availability, courier home-hub
-  checks, retries after `FAILED`, return legs. Legs of parcels created before this change are not planned.
+- **Not covered:** the dispatcher UI for legs (Phase 8 rest), courier availability, retries after `FAILED`, return legs. Legs of parcels created before this change are not planned.
 - Tests: `RoutePlannerTest` (7), `LegProgressTest` (8), `ShipmentLegServiceTest` (10), `DispatchServiceTest` (+8),
   `DispatchApiTest` (+4), `MultiLegJourneyIT` (4: four-courier journey, same province, reassignment, no legs),
   `DispatchPersistenceIT` (per-leg index), migration lists (30).
+
+## 20. Phase 7: courier current hub and hub check
+
+- **Current hub follows arrival.** `CourierLocationTracker` (dispatch) listens, after commit, to `ParcelStatusChanged`
+  with `HUB_ARRIVED`, finds the leg that just ended (completed leg with the highest sequence, through
+  `ParcelLegs.findLegs`) and calls `CourierProfileService.moveToHub` for that leg's courier and destination hub. It
+  runs in its own transaction and swallows failures (logged), so it can never block the courier's own arrival. No
+  delivery code changed. Parcels without legs change nothing.
+- **Hub check at assignment.** `CourierEligibility.requireAtHub`: a courier with a home or current hub may only be
+  given work (pickup or leg) by the dispatcher of one of those hubs, otherwise 409 "Courier is not based at this
+  hub". A courier with no hub recorded is not restricted, so existing couriers keep working. Called by `assign` and
+  `assignLeg` after the eligibility check.
+- **Arrival is confirmed by the courier** (owner decision); a hub-side confirmation by the dispatcher was not built.
+- **Not done:** courier availability (needs a new profile field, so the courier owner must approve), endpoints that
+  show or set a courier's home/current hub (home hub can be set on profile creation only), hub fields in the workload
+  list and the UI.
+- Tests: `CourierLocationTrackerTest` (3), `CourierEligibilityTest` (+2), `DispatchServiceTest` (+1),
+  `MultiLegJourneyIT` (current hub after two arrivals; a Southern-based courier refused at Uva). Full build: 989 tests.
