@@ -227,4 +227,25 @@ class ParcelQueryServiceTest {
         assertThat(service.findUnassignedParcels(new PageRequest(0, 5), null).items()).hasSize(1);
         verify(parcels, never()).findUnassignedByPickupZone(any(), any(), any());
     }
+
+    @Test
+    void aParcelCanBeFoundByIdWithItsProvinceCodes() {
+        when(parcels.findById(PARCEL_ID)).thenReturn(Optional.of(parcel));
+        when(zones.findCodes(anyCollection())).thenReturn(
+                Map.of(parcel.getPickup().getZoneId(), "LK-UP", parcel.getDropoff().getZoneId(), "LK-SP"));
+
+        ParcelSummary summary = service.findParcelById(PARCEL_ID).orElseThrow();
+
+        assertThat(summary.id()).isEqualTo(PARCEL_ID);
+        assertThat(summary.pickupProvinceCode()).isEqualTo("LK-UP");
+        assertThat(summary.dropoffProvinceCode()).isEqualTo("LK-SP");
+    }
+
+    @Test
+    void anUnknownOrNullParcelIdFindsNothing() {
+        when(parcels.findById(PARCEL_ID)).thenReturn(Optional.empty());
+
+        assertThat(service.findParcelById(PARCEL_ID)).isEmpty();
+        assertThat(service.findParcelById(null)).isEmpty();
+    }
 }

@@ -207,6 +207,10 @@ class MigrationConventionTest {
                         tuple(
                                 "202611171300",
                                 "delivery add hub statuses",
-                                "delivery/V202611171300__delivery_add_hub_statuses.sql"));
+                                "delivery/V202611171300__delivery_add_hub_statuses.sql"),
+                        tuple(
+                                "202611181000",
+                                "dispatch create parcel assignments",
+                                "dispatch/V202611181000__dispatch_create_parcel_assignments.sql"));
     }
 }

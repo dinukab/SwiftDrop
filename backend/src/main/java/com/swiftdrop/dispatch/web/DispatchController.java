@@ -12,6 +12,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -39,12 +40,13 @@ class DispatchController {
 
     @GetMapping("/api/v1/unassigned-parcels")
     PageResponse<UnassignedParcelResponse> unassigned(
+            @AuthenticationPrincipal Jwt jwt,
             @RequestParam(required = false) Integer page,
             @RequestParam(required = false) Integer size
     ) {
         int pageNum = page != null ? PageLimit.clampPage(page) : PageLimit.DEFAULT_PAGE_NUMBER;
         int pageSize = size != null ? PageLimit.clampSize(size) : PageLimit.DEFAULT_PAGE_SIZE;
-        var result = dispatch.unassigned(pageNum, pageSize);
+        var result = dispatch.unassigned(Callers.userId(jwt), pageNum, pageSize);
         List<UnassignedParcelResponse> items = result.items().stream()
                 .map(UnassignedParcelResponse::from)
                 .toList();
@@ -53,16 +55,28 @@ class DispatchController {
 
     /**
      * Assigns a courier to a parcel that is still {@code CREATED}. The dispatcher is the caller from the
-     * token, never a body field. 409 if the courier is not eligible or the parcel is past pickup; 404 if
-     * the parcel does not exist.
+     * token, never a body field. 409 if the courier is not eligible, the parcel is past pickup or the dispatcher
+     * has no hub; 404 if the parcel does not exist or is not waiting for pickup in the dispatcher's hub (the
+     * two cases look the same on purpose).
      */
     @PostMapping("/api/v1/parcel-assignments")
     AssignmentResponse assign(
             @AuthenticationPrincipal Jwt jwt,
             @Valid @RequestBody AssignmentRequest request
     ) {
-        dispatch.assign(request.parcelId(), request.courierUserId(), UUID.fromString(jwt.getSubject()));
+        dispatch.assign(request.parcelId(), request.courierUserId(), Callers.userId(jwt));
         return new AssignmentResponse(request.parcelId(), request.courierUserId());
+    }
+
+    /**
+     * The parcel's assignment history, oldest first. Only for a dispatcher of the hub the parcel is picked up in:
+     * another hub's parcel gives 404, the same as a missing one; 409 if the dispatcher has no hub.
+     */
+    @GetMapping("/api/v1/parcels/{id}/assignment-history")
+    List<AssignmentHistoryResponse> assignmentHistory(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id) {
+        return dispatch.assignmentHistory(id, Callers.userId(jwt)).stream()
+                .map(AssignmentHistoryResponse::from)
+                .toList();
     }
 
     /** Every active courier with their active parcel count, least busy first. */

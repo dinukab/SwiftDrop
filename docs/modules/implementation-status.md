@@ -17,13 +17,13 @@ Legend: COMPLETED, PARTIALLY IMPLEMENTED, NOT IMPLEMENTED, PLANNED, BLOCKED.
 | Courier profile API | PARTIALLY IMPLEMENTED | ADMIN only; dispatcher cannot manage profiles |
 | Dispatcher UI: queue and assign | COMPLETED | `/dispatcher` |
 | Dispatcher UI: courier management | NOT IMPLEMENTED | Planned in `PROGRESS.md` 7.5 |
-| Concurrency test (same parcel, two dispatchers) | NOT IMPLEMENTED | Needs Docker integration profile |
-| Assignment history | BLOCKED | Waits for a `delivery.api` history contract (`PROGRESS.md` 3.7) |
+| Concurrency test (same parcel, two dispatchers) | COMPLETED | `DispatchHubScopeIT` on PostgreSQL (repeated runs stable); it found and fixed a spurious optimistic-lock failure |
+| Assignment history | COMPLETED (pickup leg) | Phase 5: table `parcel_assignments`, `GET /api/v1/parcels/{id}/assignment-history`; unit, API and PostgreSQL tests. Parcels assigned before the migration have no entries. Unblocks `PROGRESS.md` 7.4 |
 | Hub reference data (9 hubs, Colombo main) | PARTIALLY IMPLEMENTED | Phase 1: migration `V202611171000`, `Hub`, `HubService`, `GET /api/v1/hubs`; unit and API tests pass. Migration and seed not yet run on PostgreSQL (Docker was unavailable) |
 | Dispatcher-to-hub binding | PARTIALLY IMPLEMENTED | Phase 1: `dispatcher_hubs`, `PUT /dispatchers/{id}/hub` (ADMIN), `GET /dispatchers/me`; not yet used to restrict the queue or assignment (Phase 4) |
-| Hub-based parcel filtering and backend enforcement | PARTIALLY IMPLEMENTED | Phase 3: `delivery.api` exposes pickup/dropoff province codes and a pickup-province filter on the unassigned query (tested on PostgreSQL). Not yet used: the queue and assignment still ignore the dispatcher's hub (Phase 4) |
+| Hub-based parcel filtering and backend enforcement | COMPLETED (pickup queue and assignment) | Phase 4: queue and assignment are scoped to the dispatcher's hub from the server; another hub's parcel gives 404; no hub gives 409. `DispatchServiceTest`, `DispatchApiTest`, and `DispatchHubScopeIT` on PostgreSQL. Courier home hub is not enforced (no endpoint sets it) and workloads are not hub-scoped |
 | Pickup / inter-hub / final-mile assignments (legs) | BLOCKED | Needs multi-assignment model in `delivery` |
-| Duplicate active assignment per leg prevention | PLANNED | |
+| Duplicate active assignment per leg prevention | COMPLETED (pickup leg) | Partial unique index `uq_parcel_assignments_active` plus ending the previous row on reassignment; tested on PostgreSQL |
 | Hub arrival and handover confirmation | BLOCKED | Courier-driven arrival exists (PR #24) but hub-side confirmation is undecided; needs the status CHECK-constraint migration and owner decisions (`dispatcher-courier-integration.md` section 10) |
 
 ## Courier module (owner: another member; documentation only)
@@ -57,9 +57,9 @@ Legend: COMPLETED, PARTIALLY IMPLEMENTED, NOT IMPLEMENTED, PLANNED, BLOCKED.
 1. ~~Hub reference data and dispatcher-to-hub binding~~ (done in code, Phase 1; PostgreSQL verification pending).
 2. ~~Fix workloads to list only eligible couriers~~ (done, Phase 2).
 3. ~~`delivery.api`: expose parcel pickup/dropoff province~~ (done, Phase 3).
-4. Hub-filtered unassigned queue with backend hub check.
-5. Hub-aware assignment validation and tests for another hub's parcels.
-6. ADR and schema for shipment legs and assignment history.
+4. ~~Hub-filtered unassigned queue with backend hub check~~ (done, Phase 4).
+5. ~~Hub-aware assignment validation and tests for another hub's parcels~~ (done, Phase 4).
+6. ~~Assignment history and duplicate-active guard~~ (done, Phase 5). Still open: ADR and schema for shipment legs.
 7. Pickup, inter-hub and final-mile assignment on legs; duplicate-active-assignment guard.
 8. Hub arrival/handover confirmation and courier current hub (with courier owner).
 9. Dispatcher UI: hub filter, courier management, history.

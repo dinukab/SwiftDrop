@@ -193,6 +193,52 @@ class DispatchPersistenceIT {
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
 
+    private static final String INSERT_ASSIGNMENT = "INSERT INTO parcel_assignments (id, parcel_id, leg_type, "
+            + "courier_user_id, dispatcher_user_id, hub_id, assigned_at, ended_at, end_reason) "
+            + "VALUES (gen_random_uuid(), ?, ?, ?, ?, ?, now(), %s)";
+
+    @Test
+    void databaseAllowsOnlyOneActiveAssignmentPerParcelAndLeg() {
+        UUID parcel = UUID.randomUUID();
+        UUID courierA = insertUser("assign-courier-a", "COURIER", true);
+        UUID courierB = insertUser("assign-courier-b", "COURIER", true);
+        UUID dispatcher = insertUser("assign-dispatcher", "DISPATCHER", true);
+        UUID hub = hubRepository.findByCode("LK-UP").orElseThrow().getId();
+        String active = String.format(INSERT_ASSIGNMENT, "NULL, NULL");
+
+        jdbc.update(active, parcel, "PICKUP", courierA, dispatcher, hub);
+
+        // A second active row for the same parcel and leg is rejected
+        assertViolation(active, parcel, "PICKUP", courierB, dispatcher, hub);
+        // Another leg of the same parcel, and the same leg of another parcel, are fine
+        jdbc.update(active, parcel, "FINAL_MILE", courierB, dispatcher, hub);
+        jdbc.update(active, UUID.randomUUID(), "PICKUP", courierB, dispatcher, hub);
+        // An ended row does not count as active
+        jdbc.update(String.format(INSERT_ASSIGNMENT, "now(), 'REASSIGNED'"), parcel, "PICKUP", courierB,
+                dispatcher, hub);
+        assertThat(jdbc.queryForObject(
+                "SELECT COUNT(*) FROM parcel_assignments WHERE parcel_id = ? AND ended_at IS NULL",
+                Integer.class, parcel)).isEqualTo(2);
+    }
+
+    @Test
+    void databaseChecksTheAssignmentRows() {
+        UUID courier = insertUser("check-courier", "COURIER", true);
+        UUID dispatcher = insertUser("check-dispatcher", "DISPATCHER", true);
+        UUID hub = hubRepository.findByCode("LK-UP").orElseThrow().getId();
+        String active = String.format(INSERT_ASSIGNMENT, "NULL, NULL");
+
+        // Unknown leg type, an end time without a reason, and a reason without an end time
+        assertViolation(active, UUID.randomUUID(), "SIDEWAYS", courier, dispatcher, hub);
+        assertViolation(String.format(INSERT_ASSIGNMENT, "now(), NULL"), UUID.randomUUID(), "PICKUP", courier,
+                dispatcher, hub);
+        assertViolation(String.format(INSERT_ASSIGNMENT, "NULL, 'REASSIGNED'"), UUID.randomUUID(), "PICKUP",
+                courier, dispatcher, hub);
+        // Unknown courier or hub
+        assertViolation(active, UUID.randomUUID(), "PICKUP", UUID.randomUUID(), dispatcher, hub);
+        assertViolation(active, UUID.randomUUID(), "PICKUP", courier, dispatcher, UUID.randomUUID());
+    }
+
     private UUID insertUser(String prefix, String roleName, boolean enabled) {
         UUID id = UUID.randomUUID();
         jdbc.update("INSERT INTO users (id, email, full_name, enabled, created_at) VALUES (?, ?, ?, ?, ?)",

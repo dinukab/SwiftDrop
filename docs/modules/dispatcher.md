@@ -44,9 +44,10 @@ It reaches parcels through `delivery.api.ParcelQueries` and `ParcelAssignment`.
 
 | Method and path | Role | Result |
 |---|---|---|
-| `GET /api/v1/unassigned-parcels?page=&size=` | DISPATCHER | Page of `{id, trackingNumber, status, source, size, weightGrams, merchantOrderReference, createdAt, pickupProvinceCode, dropoffProvinceCode}`. No addresses or phones. |
+| `GET /api/v1/unassigned-parcels?page=&size=` | DISPATCHER (with a hub) | Parcels waiting for pickup **in the dispatcher's own hub province** (from the token, not a parameter); 409 if the dispatcher has no hub. Page of `{id, trackingNumber, status, source, size, weightGrams, merchantOrderReference, createdAt, pickupProvinceCode, dropoffProvinceCode}`. No addresses or phones. |
 | `POST /api/v1/parcel-assignments` `{parcelId, courierUserId}` | DISPATCHER | 200 `{parcelId, courierUserId}`. Dispatcher is the token subject. |
 | `GET /api/v1/courier-workloads` | DISPATCHER | `[{courierUserId, name, vehicleType, activeParcels}]`, least busy first |
+| `GET /api/v1/parcels/{id}/assignment-history` | DISPATCHER (hub of the parcel) | Assignments oldest first: `[{id, legType, courierUserId, courierName, dispatcherUserId, dispatcherName, hubCode, assignedAt, endedAt, endReason, active}]`; 404 for another hub's or a missing parcel, 409 without a hub |
 | `GET /api/v1/couriers?active=&page=&size=` | ADMIN | Page of profiles with name, email, phone |
 | `GET /api/v1/hubs` | DISPATCHER, ADMIN | Active hubs, Main Hub first: `[{code, name, main}]` |
 | `GET /api/v1/dispatchers/me` | DISPATCHER | `{userId, hub}`; hub is `null` until an admin binds one. Taken from the token |
@@ -74,7 +75,7 @@ Merchant-paused or cancelled parcels are not `CREATED`, so they never appear in 
 - JWT bearer token; roles `CUSTOMER, MERCHANT, COURIER, DISPATCHER, ADMIN` (`docs/rbac-authorization.md`).
 - Assignment, queue and workloads use `@PreAuthorize("hasRole('DISPATCHER')")`; an `ADMIN` gets 403.
 - Courier profile endpoints are `ADMIN` only, so a dispatcher cannot list or edit profiles.
-- **No hub authorization exists.** Any dispatcher sees every unassigned parcel and may assign any courier.
+- **Hub authorization (Phase 4):** the queue and assignment are limited to the dispatcher's hub; see section 15. Courier hub membership is not checked.
 
 ## 7. Integration
 
@@ -103,7 +104,7 @@ assignment, frontend tests (the project has none).
 None of the following exists in code (no "hub" appears in `backend/src/main` or `frontend/app`):
 
 - ~~Hub reference data and dispatcher-to-hub binding~~: added in Phase 1 (section 12); still not enforced anywhere.
-- Hub-based filtering and backend enforcement of the dispatcher's hub.
+- ~~Hub-based filtering and backend enforcement of the dispatcher's hub~~: done for the pickup queue and assignment (Phase 4).
 - Pickup, inter-hub and final-mile assignments (shipment legs); assignment history.
 - Hub arrival and handover confirmation.
 - Courier availability and home/current hub (courier-owned data).
@@ -160,3 +161,44 @@ the same time; see [courier.md](courier.md) section 8 for the issues found.
   `DeliveryQueriesIT.unassignedQueryCanBeFilteredByPickupProvinceAndShowsBothProvinces` on PostgreSQL.
 - Approval: this changes `delivery.api` and `ParcelQueryService`, which belong to the delivery owner; it was made on
   the instruction to continue with Phase 3 and should be mentioned in the PR.
+
+## 15. Phase 4 notes (hub-scoped queue and assignment)
+
+- `DispatchService.unassigned(dispatcherId, page, size)` looks up the dispatcher's hub (`HubService`) and calls
+  `ParcelQueries.findUnassignedParcels(page, hubCode)`. The hub code is the province code of the pickup zone. No
+  request parameter can change it (a test sends `?hub=LK-SP&pickupProvinceCode=LK-SP` and still gets `LK-UP`).
+- `assign(...)` checks, in this order: the dispatcher has a hub (else **409** "Dispatcher has no hub assigned"), the
+  parcel exists and its pickup province equals the hub (else **404**, identical for missing and other-hub parcels, so
+  nothing leaks), the courier is eligible (409), then `delivery` assigns under its lock (409 if past `CREATED`).
+- New `delivery.api` read `ParcelQueries.findParcelById(UUID)` (summary with province codes), additive.
+- `HubService` is injected through `ObjectFactory` (lazy) for the reason in section 12.
+- The Main Hub's dispatcher (Colombo, `LK-WP`) sees parcels picked up in the Western Province like any other hub.
+- Not in this phase: courier hub membership (courier `home_hub_id` has no endpoint to set it), hub-scoped workloads,
+  final-mile and inter-hub queues (they need legs, Phases 5 and 6), and the UI (Phase 8: the page shows the 409
+  message when a dispatcher has no hub).
+- Operational note: existing dispatchers must be bound to a hub by an admin
+  (`PUT /api/v1/dispatchers/{userId}/hub`) before their queue works.
+- Tests: `DispatchServiceTest` (hub order, other hub, unknown parcel, unknown province, no hub, queue filter),
+  `DispatchApiTest` (+3), `ParcelQueryServiceTest` (+2), `DispatchHubScopeIT` (3, real PostgreSQL, real beans).
+
+## 16. Phase 5 notes (assignment history and the duplicate-active guard)
+
+- **Table `parcel_assignments`** (migration `V202611181000`): parcel, leg type (`PICKUP` today, `INTER_HUB` and
+  `FINAL_MILE` reserved), courier, dispatcher, hub, `assigned_at`, `ended_at`, `end_reason` (`REASSIGNED`). A partial
+  unique index allows **one active row per parcel and leg**; CHECK constraints tie `ended_at` and `end_reason`
+  together. `parcel_id` has no foreign key (dispatch does not reach into delivery's tables); courier, dispatcher and
+  hub do.
+- **Recording:** `DispatchService.assign` calls `AssignmentHistoryService.record` in the same transaction, after
+  `delivery` accepted the assignment, so a refused assignment leaves no history. The same courier again changes
+  nothing; a different courier ends the previous row (`REASSIGNED`, flushed first) and adds a new one.
+- **Read:** `GET /api/v1/parcels/{id}/assignment-history`, hub-scoped exactly like assignment (another hub's parcel is
+  a 404, no hub is a 409). Names come from `identity`; they are for the dispatcher's screen, never logged.
+- **Concurrency:** two dispatchers assigning one parcel are serialized by delivery's row lock; both may succeed
+  (reassignment is allowed while `CREATED`) and exactly one row stays active. The race test found a real bug in
+  Phase 4: the hub check loaded the parcel into the caller's persistence context, so the second racer failed with an
+  optimistic-locking error after waiting for the lock. `ParcelQueryService.findParcelById` now runs in its own
+  read-only transaction (`REQUIRES_NEW`).
+- **Not covered:** parcels assigned before this migration have no history; the history does not yet record the
+  courier's later status changes; legs other than `PICKUP` are reserved, not used.
+- Tests: `AssignmentHistoryServiceTest` (6), `DispatchServiceTest` (+6), `DispatchApiTest` (+3),
+  `DispatchPersistenceIT` (+2), `DispatchHubScopeIT` (+3, including the race), migration lists (28 migrations).

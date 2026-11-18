@@ -18,7 +18,9 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -41,7 +43,12 @@ import com.swiftdrop.delivery.domain.OutboxEventRepository;
 import com.swiftdrop.delivery.domain.ParcelRepository;
 import com.swiftdrop.delivery.domain.ParcelStatusHistoryRepository;
 import com.swiftdrop.dispatch.domain.CourierProfile;
+import com.swiftdrop.dispatch.application.AssignmentHistoryService;
+import com.swiftdrop.dispatch.application.HubService;
+import com.swiftdrop.dispatch.domain.AssignmentRecord;
+import com.swiftdrop.dispatch.domain.LegType;
 import com.swiftdrop.dispatch.domain.CourierProfileRepository;
+import com.swiftdrop.dispatch.domain.Hub;
 import com.swiftdrop.dispatch.domain.VehicleType;
 import com.swiftdrop.identity.domain.ExternalIdentityRepository;
 import com.swiftdrop.identity.domain.GoogleLoginCodeRepository;
@@ -79,6 +86,10 @@ class DispatchApiTest {
     @MockitoBean
     private ParcelQueries parcelQueries;
     @MockitoBean
+    private HubService hubService;
+    @MockitoBean
+    private AssignmentHistoryService historyService;
+    @MockitoBean
     private ParcelAssignment parcelAssignment;
     @MockitoBean
     private CourierProfileRepository profiles;
@@ -111,11 +122,32 @@ class DispatchApiTest {
     @MockitoBean
     private PricingRuleRepository pricingRules;
 
+    @BeforeEach
+    void theDispatcherWorksForUvaAndTheParcelWaitsThere() {
+        when(hubService.hubForDispatcher(DISPATCHER)).thenReturn(Optional.of(hub("LK-UP")));
+        when(parcelQueries.findParcelById(PARCEL)).thenReturn(Optional.of(parcelPickedUpIn("LK-UP")));
+    }
+
+    private static Hub hub(String code) {
+        Hub hub = BeanUtils.instantiateClass(Hub.class);
+        ReflectionTestUtils.setField(hub, "id", UUID.randomUUID());
+        ReflectionTestUtils.setField(hub, "code", code);
+        ReflectionTestUtils.setField(hub, "name", code + " Hub");
+        ReflectionTestUtils.setField(hub, "active", true);
+        return hub;
+    }
+
+    private static ParcelSummary parcelPickedUpIn(String provinceCode) {
+        return new ParcelSummary(PARCEL, "SD1234567890", ParcelStatus.CREATED, ParcelSize.SMALL, 500,
+                ParcelSource.CUSTOMER, UUID.randomUUID(), null, null, null, Instant.parse("2026-11-17T10:00:00Z"),
+                provinceCode, "LK-SP");
+    }
+
     @Test
     void theQueueListsUnassignedParcelsWithoutPersonalData() throws Exception {
         ParcelSummary parcel = new ParcelSummary(PARCEL, "SD1234567890", ParcelStatus.CREATED, ParcelSize.SMALL, 500,
                 ParcelSource.MERCHANT, null, UUID.randomUUID(), "ORD-7", null, Instant.parse("2026-11-15T10:00:00Z"));
-        when(parcelQueries.findUnassignedParcels(any()))
+        when(parcelQueries.findUnassignedParcels(any(), any()))
                 .thenReturn(new PageResult<>(List.of(parcel), 0, 20, 1, 1));
 
         mvc.perform(get("/api/v1/unassigned-parcels").with(TestPrincipal.dispatcher(DISPATCHER).postProcessor()))
@@ -132,7 +164,7 @@ class DispatchApiTest {
         ParcelSummary parcel = new ParcelSummary(PARCEL, "SD1234567890", ParcelStatus.CREATED, ParcelSize.SMALL, 500,
                 ParcelSource.CUSTOMER, UUID.randomUUID(), null, null, null, Instant.parse("2026-11-15T10:00:00Z"),
                 "LK-UP", "LK-SP");
-        when(parcelQueries.findUnassignedParcels(any()))
+        when(parcelQueries.findUnassignedParcels(any(), any()))
                 .thenReturn(new PageResult<>(List.of(parcel), 0, 20, 1, 1));
 
         mvc.perform(get("/api/v1/unassigned-parcels").with(TestPrincipal.dispatcher(DISPATCHER).postProcessor()))
@@ -195,6 +227,102 @@ class DispatchApiTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"parcelId\":\"" + PARCEL + "\",\"courierUserId\":\"" + COURIER + "\"}"))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void aParcelFromAnotherHubIsNotFoundAndNothingIsAssigned() throws Exception {
+        courierIsEligible();
+        when(parcelQueries.findParcelById(PARCEL)).thenReturn(Optional.of(parcelPickedUpIn("LK-SP")));
+
+        mvc.perform(post(ASSIGN)
+                        .with(TestPrincipal.dispatcher(DISPATCHER).postProcessor())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"parcelId\":\"" + PARCEL + "\",\"courierUserId\":\"" + COURIER + "\"}"))
+                .andExpect(status().isNotFound());
+        verifyNoInteractions(parcelAssignment);
+    }
+
+    @Test
+    void aDispatcherWithoutAHubGetsAConflictOnTheQueueAndOnAssignment() throws Exception {
+        when(hubService.hubForDispatcher(DISPATCHER)).thenReturn(Optional.empty());
+
+        mvc.perform(get("/api/v1/unassigned-parcels").with(TestPrincipal.dispatcher(DISPATCHER).postProcessor()))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.detail").value("Dispatcher has no hub assigned"));
+        mvc.perform(post(ASSIGN)
+                        .with(TestPrincipal.dispatcher(DISPATCHER).postProcessor())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"parcelId\":\"" + PARCEL + "\",\"courierUserId\":\"" + COURIER + "\"}"))
+                .andExpect(status().isConflict());
+        verifyNoInteractions(parcelAssignment);
+    }
+
+    @Test
+    void theQueueIsFilteredByTheHubOfTheCallerNotByAnythingTheyType() throws Exception {
+        when(parcelQueries.findUnassignedParcels(any(), any()))
+                .thenReturn(new PageResult<>(List.of(), 0, 20, 0, 0));
+
+        mvc.perform(get("/api/v1/unassigned-parcels?hub=LK-SP&pickupProvinceCode=LK-SP")
+                        .with(TestPrincipal.dispatcher(DISPATCHER).postProcessor()))
+                .andExpect(status().isOk());
+
+        verify(parcelQueries).findUnassignedParcels(new com.swiftdrop.delivery.api.PageRequest(0, 20), "LK-UP");
+    }
+
+    @Test
+    void theAssignmentHistoryListsWhoAssignedWhomAndWhetherItIsStillActive() throws Exception {
+        UUID other = UUID.fromString("00000000-0000-0000-0000-0000000000d2");
+        Hub uva = hub("LK-UP");
+        when(hubService.hubForDispatcher(DISPATCHER)).thenReturn(Optional.of(uva));
+        when(hubService.requireHub(uva.getId())).thenReturn(uva);
+        AssignmentRecord first = new AssignmentRecord(PARCEL, LegType.PICKUP, COURIER, DISPATCHER, uva.getId(),
+                Instant.parse("2026-11-18T09:00:00Z"));
+        first.end(AssignmentRecord.EndReason.REASSIGNED, Instant.parse("2026-11-18T09:30:00Z"));
+        AssignmentRecord second = new AssignmentRecord(PARCEL, LegType.PICKUP, other, DISPATCHER, uva.getId(),
+                Instant.parse("2026-11-18T09:30:00Z"));
+        when(historyService.history(PARCEL)).thenReturn(List.of(first, second));
+        identityUser(COURIER, "Kamal Perera", true, Role.COURIER);
+        identityUser(other, "Nimal Silva", true, Role.COURIER);
+        identityUser(DISPATCHER, "Dina Dispatcher", true, Role.DISPATCHER);
+
+        mvc.perform(get("/api/v1/parcels/" + PARCEL + "/assignment-history")
+                        .with(TestPrincipal.dispatcher(DISPATCHER).postProcessor()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].courierName").value("Kamal Perera"))
+                .andExpect(jsonPath("$[0].dispatcherName").value("Dina Dispatcher"))
+                .andExpect(jsonPath("$[0].hubCode").value("LK-UP"))
+                .andExpect(jsonPath("$[0].legType").value("PICKUP"))
+                .andExpect(jsonPath("$[0].endReason").value("REASSIGNED"))
+                .andExpect(jsonPath("$[0].active").value(false))
+                .andExpect(jsonPath("$[1].courierName").value("Nimal Silva"))
+                .andExpect(jsonPath("$[1].active").value(true))
+                .andExpect(jsonPath("$[1].endedAt").doesNotExist());
+    }
+
+    @Test
+    void theHistoryOfAnotherHubsParcelIsNotFound() throws Exception {
+        when(parcelQueries.findParcelById(PARCEL)).thenReturn(Optional.of(parcelPickedUpIn("LK-SP")));
+
+        mvc.perform(get("/api/v1/parcels/" + PARCEL + "/assignment-history")
+                        .with(TestPrincipal.dispatcher(DISPATCHER).postProcessor()))
+                .andExpect(status().isNotFound());
+        verifyNoInteractions(historyService);
+    }
+
+    @Test
+    void theHistoryNeedsAHubAndADispatcher() throws Exception {
+        when(hubService.hubForDispatcher(DISPATCHER)).thenReturn(Optional.empty());
+        String url = "/api/v1/parcels/" + PARCEL + "/assignment-history";
+
+        mvc.perform(get(url).with(TestPrincipal.dispatcher(DISPATCHER).postProcessor()))
+                .andExpect(status().isConflict());
+        for (TestPrincipal other : List.of(TestPrincipal.admin(), TestPrincipal.customer(), TestPrincipal.merchant(),
+                TestPrincipal.courier())) {
+            mvc.perform(get(url).with(other.postProcessor())).andExpect(status().isForbidden());
+        }
+        mvc.perform(get(url)).andExpect(status().isUnauthorized());
+        verifyNoInteractions(historyService);
     }
 
     @Test

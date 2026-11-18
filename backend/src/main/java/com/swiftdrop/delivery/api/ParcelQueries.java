@@ -21,6 +21,12 @@ public interface ParcelQueries {
     PageResult<ParcelSummary> findUnassignedParcels(PageRequest page, String pickupProvinceCode);
 
     /**
+     * One parcel by ID, with its province codes, for checks such as a dispatcher's hub scope.
+     * Empty if there is no such parcel.
+     */
+    Optional<ParcelSummary> findParcelById(UUID parcelId);
+
+    /**
      * Number of non-terminal parcels per assigned courier user ID (dispatch, ADM-2). Couriers with
      * no active parcels are absent from the map.
      */

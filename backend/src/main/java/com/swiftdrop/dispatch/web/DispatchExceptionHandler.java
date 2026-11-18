@@ -13,6 +13,7 @@ import com.swiftdrop.dispatch.application.CourierNotEligibleException;
 import com.swiftdrop.dispatch.application.CourierProfileNotFoundException;
 import com.swiftdrop.dispatch.application.CourierUserNotEligibleException;
 import com.swiftdrop.dispatch.application.CourierUserNotFoundException;
+import com.swiftdrop.dispatch.application.DispatcherHubNotAssignedException;
 import com.swiftdrop.dispatch.application.DispatcherNotEligibleException;
 import com.swiftdrop.dispatch.application.DispatcherUserNotFoundException;
 import com.swiftdrop.dispatch.application.DuplicateCourierProfileException;
@@ -67,8 +68,8 @@ class DispatchExceptionHandler {
         return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, e.getMessage());
     }
 
-    @ExceptionHandler(DispatcherNotEligibleException.class)
-    ProblemDetail dispatcherNotEligible(DispatcherNotEligibleException e) {
+    @ExceptionHandler({DispatcherNotEligibleException.class, DispatcherHubNotAssignedException.class})
+    ProblemDetail dispatcherNotEligible(RuntimeException e) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, e.getMessage());
     }
 

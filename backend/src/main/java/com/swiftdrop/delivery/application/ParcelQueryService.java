@@ -13,6 +13,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.swiftdrop.delivery.api.PageRequest;
@@ -68,6 +69,21 @@ class ParcelQueryService implements ParcelQueries {
                 .map(zoneId -> toResult(parcels.findUnassignedByPickupZone(ParcelStatus.CREATED, zoneId,
                         pageable(page, OLDEST_FIRST)), page))
                 .orElseGet(() -> PageResult.of(List.of(), page, 0));
+    }
+
+    /**
+     * Runs in its own read-only transaction on purpose. A dispatcher assigns right after this read, and
+     * the parcel row is then locked and may have been changed by a concurrent assignment; a managed copy
+     * of the parcel left in the caller's persistence context would make that second load fail with an
+     * optimistic-locking error.
+     */
+    @Override
+    @Transactional(propagation = Propagation.REQUIRES_NEW, readOnly = true)
+    public Optional<ParcelSummary> findParcelById(UUID parcelId) {
+        if (parcelId == null) {
+            return Optional.empty();
+        }
+        return parcels.findById(parcelId).map(parcel -> toSummaries(List.of(parcel)).get(0));
     }
 
     @Override
