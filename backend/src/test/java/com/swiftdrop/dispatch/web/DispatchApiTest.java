@@ -128,6 +128,22 @@ class DispatchApiTest {
     }
 
     @Test
+    void theQueueShowsThePickupAndDropoffProvince() throws Exception {
+        ParcelSummary parcel = new ParcelSummary(PARCEL, "SD1234567890", ParcelStatus.CREATED, ParcelSize.SMALL, 500,
+                ParcelSource.CUSTOMER, UUID.randomUUID(), null, null, null, Instant.parse("2026-11-15T10:00:00Z"),
+                "LK-UP", "LK-SP");
+        when(parcelQueries.findUnassignedParcels(any()))
+                .thenReturn(new PageResult<>(List.of(parcel), 0, 20, 1, 1));
+
+        mvc.perform(get("/api/v1/unassigned-parcels").with(TestPrincipal.dispatcher(DISPATCHER).postProcessor()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].pickupProvinceCode").value("LK-UP"))
+                .andExpect(jsonPath("$.items[0].dropoffProvinceCode").value("LK-SP"))
+                .andExpect(jsonPath("$.items[0].customerId").doesNotExist())
+                .andExpect(jsonPath("$.items[0].phone").doesNotExist());
+    }
+
+    @Test
     void anEligibleCourierIsAssigned() throws Exception {
         courierIsEligible();
 

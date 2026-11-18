@@ -21,7 +21,7 @@ Legend: COMPLETED, PARTIALLY IMPLEMENTED, NOT IMPLEMENTED, PLANNED, BLOCKED.
 | Assignment history | BLOCKED | Waits for a `delivery.api` history contract (`PROGRESS.md` 3.7) |
 | Hub reference data (9 hubs, Colombo main) | PARTIALLY IMPLEMENTED | Phase 1: migration `V202611171000`, `Hub`, `HubService`, `GET /api/v1/hubs`; unit and API tests pass. Migration and seed not yet run on PostgreSQL (Docker was unavailable) |
 | Dispatcher-to-hub binding | PARTIALLY IMPLEMENTED | Phase 1: `dispatcher_hubs`, `PUT /dispatchers/{id}/hub` (ADMIN), `GET /dispatchers/me`; not yet used to restrict the queue or assignment (Phase 4) |
-| Hub-based parcel filtering and backend enforcement | BLOCKED | Needs parcel province in `delivery.api` |
+| Hub-based parcel filtering and backend enforcement | PARTIALLY IMPLEMENTED | Phase 3: `delivery.api` exposes pickup/dropoff province codes and a pickup-province filter on the unassigned query (tested on PostgreSQL). Not yet used: the queue and assignment still ignore the dispatcher's hub (Phase 4) |
 | Pickup / inter-hub / final-mile assignments (legs) | BLOCKED | Needs multi-assignment model in `delivery` |
 | Duplicate active assignment per leg prevention | PLANNED | |
 | Hub arrival and handover confirmation | BLOCKED | Courier-driven arrival exists (PR #24) but hub-side confirmation is undecided; needs the status CHECK-constraint migration and owner decisions (`dispatcher-courier-integration.md` section 10) |
@@ -56,7 +56,7 @@ Legend: COMPLETED, PARTIALLY IMPLEMENTED, NOT IMPLEMENTED, PLANNED, BLOCKED.
 
 1. ~~Hub reference data and dispatcher-to-hub binding~~ (done in code, Phase 1; PostgreSQL verification pending).
 2. ~~Fix workloads to list only eligible couriers~~ (done, Phase 2).
-3. `delivery.api`: expose parcel pickup/dropoff province (needs delivery owner approval).
+3. ~~`delivery.api`: expose parcel pickup/dropoff province~~ (done, Phase 3).
 4. Hub-filtered unassigned queue with backend hub check.
 5. Hub-aware assignment validation and tests for another hub's parcels.
 6. ADR and schema for shipment legs and assignment history.

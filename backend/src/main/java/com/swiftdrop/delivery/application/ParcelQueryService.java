@@ -1,6 +1,8 @@
 package com.swiftdrop.delivery.application;
 
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -24,6 +26,7 @@ import com.swiftdrop.delivery.domain.Parcel;
 import com.swiftdrop.delivery.domain.ParcelRepository;
 import com.swiftdrop.delivery.domain.ParcelStatusHistoryRepository;
 import com.swiftdrop.delivery.domain.TrackingNumberGenerator;
+import com.swiftdrop.pricing.api.ZoneDirectory;
 
 /**
  * {@link ParcelQueries} for {@code dispatch}, {@code merchant} and {@code tracking}. Returns
@@ -40,17 +43,31 @@ class ParcelQueryService implements ParcelQueries {
 
     private final ParcelRepository parcels;
     private final ParcelStatusHistoryRepository history;
+    private final ZoneDirectory zones;
 
-    ParcelQueryService(ParcelRepository parcels, ParcelStatusHistoryRepository history) {
+    ParcelQueryService(ParcelRepository parcels, ParcelStatusHistoryRepository history, ZoneDirectory zones) {
         this.parcels = parcels;
         this.history = history;
+        this.zones = zones;
     }
 
     @Override
     public PageResult<ParcelSummary> findUnassignedParcels(PageRequest page) {
+        return findUnassignedParcels(page, null);
+    }
+
+    @Override
+    public PageResult<ParcelSummary> findUnassignedParcels(PageRequest page, String pickupProvinceCode) {
         Objects.requireNonNull(page, "page");
-        return toResult(parcels.findByStatusAndAssignedCourierIdIsNull(ParcelStatus.CREATED,
-                pageable(page, OLDEST_FIRST)), page);
+        if (pickupProvinceCode == null || pickupProvinceCode.isBlank()) {
+            return toResult(parcels.findByStatusAndAssignedCourierIdIsNull(ParcelStatus.CREATED,
+                    pageable(page, OLDEST_FIRST)), page);
+        }
+        // An unknown province has no parcels: an empty page, not an error
+        return zones.findZoneIdByCode(pickupProvinceCode)
+                .map(zoneId -> toResult(parcels.findUnassignedByPickupZone(ParcelStatus.CREATED, zoneId,
+                        pageable(page, OLDEST_FIRST)), page))
+                .orElseGet(() -> PageResult.of(List.of(), page, 0));
     }
 
     @Override
@@ -78,7 +95,7 @@ class ParcelQueryService implements ParcelQueries {
             return Optional.empty();
         }
         return parcels.findByMerchantIdAndMerchantOrderReference(merchantId, merchantOrderReference.trim())
-                .map(ParcelQueryService::toSummary);
+                .map(parcel -> toSummaries(List.of(parcel)).get(0));
     }
 
     @Override
@@ -101,15 +118,25 @@ class ParcelQueryService implements ParcelQueries {
                         .toList()));
     }
 
-    static ParcelSummary toSummary(Parcel parcel) {
-        return new ParcelSummary(parcel.getId(), parcel.getTrackingNumber(), parcel.getStatus(), parcel.getSize(),
-                parcel.getWeightGrams(), parcel.getSource(), parcel.getCustomerId(), parcel.getMerchantId(),
-                parcel.getMerchantOrderReference(), parcel.getAssignedCourierId(), parcel.getCreatedAt());
+    /** Summaries with province codes, looked up for the whole list in one query. */
+    private List<ParcelSummary> toSummaries(List<Parcel> found) {
+        Set<UUID> zoneIds = new HashSet<>();
+        for (Parcel parcel : found) {
+            zoneIds.add(parcel.getPickup().getZoneId());
+            zoneIds.add(parcel.getDropoff().getZoneId());
+        }
+        Map<UUID, String> codes = zones.findCodes(zoneIds);
+        return found.stream()
+                .map(parcel -> new ParcelSummary(parcel.getId(), parcel.getTrackingNumber(), parcel.getStatus(),
+                        parcel.getSize(), parcel.getWeightGrams(), parcel.getSource(), parcel.getCustomerId(),
+                        parcel.getMerchantId(), parcel.getMerchantOrderReference(), parcel.getAssignedCourierId(),
+                        parcel.getCreatedAt(), codes.get(parcel.getPickup().getZoneId()),
+                        codes.get(parcel.getDropoff().getZoneId())))
+                .toList();
     }
 
-    private static PageResult<ParcelSummary> toResult(Page<Parcel> found, PageRequest page) {
-        return PageResult.of(found.getContent().stream().map(ParcelQueryService::toSummary).toList(), page,
-                found.getTotalElements());
+    private PageResult<ParcelSummary> toResult(Page<Parcel> found, PageRequest page) {
+        return PageResult.of(toSummaries(found.getContent()), page, found.getTotalElements());
     }
 
     // Spring's PageRequest shares its name with delivery.api.PageRequest

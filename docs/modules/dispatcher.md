@@ -44,7 +44,7 @@ It reaches parcels through `delivery.api.ParcelQueries` and `ParcelAssignment`.
 
 | Method and path | Role | Result |
 |---|---|---|
-| `GET /api/v1/unassigned-parcels?page=&size=` | DISPATCHER | Page of `{id, trackingNumber, status, source, size, weightGrams, merchantOrderReference, createdAt}`. No addresses or phones. |
+| `GET /api/v1/unassigned-parcels?page=&size=` | DISPATCHER | Page of `{id, trackingNumber, status, source, size, weightGrams, merchantOrderReference, createdAt, pickupProvinceCode, dropoffProvinceCode}`. No addresses or phones. |
 | `POST /api/v1/parcel-assignments` `{parcelId, courierUserId}` | DISPATCHER | 200 `{parcelId, courierUserId}`. Dispatcher is the token subject. |
 | `GET /api/v1/courier-workloads` | DISPATCHER | `[{courierUserId, name, vehicleType, activeParcels}]`, least busy first |
 | `GET /api/v1/couriers?active=&page=&size=` | ADMIN | Page of profiles with name, email, phone |
@@ -143,3 +143,20 @@ user no longer exists, using the shared rule `CourierEligibility.isEligible(user
 (used by assignment) has the same conditions. Tests: `DispatchServiceTest` (7), `CourierEligibilityTest` (7).
 No API or schema change. The courier PR #24 (hub statuses, `ShipmentLeg`, courier hub fields) was analysed at
 the same time; see [courier.md](courier.md) section 8 for the issues found.
+
+## 14. Phase 3 notes (parcel province in `delivery.api`)
+
+- **New contract `pricing.api.ZoneDirectory`** (`findZoneIdByCode`, `findCodes`), implemented by
+  `pricing.application.ZoneDirectoryService`. Province codes (`LK-UP`, ...) are stable; zone UUIDs are generated per
+  environment. Delivery may depend on `pricing.api` (ADR 0003 graph), so `dispatch` still needs nothing from pricing.
+- **`delivery.api.ParcelSummary`** gains `pickupProvinceCode` and `dropoffProvinceCode` (null if the zone is gone).
+  The old 11-argument constructor is kept, so existing callers compile unchanged.
+- **`ParcelQueries.findUnassignedParcels(page, pickupProvinceCode)`**: only CREATED parcels without a courier whose
+  pickup zone has that code; null or blank means no filter; an unknown code gives an empty page. The single-argument
+  method is unchanged. Province codes for a page are looked up in one query.
+- **Dispatch:** `UnassignedParcelResponse` shows both codes (a province is not personal data). `DispatchService` does
+  not use the filter yet; Phase 4 will pass the dispatcher's hub code.
+- Tests: `ParcelQueryServiceTest` (+5), `ZoneDirectoryServiceTest` (4), `DispatchApiTest` (+1), and
+  `DeliveryQueriesIT.unassignedQueryCanBeFilteredByPickupProvinceAndShowsBothProvinces` on PostgreSQL.
+- Approval: this changes `delivery.api` and `ParcelQueryService`, which belong to the delivery owner; it was made on
+  the instruction to continue with Phase 3 and should be mentioned in the PR.

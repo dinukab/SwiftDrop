@@ -14,6 +14,13 @@ public interface ParcelQueries {
     PageResult<ParcelSummary> findUnassignedParcels(PageRequest page);
 
     /**
+     * Like {@link #findUnassignedParcels(PageRequest)}, but only parcels whose <em>pickup</em> zone has this
+     * code (for example {@code LK-UP}), so a hub dispatcher sees the parcels waiting for pickup in their own
+     * province. A {@code null} or blank code means no filter; a code with no zone gives an empty page.
+     */
+    PageResult<ParcelSummary> findUnassignedParcels(PageRequest page, String pickupProvinceCode);
+
+    /**
      * Number of non-terminal parcels per assigned courier user ID (dispatch, ADM-2). Couriers with
      * no active parcels are absent from the map.
      */

@@ -75,7 +75,7 @@ North Central, Uva, Sabaragamuwa), with Colombo (Western) as Main Hub. They alre
 | Legs and assignment history | `ShipmentLeg` entity and `shipment_legs` table exist (courier PR #24) but nothing creates or reads them; no assignment history |
 | Hub arrival / handover statuses | `HUB_ARRIVED`, `HUB_SORTED` added to the lifecycle, but the CHECK constraints now allow them (`V202611171300`) |
 | Dispatcher belongs to a hub | Done in dispatch Phase 1 (`dispatcher_hubs`, `GET /dispatchers/me`); not yet enforced |
-| Parcel hub | `ParcelSummary` has no province; pickup/dropoff zone IDs are in `delivery` |
+| Parcel hub | Done in Phase 3: `ParcelSummary` has `pickupProvinceCode` and `dropoffProvinceCode`; `findUnassignedParcels(page, provinceCode)` filters by pickup province |
 | Courier home hub, current hub | Columns, entity and service methods exist (PR #24) but no endpoint, no tests, and `moveToHub` needs no arrival confirmation |
 | Courier availability | Not implemented (only `active`) |
 | Different courier per leg | Impossible today: `FinalMileService` and `changeStatus` require `courierId == parcel.assignedCourierId`, set only while `CREATED` |
