@@ -12,6 +12,7 @@ import com.swiftdrop.dispatch.application.DispatchService.AssignmentHistoryEntry
 record AssignmentHistoryResponse(
         UUID id,
         String legType,
+        int legSequence,
         UUID courierUserId,
         String courierName,
         UUID dispatcherUserId,
@@ -23,7 +24,7 @@ record AssignmentHistoryResponse(
         boolean active) {
 
     static AssignmentHistoryResponse from(AssignmentHistoryEntry entry) {
-        return new AssignmentHistoryResponse(entry.id(), entry.legType(), entry.courierUserId(), entry.courierName(),
+        return new AssignmentHistoryResponse(entry.id(), entry.legType(), entry.legSequence(), entry.courierUserId(), entry.courierName(),
                 entry.dispatcherUserId(), entry.dispatcherName(), entry.hubCode(), entry.assignedAt(),
                 entry.endedAt(), entry.endReason(), entry.endedAt() == null);
     }

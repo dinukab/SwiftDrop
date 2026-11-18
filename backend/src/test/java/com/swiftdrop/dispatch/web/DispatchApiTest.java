@@ -31,6 +31,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 
 import com.swiftdrop.delivery.api.ParcelAssignment;
+import com.swiftdrop.delivery.api.ParcelLegs;
 import com.swiftdrop.delivery.api.ParcelConflictException;
 import com.swiftdrop.delivery.api.ParcelNotFoundException;
 import com.swiftdrop.delivery.api.ParcelQueries;
@@ -46,7 +47,7 @@ import com.swiftdrop.dispatch.domain.CourierProfile;
 import com.swiftdrop.dispatch.application.AssignmentHistoryService;
 import com.swiftdrop.dispatch.application.HubService;
 import com.swiftdrop.dispatch.domain.AssignmentRecord;
-import com.swiftdrop.dispatch.domain.LegType;
+import com.swiftdrop.delivery.api.LegType;
 import com.swiftdrop.dispatch.domain.CourierProfileRepository;
 import com.swiftdrop.dispatch.domain.Hub;
 import com.swiftdrop.dispatch.domain.VehicleType;
@@ -89,6 +90,8 @@ class DispatchApiTest {
     private HubService hubService;
     @MockitoBean
     private AssignmentHistoryService historyService;
+    @MockitoBean
+    private ParcelLegs parcelLegs;
     @MockitoBean
     private ParcelAssignment parcelAssignment;
     @MockitoBean
@@ -372,6 +375,99 @@ class DispatchApiTest {
         mvc.perform(get("/api/v1/unassigned-parcels")).andExpect(status().isUnauthorized());
         mvc.perform(get("/api/v1/courier-workloads")).andExpect(status().isUnauthorized());
         verifyNoInteractions(parcelAssignment, parcelQueries);
+    }
+
+    private static final UUID LEG_ID = UUID.fromString("00000000-0000-0000-0000-0000000000f1");
+    private static final UUID COLOMBO_HUB_ID = UUID.fromString("00000000-0000-0000-0000-0000000000c1");
+
+    private static com.swiftdrop.delivery.api.LegView legFrom(UUID sourceHub) {
+        return new com.swiftdrop.delivery.api.LegView(LEG_ID, PARCEL, 2, LegType.INTER_HUB, sourceHub,
+                COLOMBO_HUB_ID, null, null, null);
+    }
+
+    private String legBody() {
+        return "{\"parcelId\":\"" + PARCEL + "\",\"legId\":\"" + LEG_ID + "\",\"courierUserId\":\"" + COURIER + "\"}";
+    }
+
+    @Test
+    void theLegQueueShowsLegsWaitingAtTheDispatchersHub() throws Exception {
+        Hub uva = hub("LK-UP");
+        when(hubService.hubForDispatcher(DISPATCHER)).thenReturn(Optional.of(uva));
+        when(hubService.requireHub(uva.getId())).thenReturn(uva);
+        when(hubService.requireHub(COLOMBO_HUB_ID)).thenReturn(hub("LK-WP"));
+        when(parcelLegs.findWaitingLegs(any(), any())).thenReturn(new PageResult<>(List.of(
+                new com.swiftdrop.delivery.api.WaitingLeg(legFrom(uva.getId()), "SD1234567890", ParcelSize.SMALL, 700)),
+                0, 20, 1, 1));
+
+        mvc.perform(get("/api/v1/waiting-legs").with(TestPrincipal.dispatcher(DISPATCHER).postProcessor()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].legId").value(LEG_ID.toString()))
+                .andExpect(jsonPath("$.items[0].trackingNumber").value("SD1234567890"))
+                .andExpect(jsonPath("$.items[0].legType").value("INTER_HUB"))
+                .andExpect(jsonPath("$.items[0].sourceHubCode").value("LK-UP"))
+                .andExpect(jsonPath("$.items[0].destinationHubCode").value("LK-WP"))
+                .andExpect(jsonPath("$.items[0].phone").doesNotExist())
+                .andExpect(jsonPath("$.totalItems").value(1));
+        verify(parcelLegs).findWaitingLegs(uva.getId(), new com.swiftdrop.delivery.api.PageRequest(0, 20));
+    }
+
+    @Test
+    void aLegIsAssignedByTheDispatcherFromTheToken() throws Exception {
+        Hub uva = hub("LK-UP");
+        when(hubService.hubForDispatcher(DISPATCHER)).thenReturn(Optional.of(uva));
+        when(parcelLegs.findLegs(PARCEL)).thenReturn(List.of(legFrom(uva.getId())));
+        courierIsEligible();
+
+        mvc.perform(post("/api/v1/leg-assignments")
+                        .with(TestPrincipal.dispatcher(DISPATCHER).postProcessor())
+                        .contentType(MediaType.APPLICATION_JSON).content(legBody()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.parcelId").value(PARCEL.toString()))
+                .andExpect(jsonPath("$.courierUserId").value(COURIER.toString()));
+
+        verify(parcelLegs).assignLegCourier(PARCEL, LEG_ID, COURIER, DISPATCHER);
+    }
+
+    @Test
+    void aLegOfAnotherHubIsNotFoundAndAConflictFromDeliveryIsPassedOn() throws Exception {
+        Hub uva = hub("LK-UP");
+        when(hubService.hubForDispatcher(DISPATCHER)).thenReturn(Optional.of(uva));
+        courierIsEligible();
+
+        when(parcelLegs.findLegs(PARCEL)).thenReturn(List.of(legFrom(COLOMBO_HUB_ID)));
+        mvc.perform(post("/api/v1/leg-assignments").with(TestPrincipal.dispatcher(DISPATCHER).postProcessor())
+                        .contentType(MediaType.APPLICATION_JSON).content(legBody()))
+                .andExpect(status().isNotFound());
+        verify(parcelLegs, org.mockito.Mockito.never()).assignLegCourier(any(), any(), any(), any());
+
+        when(parcelLegs.findLegs(PARCEL)).thenReturn(List.of(legFrom(uva.getId())));
+        doThrow(new ParcelConflictException("The previous leg is not complete yet"))
+                .when(parcelLegs).assignLegCourier(PARCEL, LEG_ID, COURIER, DISPATCHER);
+        mvc.perform(post("/api/v1/leg-assignments").with(TestPrincipal.dispatcher(DISPATCHER).postProcessor())
+                        .contentType(MediaType.APPLICATION_JSON).content(legBody()))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.detail").value("The previous leg is not complete yet"));
+    }
+
+    @Test
+    void theLegEndpointsAreForDispatchersWithAHubOnly() throws Exception {
+        for (TestPrincipal other : List.of(TestPrincipal.admin(), TestPrincipal.customer(),
+                TestPrincipal.merchant(), TestPrincipal.courier())) {
+            mvc.perform(get("/api/v1/waiting-legs").with(other.postProcessor())).andExpect(status().isForbidden());
+            mvc.perform(post("/api/v1/leg-assignments").with(other.postProcessor())
+                    .contentType(MediaType.APPLICATION_JSON).content(legBody())).andExpect(status().isForbidden());
+        }
+        mvc.perform(get("/api/v1/waiting-legs")).andExpect(status().isUnauthorized());
+        mvc.perform(post("/api/v1/leg-assignments").contentType(MediaType.APPLICATION_JSON).content(legBody()))
+                .andExpect(status().isUnauthorized());
+
+        when(hubService.hubForDispatcher(DISPATCHER)).thenReturn(Optional.empty());
+        mvc.perform(get("/api/v1/waiting-legs").with(TestPrincipal.dispatcher(DISPATCHER).postProcessor()))
+                .andExpect(status().isConflict());
+        mvc.perform(post("/api/v1/leg-assignments").with(TestPrincipal.dispatcher(DISPATCHER).postProcessor())
+                .contentType(MediaType.APPLICATION_JSON).content(legBody())).andExpect(status().isConflict());
+        mvc.perform(post("/api/v1/leg-assignments").with(TestPrincipal.dispatcher(DISPATCHER).postProcessor())
+                .contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().isBadRequest());
     }
 
     private void courierIsEligible() {

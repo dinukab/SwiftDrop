@@ -24,9 +24,9 @@ Legend: COMPLETED, PARTIALLY IMPLEMENTED, NOT IMPLEMENTED, PLANNED, BLOCKED.
 | Hub reference data (9 hubs, Colombo main) | PARTIALLY IMPLEMENTED | Phase 1: migration `V202611171000`, `Hub`, `HubService`, `GET /api/v1/hubs`; unit and API tests pass. Migration and seed not yet run on PostgreSQL (Docker was unavailable) |
 | Dispatcher-to-hub binding | PARTIALLY IMPLEMENTED | Phase 1: `dispatcher_hubs`, `PUT /dispatchers/{id}/hub` (ADMIN), `GET /dispatchers/me`; not yet used to restrict the queue or assignment (Phase 4) |
 | Hub-based parcel filtering and backend enforcement | COMPLETED (pickup queue and assignment) | Phase 4: queue and assignment are scoped to the dispatcher's hub from the server; another hub's parcel gives 404; no hub gives 409. `DispatchServiceTest`, `DispatchApiTest`, and `DispatchHubScopeIT` on PostgreSQL. Courier home hub is not enforced (no endpoint sets it) and workloads are not hub-scoped |
-| Pickup / inter-hub / final-mile assignments (legs) | BLOCKED | Needs multi-assignment model in `delivery` |
+| Pickup / inter-hub / final-mile assignments (legs) | COMPLETED | Phase 6 (ADR 0007): legs planned at pickup assignment, `GET /waiting-legs`, `POST /leg-assignments`, hub-scoped by the leg's source hub; `MultiLegJourneyIT` runs Uva to Southern with four couriers on PostgreSQL |
 | Duplicate active assignment per leg prevention | COMPLETED (pickup leg) | Partial unique index `uq_parcel_assignments_active` plus ending the previous row on reassignment; tested on PostgreSQL |
-| Hub arrival and handover confirmation | BLOCKED | Courier-driven arrival exists (PR #24) but hub-side confirmation is undecided; needs the status CHECK-constraint migration and owner decisions (`dispatcher-courier-integration.md` section 10) |
+| Hub arrival and handover confirmation | PARTIALLY IMPLEMENTED | Courier confirms arrival naming the hub (as decided); it must be the leg's destination, ends the leg, and unlocks the next one. Courier current hub, availability and a hub-side confirmation are not implemented |
 
 ## Courier module (owner: another member; documentation only)
 
@@ -40,7 +40,7 @@ Legend: COMPLETED, PARTIALLY IMPLEMENTED, NOT IMPLEMENTED, PLANNED, BLOCKED.
 | Courier history endpoint | NOT IMPLEMENTED | UI mentions `GET /courier/parcels/history`; backend has none |
 | Hub statuses `HUB_ARRIVED`, `HUB_SORTED` in the lifecycle | COMPLETED | Lifecycle, unit tests, migration `V202611171300` (CHECK constraints), `CourierFlowIT` on PostgreSQL |
 | Hub arrival and final-mile endpoints | PARTIALLY IMPLEMENTED | Work and are covered by `CourierFlowIT`; now record history and outbox events and require proof. Arrival is still courier-driven and ignores `hubId`; no MockMvc tests |
-| Shipment legs (`ShipmentLeg`, `shipment_legs`) | NOT IMPLEMENTED | Entity and table only; nothing creates or reads legs |
+| Shipment legs (`ShipmentLeg`, `shipment_legs`) | COMPLETED | Created, assigned, completed and covered by tests (ADR 0007) |
 | Availability / operational status | NOT IMPLEMENTED | Only `active` exists |
 | Home hub / current hub | PARTIALLY IMPLEMENTED | Columns, entity, service methods; no endpoint, no tests, no arrival confirmation |
 
@@ -51,8 +51,8 @@ Legend: COMPLETED, PARTIALLY IMPLEMENTED, NOT IMPLEMENTED, PLANNED, BLOCKED.
 - [x] Hub-to-zone link by province code through `delivery.api` (needs the delivery owner's approval before Phase 3).
 - [x] Legs and assignment history in dispatch tables (needs an ADR amending ADR 0006 before the leg phase).
 - [x] Migration for the two new statuses (done 2026-11-18).
-- [ ] Courier owner: who confirms hub arrival; user ID vs profile ID in legs; whether `shipment_legs` stays in `delivery` (see `dispatcher-courier-integration.md` section 10).
-- [ ] ADR for multi-leg assignment (amends ADR 0006).
+- [x] Decided 2026-11-18: the courier confirms hub arrival; legs stay in `delivery`; a leg's courier is a user ID (ADR 0007, Proposed).
+- [x] ADR for multi-leg assignment: `docs/adr/0007-multi-leg-shipments-and-hub-handover.md` (status Proposed, needs team review).
 
 ## Recommended order of small tasks
 
@@ -61,7 +61,7 @@ Legend: COMPLETED, PARTIALLY IMPLEMENTED, NOT IMPLEMENTED, PLANNED, BLOCKED.
 3. ~~`delivery.api`: expose parcel pickup/dropoff province~~ (done, Phase 3).
 4. ~~Hub-filtered unassigned queue with backend hub check~~ (done, Phase 4).
 5. ~~Hub-aware assignment validation and tests for another hub's parcels~~ (done, Phase 4).
-6. ~~Assignment history and duplicate-active guard~~ (done, Phase 5). Still open: ADR and schema for shipment legs.
-7. Pickup, inter-hub and final-mile assignment on legs; duplicate-active-assignment guard.
+6. ~~Assignment history and duplicate-active guard~~ (done, Phase 5); ~~ADR and schema for shipment legs~~ (done, Phase 6: ADR 0007).
+7. ~~Pickup, inter-hub and final-mile assignment on legs~~ (done, Phase 6).
 8. Hub arrival/handover confirmation and courier current hub (with courier owner).
 9. Dispatcher UI: hub header, route column and history done (Phase 8, first part). Still open: admin screen to bind a dispatcher to a hub, leg-aware assignment, browser check.

@@ -79,6 +79,37 @@ class DispatchController {
                 .toList();
     }
 
+    /**
+     * Legs that wait for a courier in the caller's hub: the parcel has arrived and the previous leg is complete.
+     * 409 if the dispatcher has no hub. Pickup legs are assigned from the unassigned-parcel queue.
+     */
+    @GetMapping("/api/v1/waiting-legs")
+    PageResponse<WaitingLegResponse> waitingLegs(
+            @AuthenticationPrincipal Jwt jwt,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size
+    ) {
+        int pageNum = page != null ? PageLimit.clampPage(page) : PageLimit.DEFAULT_PAGE_NUMBER;
+        int pageSize = size != null ? PageLimit.clampSize(size) : PageLimit.DEFAULT_PAGE_SIZE;
+        var result = dispatch.waitingLegs(Callers.userId(jwt), pageNum, pageSize);
+        return PageResponse.of(result.items().stream().map(WaitingLegResponse::from).toList(), result.page(),
+                result.size(), result.totalItems());
+    }
+
+    /**
+     * Hands a parcel that waits at a hub to a courier for its next leg. The dispatcher is the caller from the token
+     * and must work for the leg's source hub (404 otherwise, like a missing leg). 409 if the courier is not eligible,
+     * the leg is not next, the previous leg is not complete, or the parcel is not at a hub.
+     */
+    @PostMapping("/api/v1/leg-assignments")
+    AssignmentResponse assignLeg(
+            @AuthenticationPrincipal Jwt jwt,
+            @Valid @RequestBody AssignLegRequest request
+    ) {
+        dispatch.assignLeg(request.parcelId(), request.legId(), request.courierUserId(), Callers.userId(jwt));
+        return new AssignmentResponse(request.parcelId(), request.courierUserId());
+    }
+
     /** Every active courier with their active parcel count, least busy first. */
     @GetMapping("/api/v1/courier-workloads")
     List<CourierWorkloadResponse> workloads() {

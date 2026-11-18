@@ -155,8 +155,12 @@ class DispatchHubScopeIT {
         assertThat(history.get(1).dispatcherName()).startsWith("Test uva-dispatcher");
         assertThat(activeAssignments(fromUva)).containsExactly(other);
 
-        // Another hub's dispatcher cannot read it
-        assertThatThrownBy(() -> dispatch.assignmentHistory(fromUva, southernDispatcher))
+        // The Southern dispatcher may read it, because the parcel is delivered there; a hub the parcel never
+        // touches cannot
+        assertThat(dispatch.assignmentHistory(fromUva, southernDispatcher)).hasSize(2);
+        UUID northernDispatcher = insertUser("northern-dispatcher", "DISPATCHER");
+        hubs.assignDispatcher(northernDispatcher, "LK-NP");
+        assertThatThrownBy(() -> dispatch.assignmentHistory(fromUva, northernDispatcher))
                 .isInstanceOf(ParcelNotFoundException.class);
     }
 

@@ -23,7 +23,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import com.swiftdrop.delivery.api.ParcelConflictException;
 import com.swiftdrop.dispatch.domain.AssignmentRecord;
 import com.swiftdrop.dispatch.domain.AssignmentRecordRepository;
-import com.swiftdrop.dispatch.domain.LegType;
+import com.swiftdrop.delivery.api.LegType;
 
 class AssignmentHistoryServiceTest {
 
@@ -46,7 +46,7 @@ class AssignmentHistoryServiceTest {
 
     @Test
     void theFirstAssignmentStartsAnActivePickupRecord() {
-        when(records.findByParcelIdAndLegTypeAndEndedAtIsNull(PARCEL, LegType.PICKUP)).thenReturn(Optional.empty());
+        when(records.findByParcelIdAndLegSequenceAndEndedAtIsNull(PARCEL, 1)).thenReturn(Optional.empty());
 
         AssignmentRecord created = service.record(PARCEL, COURIER_A, DISPATCHER, HUB);
 
@@ -63,7 +63,7 @@ class AssignmentHistoryServiceTest {
     void aReassignmentEndsThePreviousRecordBeforeStartingTheNewOne() {
         AssignmentRecord previous = new AssignmentRecord(PARCEL, LegType.PICKUP, COURIER_A, DISPATCHER, HUB,
                 NOW.minusSeconds(600));
-        when(records.findByParcelIdAndLegTypeAndEndedAtIsNull(PARCEL, LegType.PICKUP))
+        when(records.findByParcelIdAndLegSequenceAndEndedAtIsNull(PARCEL, 1))
                 .thenReturn(Optional.of(previous));
 
         AssignmentRecord created = service.record(PARCEL, COURIER_B, DISPATCHER, HUB);
@@ -82,7 +82,7 @@ class AssignmentHistoryServiceTest {
     void assigningTheCourierWhoAlreadyHoldsTheLegChangesNothing() {
         AssignmentRecord current = new AssignmentRecord(PARCEL, LegType.PICKUP, COURIER_A, DISPATCHER, HUB,
                 NOW.minusSeconds(600));
-        when(records.findByParcelIdAndLegTypeAndEndedAtIsNull(PARCEL, LegType.PICKUP))
+        when(records.findByParcelIdAndLegSequenceAndEndedAtIsNull(PARCEL, 1))
                 .thenReturn(Optional.of(current));
 
         assertThat(service.record(PARCEL, COURIER_A, DISPATCHER, HUB)).isSameAs(current);
@@ -93,7 +93,7 @@ class AssignmentHistoryServiceTest {
 
     @Test
     void aRaceLostAtTheDatabaseBecomesAConflict() {
-        when(records.findByParcelIdAndLegTypeAndEndedAtIsNull(PARCEL, LegType.PICKUP)).thenReturn(Optional.empty());
+        when(records.findByParcelIdAndLegSequenceAndEndedAtIsNull(PARCEL, 1)).thenReturn(Optional.empty());
         when(records.saveAndFlush(any(AssignmentRecord.class))).thenThrow(new DataIntegrityViolationException("uq"));
 
         assertThatThrownBy(() -> service.record(PARCEL, COURIER_A, DISPATCHER, HUB))

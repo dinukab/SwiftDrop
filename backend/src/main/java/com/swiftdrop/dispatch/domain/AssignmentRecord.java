@@ -13,6 +13,8 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
+import com.swiftdrop.delivery.api.LegType;
+
 /**
  * One courier assignment decided by a dispatcher. Active while {@code endedAt} is null; the database
  * allows only one active row per parcel and leg. IDs only: names and contact data stay in
@@ -39,6 +41,10 @@ public class AssignmentRecord {
     @Column(name = "leg_type", nullable = false, updatable = false, length = 20)
     private LegType legType;
 
+    /** 1 for the pickup leg; the position of the leg in the parcel's route (ADR 0007). */
+    @Column(name = "leg_sequence", nullable = false, updatable = false)
+    private int legSequence;
+
     @Column(name = "courier_user_id", nullable = false, updatable = false)
     private UUID courierUserId;
 
@@ -62,8 +68,18 @@ public class AssignmentRecord {
         // for JPA
     }
 
+    /** A pickup-style assignment of leg 1. */
     public AssignmentRecord(UUID parcelId, LegType legType, UUID courierUserId, UUID dispatcherUserId, UUID hubId,
             Instant now) {
+        this(parcelId, legType, 1, courierUserId, dispatcherUserId, hubId, now);
+    }
+
+    public AssignmentRecord(UUID parcelId, LegType legType, int legSequence, UUID courierUserId,
+            UUID dispatcherUserId, UUID hubId, Instant now) {
+        if (legSequence < 1) {
+            throw new IllegalArgumentException("legSequence must be at least 1");
+        }
+        this.legSequence = legSequence;
         this.parcelId = Objects.requireNonNull(parcelId, "parcelId must not be null");
         this.legType = Objects.requireNonNull(legType, "legType must not be null");
         this.courierUserId = Objects.requireNonNull(courierUserId, "courierUserId must not be null");
@@ -97,6 +113,10 @@ public class AssignmentRecord {
         return legType;
     }
 
+    public int getLegSequence() {
+        return legSequence;
+    }
+
     public UUID getCourierUserId() {
         return courierUserId;
     }
@@ -123,6 +143,6 @@ public class AssignmentRecord {
 
     @Override
     public String toString() {
-        return "AssignmentRecord[parcelId=" + parcelId + ", legType=" + legType + ", active=" + isActive() + "]";
+        return "AssignmentRecord[parcelId=" + parcelId + ", leg=" + legSequence + " " + legType + ", active=" + isActive() + "]";
     }
 }

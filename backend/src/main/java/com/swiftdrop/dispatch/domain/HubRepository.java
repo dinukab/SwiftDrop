@@ -11,6 +11,9 @@ public interface HubRepository extends JpaRepository<Hub, UUID> {
 
     Optional<Hub> findByCode(String code);
 
+    /** The Main Hub, if it is active. */
+    Optional<Hub> findByMainTrueAndActiveTrue();
+
     /** Active hubs, Main Hub first, then by name. */
     List<Hub> findByActiveTrueOrderByMainDescNameAsc();
 }

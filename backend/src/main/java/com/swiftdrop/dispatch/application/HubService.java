@@ -85,6 +85,19 @@ public class HubService {
         return result;
     }
 
+    /** The active hub of a province code such as {@code LK-UP}, empty if there is none. */
+    public Optional<Hub> findActiveByCode(String provinceCode) {
+        if (provinceCode == null || provinceCode.isBlank()) {
+            return Optional.empty();
+        }
+        return hubs.findByCode(provinceCode.trim().toUpperCase(Locale.ROOT)).filter(Hub::isActive);
+    }
+
+    /** The Main Hub (Colombo), empty if none is active. */
+    public Optional<Hub> findMainHub() {
+        return hubs.findByMainTrueAndActiveTrue();
+    }
+
     /** Throws if hub not found. */
     public Hub requireHub(UUID hubId) {
         Objects.requireNonNull(hubId, "hubId must not be null");

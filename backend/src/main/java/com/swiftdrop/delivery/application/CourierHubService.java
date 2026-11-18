@@ -33,7 +33,8 @@ public class CourierHubService {
 
     /**
      * Confirms that a courier has arrived at a hub with a parcel and moves it to {@code HUB_ARRIVED}.
-     * {@code hubId} is not validated or stored yet: the parcel does not record which hub it is at.
+     * For a parcel with legs (ADR 0007) {@code hubId} must be the destination hub of the leg in progress, which then
+     * ends; for a parcel without legs it is not checked.
      *
      * @return the updated parcel
      * @throws ParcelNotFoundException if the parcel is unknown or not assigned to the courier
@@ -46,7 +47,7 @@ public class CourierHubService {
         Objects.requireNonNull(hubId, "hubId must not be null");
         Objects.requireNonNull(courierId, "courierId must not be null");
         statuses.changeStatus(parcelId, new StatusChange(ParcelStatus.HUB_ARRIVED, null, null),
-                Actor.courier(courierId));
+                Actor.courier(courierId), hubId);
         return parcels.findById(parcelId).orElseThrow(ParcelNotFoundException::new);
     }
 }

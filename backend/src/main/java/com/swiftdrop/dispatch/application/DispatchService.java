@@ -12,12 +12,15 @@ import org.springframework.beans.factory.ObjectFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.swiftdrop.delivery.api.LegView;
 import com.swiftdrop.delivery.api.PageRequest;
 import com.swiftdrop.delivery.api.PageResult;
 import com.swiftdrop.delivery.api.ParcelAssignment;
+import com.swiftdrop.delivery.api.ParcelLegs;
 import com.swiftdrop.delivery.api.ParcelNotFoundException;
 import com.swiftdrop.delivery.api.ParcelQueries;
 import com.swiftdrop.delivery.api.ParcelSummary;
+import com.swiftdrop.delivery.api.WaitingLeg;
 import com.swiftdrop.dispatch.domain.CourierProfile;
 import com.swiftdrop.dispatch.domain.CourierProfileRepository;
 import com.swiftdrop.dispatch.domain.Hub;
@@ -42,10 +45,12 @@ public class DispatchService {
     private final UserDirectory users;
     private final ObjectFactory<HubService> hubs;
     private final ObjectFactory<AssignmentHistoryService> history;
+    private final ObjectFactory<ParcelLegs> legs;
 
     public DispatchService(ParcelQueries parcelQueries, ParcelAssignment parcelAssignment,
             CourierEligibility eligibility, CourierProfileRepository profiles, UserDirectory users,
-            ObjectFactory<HubService> hubs, ObjectFactory<AssignmentHistoryService> history) {
+            ObjectFactory<HubService> hubs, ObjectFactory<AssignmentHistoryService> history,
+            ObjectFactory<ParcelLegs> legs) {
         this.parcelQueries = Objects.requireNonNull(parcelQueries, "parcelQueries");
         this.parcelAssignment = Objects.requireNonNull(parcelAssignment, "parcelAssignment");
         this.eligibility = Objects.requireNonNull(eligibility, "eligibility");
@@ -53,6 +58,7 @@ public class DispatchService {
         this.users = Objects.requireNonNull(users, "users");
         this.hubs = Objects.requireNonNull(hubs, "hubs");
         this.history = Objects.requireNonNull(history, "history");
+        this.legs = Objects.requireNonNull(legs, "legs");
     }
 
     /**
@@ -88,8 +94,9 @@ public class DispatchService {
         Objects.requireNonNull(courierUserId, "courierUserId");
         Objects.requireNonNull(dispatcherUserId, "dispatcherUserId");
         Hub hub = requireHub(dispatcherUserId);
-        requireParcelInHub(parcelId, hub);
+        ParcelSummary parcel = requireParcelInHub(parcelId, hub);
         eligibility.requireEligible(courierUserId);
+        planLegsIfNeeded(parcel, hub);
         parcelAssignment.assignCourier(parcelId, courierUserId, dispatcherUserId);
         // Same transaction, after delivery holds the parcel lock: one active row per parcel
         history.getObject().record(parcelId, courierUserId, dispatcherUserId, hub.getId());
@@ -97,7 +104,8 @@ public class DispatchService {
 
     /**
      * Who was assigned to the parcel, by whom, when and for which hub, oldest first, for a dispatcher of
-     * the hub the parcel is picked up in. Parcels assigned before history existed have no entries.
+     * a hub the parcel touches: where it is picked up, where it is delivered, or a hub of one of its legs. Parcels
+     * assigned before history existed have no entries.
      *
      * @throws DispatcherHubNotAssignedException if the dispatcher has no hub
      * @throws ParcelNotFoundException if the parcel does not exist or is not in the dispatcher's hub
@@ -106,12 +114,13 @@ public class DispatchService {
     public List<AssignmentHistoryEntry> assignmentHistory(UUID parcelId, UUID dispatcherUserId) {
         Objects.requireNonNull(parcelId, "parcelId");
         Hub hub = requireHub(dispatcherUserId);
-        requireParcelInHub(parcelId, hub);
+        requireParcelVisible(parcelId, hub);
         Map<UUID, String> hubCodes = new HashMap<>();
         return history.getObject().history(parcelId).stream()
                 .map(record -> new AssignmentHistoryEntry(
                         record.getId(),
                         record.getLegType().name(),
+                        record.getLegSequence(),
                         record.getCourierUserId(),
                         nameOf(record.getCourierUserId()),
                         record.getDispatcherUserId(),
@@ -124,11 +133,99 @@ public class DispatchService {
     }
 
     /** A parcel outside the dispatcher's hub looks exactly like a missing one. */
-    private void requireParcelInHub(UUID parcelId, Hub hub) {
+    private ParcelSummary requireParcelInHub(UUID parcelId, Hub hub) {
         ParcelSummary parcel = parcelQueries.findParcelById(parcelId).orElseThrow(ParcelNotFoundException::new);
         if (!hub.getCode().equals(parcel.pickupProvinceCode())) {
             throw new ParcelNotFoundException();
         }
+        return parcel;
+    }
+
+    /** Like {@link #requireParcelInHub}, but also for a hub where the parcel is delivered or that one of its legs uses. */
+    private void requireParcelVisible(UUID parcelId, Hub hub) {
+        ParcelSummary parcel = parcelQueries.findParcelById(parcelId).orElseThrow(ParcelNotFoundException::new);
+        boolean touches = hub.getCode().equals(parcel.pickupProvinceCode())
+                || hub.getCode().equals(parcel.dropoffProvinceCode())
+                || legs.getObject().findLegs(parcelId).stream().anyMatch(leg ->
+                        hub.getId().equals(leg.sourceHubId()) || hub.getId().equals(leg.destinationHubId()));
+        if (!touches) {
+            throw new ParcelNotFoundException();
+        }
+    }
+
+    /**
+     * Plans the parcel's legs the first time its pickup courier is assigned (ADR 0007). Nothing is planned,
+     * and the parcel keeps the single-courier behaviour of ADR 0006, when the dropoff province has no hub
+     * or no Main Hub is active.
+     */
+    private void planLegsIfNeeded(ParcelSummary parcel, Hub originHub) {
+        ParcelLegs parcelLegs = legs.getObject();
+        if (!parcelLegs.findLegs(parcel.id()).isEmpty()) {
+            return;
+        }
+        HubService hubService = hubs.getObject();
+        var destination = hubService.findActiveByCode(parcel.dropoffProvinceCode());
+        var main = hubService.findMainHub();
+        if (destination.isPresent() && main.isPresent()) {
+            parcelLegs.planLegs(parcel.id(),
+                    RoutePlanner.plan(originHub.getId(), destination.get().getId(), main.get().getId()));
+        }
+    }
+
+    /**
+     * Legs that wait for a courier in the dispatcher's hub: the parcel has arrived and the previous leg is
+     * complete. Pickup legs are assigned from the unassigned-parcel queue, so they are not listed here.
+     *
+     * @throws DispatcherHubNotAssignedException if the dispatcher has no hub
+     */
+    @Transactional(readOnly = true)
+    public PageResult<WaitingLegEntry> waitingLegs(UUID dispatcherUserId, int page, int size) {
+        Hub hub = requireHub(dispatcherUserId);
+        PageResult<WaitingLeg> found = legs.getObject().findWaitingLegs(hub.getId(), new PageRequest(page, size));
+        Map<UUID, String> hubCodes = new HashMap<>();
+        List<WaitingLegEntry> items = found.items().stream()
+                .map(waiting -> {
+                    LegView leg = waiting.leg();
+                    return new WaitingLegEntry(leg.id(), leg.parcelId(), waiting.trackingNumber(),
+                            leg.legType().name(), leg.sequence(),
+                            hubCodes.computeIfAbsent(leg.sourceHubId(), id -> hubs.getObject().requireHub(id).getCode()),
+                            hubCodes.computeIfAbsent(leg.destinationHubId(),
+                                    id -> hubs.getObject().requireHub(id).getCode()),
+                            waiting.size().name(), waiting.weightGrams());
+                })
+                .toList();
+        return new PageResult<>(items, found.page(), found.size(), found.totalItems(), found.totalPages());
+    }
+
+    /**
+     * Hands a parcel that waits at a hub to a courier for its next leg. Only the dispatcher of the leg's
+     * <em>source</em> hub may do it: another hub's leg looks like a missing one. The courier must be
+     * eligible; {@code delivery} checks the leg order and that the parcel waits at a hub.
+     *
+     * @throws DispatcherHubNotAssignedException if the dispatcher has no hub
+     * @throws ParcelNotFoundException if the parcel or leg does not exist or the leg starts at another hub
+     * @throws CourierNotEligibleException if the courier cannot take deliveries
+     * @throws com.swiftdrop.delivery.api.ParcelConflictException if the leg is not next, the previous leg is not
+     *         complete, or the parcel is not at a hub
+     */
+    @Transactional
+    public void assignLeg(UUID parcelId, UUID legId, UUID courierUserId, UUID dispatcherUserId) {
+        Objects.requireNonNull(parcelId, "parcelId");
+        Objects.requireNonNull(legId, "legId");
+        Objects.requireNonNull(courierUserId, "courierUserId");
+        Objects.requireNonNull(dispatcherUserId, "dispatcherUserId");
+        Hub hub = requireHub(dispatcherUserId);
+        LegView leg = legs.getObject().findLegs(parcelId).stream()
+                .filter(candidate -> candidate.id().equals(legId))
+                .findFirst()
+                .orElseThrow(ParcelNotFoundException::new);
+        if (!hub.getId().equals(leg.sourceHubId())) {
+            throw new ParcelNotFoundException();
+        }
+        eligibility.requireEligible(courierUserId);
+        legs.getObject().assignLegCourier(parcelId, legId, courierUserId, dispatcherUserId);
+        history.getObject().record(parcelId, leg.legType(), leg.sequence(), courierUserId, dispatcherUserId,
+                hub.getId());
     }
 
     /** Names are for the dispatcher's screen only, never for logs. */
@@ -170,9 +267,14 @@ public class DispatchService {
     }
 
     /** One assignment in a parcel's history; {@code endedAt} and {@code endReason} are null while it is active. */
-    public record AssignmentHistoryEntry(UUID id, String legType, UUID courierUserId, String courierName,
+    public record AssignmentHistoryEntry(UUID id, String legType, int legSequence, UUID courierUserId, String courierName,
             UUID dispatcherUserId, String dispatcherName, String hubCode, Instant assignedAt, Instant endedAt,
             String endReason) {
+    }
+
+    /** A leg that waits for a courier at the dispatcher's hub; no addresses or contacts. */
+    public record WaitingLegEntry(UUID legId, UUID parcelId, String trackingNumber, String legType, int sequence,
+            String sourceHubCode, String destinationHubCode, String size, int weightGrams) {
     }
 
     /** One courier's load. Names are for the dispatcher's screen only, never for logs. */

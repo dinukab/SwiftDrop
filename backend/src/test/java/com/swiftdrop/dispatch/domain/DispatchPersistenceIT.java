@@ -194,8 +194,8 @@ class DispatchPersistenceIT {
     }
 
     private static final String INSERT_ASSIGNMENT = "INSERT INTO parcel_assignments (id, parcel_id, leg_type, "
-            + "courier_user_id, dispatcher_user_id, hub_id, assigned_at, ended_at, end_reason) "
-            + "VALUES (gen_random_uuid(), ?, ?, ?, ?, ?, now(), %s)";
+            + "leg_sequence, courier_user_id, dispatcher_user_id, hub_id, assigned_at, ended_at, end_reason) "
+            + "VALUES (gen_random_uuid(), ?, ?, ?, ?, ?, ?, now(), %s)";
 
     @Test
     void databaseAllowsOnlyOneActiveAssignmentPerParcelAndLeg() {
@@ -206,19 +206,22 @@ class DispatchPersistenceIT {
         UUID hub = hubRepository.findByCode("LK-UP").orElseThrow().getId();
         String active = String.format(INSERT_ASSIGNMENT, "NULL, NULL");
 
-        jdbc.update(active, parcel, "PICKUP", courierA, dispatcher, hub);
+        jdbc.update(active, parcel, "PICKUP", 1, courierA, dispatcher, hub);
 
         // A second active row for the same parcel and leg is rejected
-        assertViolation(active, parcel, "PICKUP", courierB, dispatcher, hub);
+        assertViolation(active, parcel, "PICKUP", 1, courierB, dispatcher, hub);
         // Another leg of the same parcel, and the same leg of another parcel, are fine
-        jdbc.update(active, parcel, "FINAL_MILE", courierB, dispatcher, hub);
-        jdbc.update(active, UUID.randomUUID(), "PICKUP", courierB, dispatcher, hub);
+        jdbc.update(active, parcel, "FINAL_MILE", 4, courierB, dispatcher, hub);
+        // Two hub-to-hub legs of one parcel (Uva to Southern through Colombo) are two legs, so both may be active
+        jdbc.update(active, parcel, "INTER_HUB", 2, courierB, dispatcher, hub);
+        jdbc.update(active, parcel, "INTER_HUB", 3, courierB, dispatcher, hub);
+        jdbc.update(active, UUID.randomUUID(), "PICKUP", 1, courierB, dispatcher, hub);
         // An ended row does not count as active
-        jdbc.update(String.format(INSERT_ASSIGNMENT, "now(), 'REASSIGNED'"), parcel, "PICKUP", courierB,
+        jdbc.update(String.format(INSERT_ASSIGNMENT, "now(), 'REASSIGNED'"), parcel, "PICKUP", 1, courierB,
                 dispatcher, hub);
         assertThat(jdbc.queryForObject(
                 "SELECT COUNT(*) FROM parcel_assignments WHERE parcel_id = ? AND ended_at IS NULL",
-                Integer.class, parcel)).isEqualTo(2);
+                Integer.class, parcel)).isEqualTo(4);
     }
 
     @Test
@@ -229,14 +232,14 @@ class DispatchPersistenceIT {
         String active = String.format(INSERT_ASSIGNMENT, "NULL, NULL");
 
         // Unknown leg type, an end time without a reason, and a reason without an end time
-        assertViolation(active, UUID.randomUUID(), "SIDEWAYS", courier, dispatcher, hub);
-        assertViolation(String.format(INSERT_ASSIGNMENT, "now(), NULL"), UUID.randomUUID(), "PICKUP", courier,
+        assertViolation(active, UUID.randomUUID(), "SIDEWAYS", 1, courier, dispatcher, hub);
+        assertViolation(String.format(INSERT_ASSIGNMENT, "now(), NULL"), UUID.randomUUID(), "PICKUP", 1, courier,
                 dispatcher, hub);
-        assertViolation(String.format(INSERT_ASSIGNMENT, "NULL, 'REASSIGNED'"), UUID.randomUUID(), "PICKUP",
+        assertViolation(String.format(INSERT_ASSIGNMENT, "NULL, 'REASSIGNED'"), UUID.randomUUID(), "PICKUP", 1,
                 courier, dispatcher, hub);
         // Unknown courier or hub
-        assertViolation(active, UUID.randomUUID(), "PICKUP", UUID.randomUUID(), dispatcher, hub);
-        assertViolation(active, UUID.randomUUID(), "PICKUP", courier, dispatcher, UUID.randomUUID());
+        assertViolation(active, UUID.randomUUID(), "PICKUP", 1, UUID.randomUUID(), dispatcher, hub);
+        assertViolation(active, UUID.randomUUID(), "PICKUP", 1, courier, dispatcher, UUID.randomUUID());
     }
 
     private UUID insertUser(String prefix, String roleName, boolean enabled) {

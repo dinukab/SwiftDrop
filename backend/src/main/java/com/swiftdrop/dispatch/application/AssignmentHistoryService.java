@@ -17,7 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.swiftdrop.delivery.api.ParcelConflictException;
 import com.swiftdrop.dispatch.domain.AssignmentRecord;
 import com.swiftdrop.dispatch.domain.AssignmentRecordRepository;
-import com.swiftdrop.dispatch.domain.LegType;
+import com.swiftdrop.delivery.api.LegType;
 
 /**
  * Assignment history: one row per assignment, at most one active row per parcel and leg. It runs in
@@ -55,13 +55,26 @@ public class AssignmentHistoryService {
      */
     @Transactional
     public AssignmentRecord record(UUID parcelId, UUID courierUserId, UUID dispatcherUserId, UUID hubId) {
+        return record(parcelId, LegType.PICKUP, 1, courierUserId, dispatcherUserId, hubId);
+    }
+
+    /**
+     * Records that {@code courierUserId} now holds leg {@code legSequence} of the parcel (ADR 0007), with the
+     * same rules as for the pickup leg: the same courier again changes nothing, another courier ends the
+     * previous assignment of <em>that leg</em> and starts a new one. Other legs are not touched.
+     *
+     * @throws ParcelConflictException if a concurrent assignment won the race at the database level
+     */
+    @Transactional
+    public AssignmentRecord record(UUID parcelId, LegType legType, int legSequence, UUID courierUserId,
+            UUID dispatcherUserId, UUID hubId) {
         Objects.requireNonNull(parcelId, "parcelId must not be null");
+        Objects.requireNonNull(legType, "legType must not be null");
         Objects.requireNonNull(courierUserId, "courierUserId must not be null");
         Objects.requireNonNull(dispatcherUserId, "dispatcherUserId must not be null");
         Objects.requireNonNull(hubId, "hubId must not be null");
 
-        LegType leg = LegType.PICKUP;
-        Optional<AssignmentRecord> active = records.findByParcelIdAndLegTypeAndEndedAtIsNull(parcelId, leg);
+        Optional<AssignmentRecord> active = records.findByParcelIdAndLegSequenceAndEndedAtIsNull(parcelId, legSequence);
         if (active.isPresent() && active.get().getCourierUserId().equals(courierUserId)) {
             return active.get();
         }
@@ -71,10 +84,10 @@ public class AssignmentHistoryService {
                 // Flushed first: the new active row must not meet the old one in the unique index
                 records.saveAndFlush(active.get());
             }
-            AssignmentRecord created = records.saveAndFlush(
-                    new AssignmentRecord(parcelId, leg, courierUserId, dispatcherUserId, hubId, clock.instant()));
+            AssignmentRecord created = records.saveAndFlush(new AssignmentRecord(parcelId, legType, legSequence,
+                    courierUserId, dispatcherUserId, hubId, clock.instant()));
             // IDs only: no names in logs
-            log.info("Parcel {} {} assignment: courier {} by dispatcher {}", parcelId, leg,
+            log.info("Parcel {} leg {} {} assignment: courier {} by dispatcher {}", parcelId, legSequence, legType,
                     courierUserId, dispatcherUserId);
             return created;
         } catch (DataIntegrityViolationException e) {

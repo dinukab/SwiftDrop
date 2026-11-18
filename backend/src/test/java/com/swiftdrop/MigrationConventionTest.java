@@ -211,6 +211,14 @@ class MigrationConventionTest {
                         tuple(
                                 "202611181000",
                                 "dispatch create parcel assignments",
-                                "dispatch/V202611181000__dispatch_create_parcel_assignments.sql"));
+                                "dispatch/V202611181000__dispatch_create_parcel_assignments.sql"),
+                        tuple(
+                                "202611181100",
+                                "delivery prepare shipment legs",
+                                "delivery/V202611181100__delivery_prepare_shipment_legs.sql"),
+                        tuple(
+                                "202611181200",
+                                "dispatch assignments per leg",
+                                "dispatch/V202611181200__dispatch_assignments_per_leg.sql"));
     }
 }

@@ -230,3 +230,35 @@ the same time; see [courier.md](courier.md) section 8 for the issues found.
 - The existing 1,600-line User Directory page was not touched (it belongs to the admin owner). Choosing a hub inside
   the "Onboard Staff" dialog would be a later improvement.
 - Verification: `eslint`, `tsc --noEmit`, `next build` pass; not yet checked in a browser.
+
+## 19. Phase 6 notes (shipment legs, ADR 0007)
+
+- **Route planning** (`RoutePlanner`, a pure function): same hub gives pickup and final mile; different hubs go
+  through the Main Hub: pickup, origin to Colombo, Colombo to destination, final mile (the hub-to-hub legs the origin or
+  destination being Colombo needs are left out). Pickup and final-mile legs start and end at one hub.
+- **When legs appear:** `DispatchService.assign` (the pickup assignment) plans them through `delivery.api.ParcelLegs` the
+  first time, then delivery assigns the pickup courier to leg 1 as well. A parcel whose dropoff province has no hub (or
+  with no active Main Hub) gets no legs and keeps the single-courier behaviour.
+- **Later legs:** `GET /api/v1/waiting-legs` lists the legs waiting for a courier at the dispatcher's hub (previous leg
+  complete, parcel waiting at a hub); `POST /api/v1/leg-assignments {parcelId, legId, courierUserId}` hands the parcel
+  to that courier. Only the dispatcher of the **leg's source hub** may do it (another hub's leg is a 404); the courier
+  must be eligible; `delivery` enforces the order (409 if the previous leg is open, the leg is the pickup leg, or the
+  parcel is not at a hub). Reassignment is allowed until the new courier sets off.
+- **Who holds the parcel:** `parcels.assigned_courier_id` is the courier of the current leg, so every courier check of
+  ADR 0006 is unchanged; the previous courier loses access at the hand-over.
+- **Leg completion:** arrival is confirmed with `POST /api/v1/parcels/{id}/hub-arrival` naming the hub, which must be
+  the leg's destination; delivery or failure ends the final leg. For a parcel with legs the generic status endpoint
+  refuses `HUB_ARRIVED`.
+- **History:** every leg assignment is recorded with its leg sequence (one active row per parcel and leg; the two
+  hub-to-hub legs of a cross-province parcel are different legs). The history is visible to a dispatcher whose hub is
+  the pickup, the dropoff or a hub of one of the parcel's legs.
+- **Migrations:** `V202611181100` (delivery: legs reference users, `completed_at`, constraints) and `V202611181200`
+  (dispatch: `leg_sequence`, the active-row index per leg).
+- **Bugs found by the tests while building this:** (1) `ParcelStatusService.changeStatus` lost its `@Transactional`
+  when split into two overloads (the row lock needs a transaction), fixed; (2) two dispatchers assigning one parcel at
+  once both planned legs, so `planLegs` is now idempotent under the parcel lock.
+- **Not covered:** the dispatcher UI for legs (Phase 8 rest), courier current hub and availability, courier home-hub
+  checks, retries after `FAILED`, return legs. Legs of parcels created before this change are not planned.
+- Tests: `RoutePlannerTest` (7), `LegProgressTest` (8), `ShipmentLegServiceTest` (10), `DispatchServiceTest` (+8),
+  `DispatchApiTest` (+4), `MultiLegJourneyIT` (4: four-courier journey, same province, reassignment, no legs),
+  `DispatchPersistenceIT` (per-leg index), migration lists (30).

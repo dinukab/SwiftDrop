@@ -211,6 +211,24 @@ public class Parcel {
     }
 
     /**
+     * Hands the parcel to the courier of the next leg (ADR 0007). Allowed only while the parcel waits at a hub
+     * ({@code HUB_ARRIVED} or {@code HUB_SORTED}). Not a status change: the sequence stays the same. The caller
+     * must hold a lock on the parcel row.
+     *
+     * @throws ParcelConflictException if the parcel is not waiting at a hub
+     */
+    public void handOverTo(UUID courierUserId, Instant now) {
+        Objects.requireNonNull(courierUserId, "courierUserId");
+        Objects.requireNonNull(now, "now");
+        if (status != ParcelStatus.HUB_ARRIVED && status != ParcelStatus.HUB_SORTED) {
+            throw new ParcelConflictException("The parcel is not waiting at a hub");
+        }
+        this.assignedCourierId = courierUserId;
+        this.assignedAt = now;
+        this.updatedAt = now;
+    }
+
+    /**
      * Moves the parcel to {@code target} on behalf of a courier and takes the next sequence number
      * (ADR 0006 §1, ADR 0004 §4.1). The caller must hold a lock on the parcel row.
      *

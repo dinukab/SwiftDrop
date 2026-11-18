@@ -34,12 +34,14 @@ class ParcelAssignmentServiceTest {
 
     private ParcelRepository parcels;
     private ParcelAssignmentService service;
+    private LegProgress legProgress;
     private Parcel parcel;
 
     @BeforeEach
     void setUp() {
         parcels = mock(ParcelRepository.class);
-        service = new ParcelAssignmentService(parcels, Clock.fixed(NOW, ZoneOffset.UTC));
+        legProgress = mock(LegProgress.class);
+        service = new ParcelAssignmentService(parcels, () -> legProgress, Clock.fixed(NOW, ZoneOffset.UTC));
         ParcelAddress address = new ParcelAddress("Nimal Perera", "+94771234567", "12 Temple Rd", null, "Colombo",
                 UUID.randomUUID(), null);
         parcel = Parcel.forCustomer("SD7K3M9Q2XWB", UUID.randomUUID(), address, address, ParcelSize.SMALL, 1000, null,

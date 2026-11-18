@@ -13,6 +13,9 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
+import com.swiftdrop.delivery.api.LegType;
+import com.swiftdrop.delivery.api.ParcelConflictException;
+
 /**
  * One segment of a parcel's hub-based journey. For hub-based delivery, a parcel moves through one
  * or more legs: pickup courier brings to origin hub, inter-hub transport, destination courier
@@ -21,15 +24,6 @@ import jakarta.persistence.Table;
 @Entity
 @Table(name = "shipment_legs")
 public class ShipmentLeg {
-
-    public enum LegType {
-        /** Pickup from customer address to origin hub. */
-        PICKUP,
-        /** Transport between hubs (origin to main, main to destination). */
-        INTER_HUB,
-        /** Final delivery from destination hub to customer. */
-        FINAL_MILE
-    }
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -60,6 +54,9 @@ public class ShipmentLeg {
     @Column(name = "assigned_at")
     private Instant assignedAt;
 
+    @Column(name = "completed_at")
+    private Instant completedAt;
+
     protected ShipmentLeg() {
         // for JPA
     }
@@ -74,8 +71,15 @@ public class ShipmentLeg {
         this.createdAt = Objects.requireNonNull(now, "now must not be null");
     }
 
-    /** Assigns a courier to this leg. */
+    /**
+     * Assigns a courier user to this leg, or replaces the one assigned.
+     *
+     * @throws ParcelConflictException if the leg is already complete
+     */
     public void assignCourier(UUID courierId, Instant now) {
+        if (completedAt != null) {
+            throw new ParcelConflictException("The leg is already complete");
+        }
         this.assignedCourierId = Objects.requireNonNull(courierId, "courierId must not be null");
         this.assignedAt = Objects.requireNonNull(now, "now must not be null");
     }
@@ -114,6 +118,21 @@ public class ShipmentLeg {
 
     public Instant getAssignedAt() {
         return assignedAt;
+    }
+
+    /** Ends the leg at {@code now}; ending an ended leg changes nothing. */
+    public void complete(Instant now) {
+        if (completedAt == null) {
+            this.completedAt = Objects.requireNonNull(now, "now must not be null");
+        }
+    }
+
+    public boolean isCompleted() {
+        return completedAt != null;
+    }
+
+    public Instant getCompletedAt() {
+        return completedAt;
     }
 
     public boolean isAssigned() {
