@@ -395,6 +395,7 @@ step. Also leads the security review, the test report and the contribution sheet
 | 7.3 | Courier workload view | SD-307 | 🟡 | `merchantandecommerce` | | 2026-11-15 |
 | 7.4 | Assignment history per parcel (needs 3.7) | — | ✅ | `feature/dispatcher` | | 2026-11-18 |
 | 7.5 | Dispatcher UI (hub banner, queue, assign, waiting legs, history; admin hub-binding screen; courier management is admin-only by design; browser check pending) | SD-308 | 🟡 | `feature/dispatcher` | | 2026-11-18 |
+| 7.10 | Direct hub-to-hub transfer without courier assignment (ADR 0007 amendment 2026-11-19; backend and UI built, browser check pending) | — | 🟡 | `feature/dispatcher` | | 2026-11-19 |
 | 7.9 | Hub workflow: 9 hubs, hub-scoped dispatching, shipment legs, courier hub tracking (ADR 0007, Phases 0–9) | — | 🟡 | `feature/dispatcher` | | 2026-11-18 |
 | 7.6 | JaCoCo code coverage in the build and CI | SD-004 | ✅ | | | |
 | 7.7 | Security and personal-data review | SD-704 | ⬜ | | | |

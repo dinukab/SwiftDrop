@@ -99,3 +99,9 @@ Final states have no exits; PAUSED and CANCELLED are merchant-only.
 ## 9. Integration requirements from the dispatcher
 
 See [dispatcher-courier-integration.md](dispatcher-courier-integration.md).
+
+## 9. Hub-to-hub transport has no courier (2026-11-19)
+
+Under the ADR 0007 amendment a courier is only involved in the pickup (including confirming arrival at the first hub)
+and the final mile. Between hubs the dispatchers transfer and receive the parcel, so a parcel can be `IN_TRANSIT` with
+no assigned courier and the courier endpoints answer 404 for it. Courier code is unchanged.

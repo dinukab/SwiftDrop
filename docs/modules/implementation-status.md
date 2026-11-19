@@ -16,16 +16,17 @@ Legend: COMPLETED, PARTIALLY IMPLEMENTED, NOT IMPLEMENTED, PLANNED, BLOCKED.
 | Courier profile API | PARTIALLY IMPLEMENTED | ADMIN only; dispatcher cannot manage profiles |
 | Dispatcher UI: queue and assign | COMPLETED | `/dispatcher` |
 | Dispatcher UI: courier management | NOT IMPLEMENTED (by design) | Courier profile endpoints are ADMIN only (`rbac-authorization.md`), so a dispatcher tab would only show 403. Courier setup belongs in the admin portal ("Onboard Staff") |
-| Dispatcher UI: hub header, no-hub state, route column, assignment history, waiting-legs queue and leg assignment | PARTIALLY IMPLEMENTED | Phase 8: `HubBanner`, `AssignmentHistoryDialog`, `WaitingLegsCard`, shared `AssignCourierDialog`, province route per row; lint, `tsc` and `next build` pass; not yet checked in a browser (desktop or 360 px) |
+| Dispatcher UI: hub header, no-hub state, route column, assignment history, hub transfers, final-delivery queue | PARTIALLY IMPLEMENTED | Phase 8: `HubBanner`, `AssignmentHistoryDialog`, `HubTransfersCard`, `WaitingLegsCard`, shared `AssignCourierDialog`, province route per row; lint, `tsc` and `next build` pass; not yet checked in a browser (desktop or 360 px) |
 | Admin UI: bind a dispatcher to a hub | PARTIALLY IMPLEMENTED | `/admin/dispatchers` (nav: "Dispatcher Hubs") lists dispatcher accounts, shows each hub, assigns or moves it; new `GET /api/v1/dispatcher-hubs` (ADMIN); backend tests pass; lint, `tsc`, `next build` pass; not yet checked in a browser |
 | Concurrency test (same parcel, two dispatchers) | COMPLETED | `DispatchHubScopeIT` on PostgreSQL (repeated runs stable); it found and fixed a spurious optimistic-lock failure |
 | Assignment history | COMPLETED (every leg) | Phase 5: table `parcel_assignments`, `GET /api/v1/parcels/{id}/assignment-history`; unit, API and PostgreSQL tests. Parcels assigned before the migration have no entries. Unblocks `PROGRESS.md` 7.4 |
 | Hub reference data (9 hubs, Colombo main) | COMPLETED | Phase 1: migration `V202611171000`, `Hub`, `HubService`, `GET /api/v1/hubs`; unit and API tests pass. |
 | Dispatcher-to-hub binding | COMPLETED | Phase 1: `dispatcher_hubs`, `PUT /dispatchers/{id}/hub` (ADMIN), `GET /dispatchers/me`; enforced on the queue, assignment and legs (Phases 4 and 6) |
 | Hub-based parcel filtering and backend enforcement | COMPLETED (pickup queue and assignment) | Phase 4: queue and assignment are scoped to the dispatcher's hub from the server; another hub's parcel gives 404; no hub gives 409. `DispatchServiceTest`, `DispatchApiTest`, and `DispatchHubScopeIT` on PostgreSQL. Phase 7 adds the courier hub check (a courier with a hub is only given work by that hub); workloads are not hub-scoped |
-| Pickup / inter-hub / final-mile assignments (legs) | COMPLETED | Phase 6 (ADR 0007): legs planned at pickup assignment, `GET /waiting-legs`, `POST /leg-assignments`, hub-scoped by the leg's source hub; `MultiLegJourneyIT` runs Uva to Southern with four couriers on PostgreSQL |
+| Pickup and final-mile assignments (legs) | COMPLETED | Phase 6 (ADR 0007): legs planned at pickup assignment, `GET /waiting-legs` (final mile only), `POST /leg-assignments`, hub-scoped by the leg's source hub |
+| Direct hub-to-hub transfer (no courier) and receipt confirmation | COMPLETED (backend); UI not checked in a browser | ADR 0007 amendment 2026-11-19: `/hub-transfers` endpoints, transfer and receipt as separate states, dispatcher actors in the history, no courier record; `ShipmentLegServiceTest`, `DispatchServiceTest`, `DispatchApiTest`, `HubTransferCoreIT` (incl. concurrent transfer), `MultiLegJourneyIT` (Uva to Southern with two couriers); `HubTransfersCard` |
 | Duplicate active assignment per leg prevention | COMPLETED | Partial unique index `uq_parcel_assignments_active` plus ending the previous row on reassignment; tested on PostgreSQL |
-| Hub arrival and handover confirmation | PARTIALLY IMPLEMENTED | Courier confirms arrival naming the hub (as decided); it must be the leg's destination, ends the leg, and unlocks the next one. Phase 7: the courier's current hub is updated after the arrival and a courier based at another hub is refused. Availability and a hub-side confirmation are not implemented |
+| Hub arrival and handover confirmation | PARTIALLY IMPLEMENTED | Pickup arrival is courier-confirmed naming the hub (as decided); hub-to-hub arrival is confirmed by the receiving hub's dispatcher (transfer and receipt, no courier). Phase 7: the courier's current hub is updated after the arrival and a courier based at another hub is refused. Availability and a hub-side confirmation are not implemented |
 
 ## Courier module (owner: another member; documentation only)
 
@@ -61,7 +62,7 @@ Legend: COMPLETED, PARTIALLY IMPLEMENTED, NOT IMPLEMENTED, PLANNED, BLOCKED.
 4. ~~Hub-filtered unassigned queue with backend hub check~~ (done, Phase 4).
 5. ~~Hub-aware assignment validation and tests for another hub's parcels~~ (done, Phase 4).
 6. ~~Assignment history and duplicate-active guard~~ (done, Phase 5); ~~ADR and schema for shipment legs~~ (done, Phase 6: ADR 0007).
-7. ~~Pickup, inter-hub and final-mile assignment on legs~~ (done, Phase 6).
+7. ~~Pickup and final-mile assignment on legs~~ (done, Phase 6); ~~direct hub-to-hub transfer without a courier~~ (done, ADR 0007 amendment).
 8. ~~Hub arrival/handover confirmation and courier current hub~~ (done, Phases 6 and 7; availability still open, needs the courier owner).
 9. ~~Dispatcher UI: hub header, route column, history, admin hub screen, leg-aware assignment~~ (done, Phase 8). Still open: browser check at desktop and 360 px.
 

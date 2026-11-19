@@ -7,7 +7,7 @@
 
 The dispatcher decides **which courier takes which parcel**. In the target workflow (SwiftDrop has nine
 provincial hubs, Colombo being the Main Hub) a dispatcher belongs to one hub and manages pickup,
-inter-hub and final-mile assignments for that hub only.
+pickup and final-mile assignments for that hub only, and sends parcels on to the next hub and confirms the ones it receives (no courier between hubs, section 22).
 
 **What exists today is the single-assignment model**: one courier per parcel, assigned while the parcel is
 `CREATED`. The hub-based model is **planned, not implemented** (section 9).
@@ -292,3 +292,36 @@ the same time; see [courier.md](courier.md) section 8 for the issues found.
 - Checks: `tsc --noEmit` clean, eslint clean on the dispatch files, `next build` passes. **Not checked in a browser
   or at 360px**, and there are no frontend tests (the project has none). Lint reports 3 errors in other files
   (for example the register page), which are not part of this work.
+
+## 22. Direct hub-to-hub transfers (ADR 0007 amendment, 2026-11-19)
+
+Hub-to-hub legs no longer have a courier. Workflow: pickup courier brings the parcel to the sending hub (courier
+confirms arrival) -> the sending hub's dispatcher **transfers** it -> the receiving hub's dispatcher **confirms
+receipt** -> the receiving hub assigns a final-mile courier (or transfers it on to the next hub). Same-province
+parcels have no transfer. This section supersedes the statements in sections 19 and 21 that hub-to-hub legs are
+assigned to couriers.
+
+- **Endpoints** (DISPATCHER only; hub from the token; 409 without a hub): `GET /api/v1/hub-transfers/ready` (received
+  here, ready to send), `GET /api/v1/hub-transfers/incoming` (sent here, not yet received),
+  `POST /api/v1/hub-transfers {parcelId, legId}` (204; sending hub only), `POST /api/v1/hub-transfers/receipts
+  {parcelId, legId}` (204; receiving hub only). Another hub's leg is a 404, also when the sender tries to confirm its
+  own transfer. `GET /api/v1/waiting-legs` now lists final-mile legs only; `POST /api/v1/leg-assignments` refuses
+  hub-to-hub legs (409).
+- **Rules** (enforced in `delivery`, under the parcel lock): not before the previous leg is complete and the parcel is
+  at a hub; no second transfer (409, tested with two simultaneous requests); receipt only after a transfer, once; the
+  final-mile leg needs the receipt; no courier is created, checked or moved; the destination is the planned next hub.
+- **Audit:** `shipment_legs.transferred_at/by`, `received_at/by`; status history rows with actor `DISPATCHER` for
+  `IN_TRANSIT` and `HUB_ARRIVED`; outbox events as for any status change.
+- **UI:** `components/dispatch/hub-transfers-card.tsx` (ready to send, incoming, confirmation dialogs, loading, empty,
+  error and success states) and the final-delivery queue (`waiting-legs-card.tsx`) on `/dispatcher`. Checks: `tsc`,
+  eslint on the dispatch files and `next build` pass; **not checked in a browser or at 360 px**; there are no frontend
+  tests. The assignment-history dialog still lists courier assignments only (transfers are on the legs and in the
+  status history).
+- **Tests:** `ShipmentLegServiceTest` (+12), `DispatchServiceTest` (+5), `DispatchApiTest` (+4),
+  `CourierLocationTrackerTest` (+1), `HubTransferCoreIT` (2, including the concurrent transfer), `MultiLegJourneyIT`
+  rewritten (5: Uva to Southern with two couriers and four dispatcher steps, same province, Colombo origin, final-mile
+  reassignment, no legs). Migration count is 31.
+- **Delivery-owned code changed (mention in the PR):** `Parcel` (`transferOut`, `receiveAtHub`), `ShipmentLeg`,
+  `ShipmentLegService`, `ShipmentLegRepository`, `ParcelLegs`, `LegView`, `Actor`, migration `V202611191000`.
+- **Not done:** the history dialog does not show transfers; parcels in flight with a courier on a hub-to-hub leg keep
+  the old courier path; courier availability is still open.

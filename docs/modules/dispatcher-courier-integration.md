@@ -78,6 +78,7 @@ North Central, Uva, Sabaragamuwa), with Colombo (Western) as Main Hub. They alre
 | Parcel hub | Done in Phase 3: `ParcelSummary` has `pickupProvinceCode` and `dropoffProvinceCode`; `findUnassignedParcels(page, provinceCode)` filters by pickup province |
 | Courier home hub, current hub | Columns, entity and service methods exist (PR #24). Phase 7: `CourierLocationTracker` sets the current hub after a confirmed arrival, and assignment refuses a courier based at another hub; no endpoint shows or sets them yet |
 | Courier availability | Not implemented (only `active`) |
+| Hub-to-hub transport | No courier: dispatchers transfer and receive (ADR 0007 amendment). The courier module is unchanged for the pickup, pickup arrival and final mile. Between hubs a parcel is `IN_TRANSIT` with no assigned courier |
 | Different courier per leg | Impossible today: `FinalMileService` and `changeStatus` require `courierId == parcel.assignedCourierId`, set only while `CREATED` |
 | Module boundary | Dispatch may not read pricing zones (`dispatch` depends only on identity and delivery) |
 

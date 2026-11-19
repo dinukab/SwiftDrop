@@ -61,3 +61,26 @@ a leg's courier is identified by **user ID**, like everywhere else.
 - Between two legs the previous courier still holds the parcel until the next leg is assigned.
 - Not covered: courier availability, courier current hub and home-hub checks, retries after `FAILED`, return
   legs.
+
+## Amendment 2026-11-19: direct hub-to-hub transfers (no courier between hubs)
+
+Owner decision. A courier is no longer assigned to an `INTER_HUB` leg. Only the pickup and the final mile have
+couriers; between hubs the parcel is transferred by dispatchers.
+
+- **Transfer and receipt are two facts.** The dispatcher of the leg's *source* hub transfers the parcel
+  (`transferred_at/by` on `shipment_legs`); the dispatcher of the *destination* hub confirms physical receipt
+  (`received_at/by`). Only the receipt sets `completed_at`, so the existing rule "the next leg needs the previous leg
+  complete" keeps final-mile assignment closed until the receiving hub confirmed.
+- **Statuses (no new status).** Transfer: `HUB_ARRIVED`/`HUB_SORTED` to `IN_TRANSIT`, no courier on the parcel
+  (`assigned_courier_id` cleared, so the previous courier loses access). Receipt: `IN_TRANSIT` to `HUB_ARRIVED`. Both
+  are recorded in the status history and the outbox with the **dispatcher** as actor.
+- **No courier records for a transfer:** no `parcel_assignments` row, no eligibility or hub check, no workload effect,
+  no courier current-hub change.
+- **Destination.** Never supplied by the caller: it is the leg's planned next hub. Other hubs' dispatchers get 404.
+- **Migration** `V202611191000`: the four leg columns and their checks; `ck_parcels_courier_after_created` also allows
+  a missing courier in `HUB_ARRIVED`, `HUB_SORTED` and `IN_TRANSIT`; `DISPATCHER` is allowed as history actor.
+- **Pickup arrival stays courier-confirmed** (owner decision), as does everything else about the pickup and the final
+  mile.
+- **Compatibility.** Same-province parcels and parcels without legs are unchanged. A hub-to-hub leg that already has a
+  courier (created before this amendment) is not offered as a transfer and can still finish through the courier's
+  hub-arrival confirmation; new courier assignments to hub-to-hub legs are refused (409).
