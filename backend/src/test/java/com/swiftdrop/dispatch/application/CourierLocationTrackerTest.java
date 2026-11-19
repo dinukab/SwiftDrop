@@ -81,6 +81,20 @@ class CourierLocationTrackerTest {
     }
 
     @Test
+    void aHubToHubLegReceivedByADispatcherMovesNoCourier() {
+        // The earlier pickup courier must not be moved when the receiving dispatcher confirms the transfer
+        when(parcelLegs.findLegs(PARCEL)).thenReturn(List.of(
+                leg(1, LegType.PICKUP, UVA, UVA, PICKUP_COURIER, NOW.minusSeconds(600)),
+                leg(2, LegType.INTER_HUB, UVA, COLOMBO, null, NOW),
+                leg(3, LegType.FINAL_MILE, COLOMBO, COLOMBO, null, null)));
+
+        tracker.onStatusChanged(event(ParcelStatus.HUB_ARRIVED));
+
+        verify(profileService, never()).findByUserId(any());
+        verify(profileService, never()).moveToHub(any(), any());
+    }
+
+    @Test
     void otherStatusChangesAndParcelsWithoutLegsChangeNothing() {
         tracker.onStatusChanged(event(ParcelStatus.OUT_FOR_DELIVERY));
         verify(parcelLegs, never()).findLegs(any());

@@ -57,6 +57,18 @@ public class ShipmentLeg {
     @Column(name = "completed_at")
     private Instant completedAt;
 
+    @Column(name = "transferred_at")
+    private Instant transferredAt;
+
+    @Column(name = "transferred_by")
+    private UUID transferredBy;
+
+    @Column(name = "received_at")
+    private Instant receivedAt;
+
+    @Column(name = "received_by")
+    private UUID receivedBy;
+
     protected ShipmentLeg() {
         // for JPA
     }
@@ -82,6 +94,59 @@ public class ShipmentLeg {
         }
         this.assignedCourierId = Objects.requireNonNull(courierId, "courierId must not be null");
         this.assignedAt = Objects.requireNonNull(now, "now must not be null");
+    }
+
+    /**
+     * The sending hub's dispatcher sends the parcel on: a hub-to-hub leg only, once. No courier is involved, and the
+     * leg stays open until the receiving hub confirms.
+     *
+     * @throws ParcelConflictException if this is not a hub-to-hub leg, was sent before, or has a courier
+     */
+    public void markTransferred(UUID dispatcherUserId, Instant now) {
+        if (legType != LegType.INTER_HUB) {
+            throw new ParcelConflictException("Only hub-to-hub legs are transferred");
+        }
+        if (transferredAt != null) {
+            throw new ParcelConflictException("The parcel has already been transferred");
+        }
+        if (assignedCourierId != null) {
+            throw new ParcelConflictException("The leg is already assigned to a courier");
+        }
+        this.transferredBy = Objects.requireNonNull(dispatcherUserId, "dispatcherUserId must not be null");
+        this.transferredAt = Objects.requireNonNull(now, "now must not be null");
+    }
+
+    /**
+     * The receiving hub's dispatcher confirms the parcel arrived, which ends the leg.
+     *
+     * @throws ParcelConflictException if the leg was not transferred or was already received
+     */
+    public void markReceived(UUID dispatcherUserId, Instant now) {
+        if (transferredAt == null) {
+            throw new ParcelConflictException("The parcel has not been transferred yet");
+        }
+        if (receivedAt != null) {
+            throw new ParcelConflictException("The parcel has already been received");
+        }
+        this.receivedBy = Objects.requireNonNull(dispatcherUserId, "dispatcherUserId must not be null");
+        this.receivedAt = Objects.requireNonNull(now, "now must not be null");
+        this.completedAt = now;
+    }
+
+    public Instant getTransferredAt() {
+        return transferredAt;
+    }
+
+    public UUID getTransferredBy() {
+        return transferredBy;
+    }
+
+    public Instant getReceivedAt() {
+        return receivedAt;
+    }
+
+    public UUID getReceivedBy() {
+        return receivedBy;
     }
 
     public UUID getId() {

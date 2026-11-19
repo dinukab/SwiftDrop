@@ -27,15 +27,15 @@ public interface ShipmentLegRepository extends JpaRepository<ShipmentLeg, UUID> 
     List<ShipmentLeg> findByAssignedCourierIdOrderByCreatedAtAsc(UUID courierId);
 
     /**
-     * Legs that wait for a courier at a hub: not the pickup leg, no courier yet, the previous leg complete and the
-     * parcel waiting at a hub. Oldest first.
+     * Final-mile legs that wait for a courier at a hub: no courier yet, the previous leg complete and the parcel
+     * waiting at a hub. Oldest first. Hub-to-hub legs have no courier and are listed by {@link #findReadyTransfers}.
      */
     @Query("""
             SELECT l FROM ShipmentLeg l, Parcel p
             WHERE p.id = l.parcelId
               AND l.sourceHubId = :hubId
               AND l.assignedCourierId IS NULL
-              AND l.sequence > 1
+              AND l.legType = com.swiftdrop.delivery.api.LegType.FINAL_MILE
               AND p.status IN :atHub
               AND EXISTS (SELECT 1 FROM ShipmentLeg prev
                           WHERE prev.parcelId = l.parcelId
@@ -45,4 +45,38 @@ public interface ShipmentLegRepository extends JpaRepository<ShipmentLeg, UUID> 
             """)
     Page<ShipmentLeg> findWaiting(@Param("hubId") UUID hubId, @Param("atHub") Collection<ParcelStatus> atHub,
             Pageable pageable);
+
+    /**
+     * Hub-to-hub legs ready to be sent from a hub: not sent, no courier, the previous leg complete and the parcel
+     * waiting at a hub. Oldest first.
+     */
+    @Query("""
+            SELECT l FROM ShipmentLeg l, Parcel p
+            WHERE p.id = l.parcelId
+              AND l.sourceHubId = :hubId
+              AND l.legType = com.swiftdrop.delivery.api.LegType.INTER_HUB
+              AND l.transferredAt IS NULL
+              AND l.assignedCourierId IS NULL
+              AND p.status IN :atHub
+              AND EXISTS (SELECT 1 FROM ShipmentLeg prev
+                          WHERE prev.parcelId = l.parcelId
+                            AND prev.sequence = l.sequence - 1
+                            AND prev.completedAt IS NOT NULL)
+            ORDER BY l.createdAt ASC, l.sequence ASC
+            """)
+    Page<ShipmentLeg> findReadyTransfers(@Param("hubId") UUID hubId, @Param("atHub") Collection<ParcelStatus> atHub,
+            Pageable pageable);
+
+    /** Hub-to-hub legs on their way to a hub: sent, not yet received, the parcel in transit. Oldest sent first. */
+    @Query("""
+            SELECT l FROM ShipmentLeg l, Parcel p
+            WHERE p.id = l.parcelId
+              AND l.destinationHubId = :hubId
+              AND l.legType = com.swiftdrop.delivery.api.LegType.INTER_HUB
+              AND l.transferredAt IS NOT NULL
+              AND l.receivedAt IS NULL
+              AND p.status = com.swiftdrop.delivery.api.ParcelStatus.IN_TRANSIT
+            ORDER BY l.transferredAt ASC, l.sequence ASC
+            """)
+    Page<ShipmentLeg> findIncoming(@Param("hubId") UUID hubId, Pageable pageable);
 }

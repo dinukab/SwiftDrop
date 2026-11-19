@@ -42,10 +42,12 @@ public class CourierLocationTracker {
             return;
         }
         try {
-            // The leg that just ended is the completed leg with the highest sequence
+            // The leg that just ended is the completed leg with the highest sequence. A hub-to-hub leg received by
+            // the receiving dispatcher has no courier, so nobody moves (an earlier leg's courier must not).
             legs.getObject().findLegs(event.data().parcelId()).stream()
-                    .filter(leg -> leg.completedAt() != null && leg.assignedCourierId() != null)
+                    .filter(leg -> leg.completedAt() != null)
                     .max(Comparator.comparingInt(LegView::sequence))
+                    .filter(leg -> leg.assignedCourierId() != null)
                     .ifPresent(this::moveCourier);
         } catch (RuntimeException e) {
             // Location is informational; never fail the courier's arrival because of it

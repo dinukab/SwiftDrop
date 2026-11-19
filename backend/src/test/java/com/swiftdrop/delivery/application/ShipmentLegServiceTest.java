@@ -48,6 +48,7 @@ class ShipmentLegServiceTest {
 
     private ParcelRepository parcels;
     private ShipmentLegRepository legRepository;
+    private ParcelEventRecorder recorder;
     private ShipmentLegService service;
     private Parcel parcel;
     private ShipmentLeg pickup;
@@ -58,7 +59,8 @@ class ShipmentLegServiceTest {
     void setUp() {
         parcels = mock(ParcelRepository.class);
         legRepository = mock(ShipmentLegRepository.class);
-        service = new ShipmentLegService(parcels, legRepository, Clock.fixed(NOW, ZoneOffset.UTC));
+        recorder = mock(ParcelEventRecorder.class);
+        service = new ShipmentLegService(parcels, legRepository, recorder, Clock.fixed(NOW, ZoneOffset.UTC));
         ParcelAddress address = new ParcelAddress("Nimal Perera", "+94771234567", "12 Temple Rd", null, "Badulla",
                 UUID.randomUUID(), null);
         parcel = Parcel.forCustomer("SD7K3M9Q2XWB", UUID.randomUUID(), address, address, ParcelSize.SMALL, 1000, null,
@@ -143,25 +145,166 @@ class ShipmentLegServiceTest {
                 .isInstanceOf(ParcelNotFoundException.class);
     }
 
+    /** The parcel was sent to Colombo and its receiving dispatcher confirmed it: the final leg may be assigned. */
+    private void receivedAtColombo() {
+        toColombo.markTransferred(DISPATCHER, NOW.minusSeconds(30));
+        toColombo.markReceived(DISPATCHER, NOW.minusSeconds(10));
+        ReflectionTestUtils.setField(parcel, "status", ParcelStatus.HUB_ARRIVED);
+        ReflectionTestUtils.setField(parcel, "assignedCourierId", null);
+        ReflectionTestUtils.setField(parcel, "assignedAt", null);
+    }
+
     @Test
-    void theNextLegIsHandedToAnotherCourierWhileTheParcelWaitsAtTheHub() {
-        LegView view = service.assignLegCourier(PARCEL_ID, toColombo.getId(), HUB_COURIER, DISPATCHER);
+    void theFinalLegIsHandedToACourierOnlyAfterTheReceivingHubConfirmedTheParcel() {
+        receivedAtColombo();
+
+        LegView view = service.assignLegCourier(PARCEL_ID, finalMile.getId(), HUB_COURIER, DISPATCHER);
 
         assertThat(view.assignedCourierId()).isEqualTo(HUB_COURIER);
-        assertThat(toColombo.getAssignedCourierId()).isEqualTo(HUB_COURIER);
+        assertThat(finalMile.getAssignedCourierId()).isEqualTo(HUB_COURIER);
         // The parcel is now held by the new courier, so every courier check of ADR 0006 follows them
         assertThat(parcel.getAssignedCourierId()).isEqualTo(HUB_COURIER);
+        assertThat(parcel.getStatus()).isEqualTo(ParcelStatus.HUB_ARRIVED);
+    }
+
+    @Test
+    void theFinalHandOverCanBeRepeatedUntilTheLegStarts() {
+        receivedAtColombo();
+        service.assignLegCourier(PARCEL_ID, finalMile.getId(), HUB_COURIER, DISPATCHER);
+        UUID other = UUID.randomUUID();
+
+        service.assignLegCourier(PARCEL_ID, finalMile.getId(), other, DISPATCHER);
+
+        assertThat(parcel.getAssignedCourierId()).isEqualTo(other);
+    }
+
+    @Test
+    void aHubToHubLegIsNeverGivenACourier() {
+        assertThatThrownBy(() -> service.assignLegCourier(PARCEL_ID, toColombo.getId(), HUB_COURIER, DISPATCHER))
+                .isInstanceOf(ParcelConflictException.class)
+                .hasMessage("Hub-to-hub legs are transferred, not assigned to a courier");
+        assertThat(toColombo.getAssignedCourierId()).isNull();
+        assertThat(parcel.getAssignedCourierId()).isEqualTo(PICKUP_COURIER);
+    }
+
+    @Test
+    void aTransferSendsTheParcelOnWithoutACourierAndIsNotAReceipt() {
+        LegView view = service.transferLeg(PARCEL_ID, toColombo.getId(), DISPATCHER);
+
+        assertThat(view.transferredAt()).isEqualTo(NOW);
+        assertThat(view.transferredBy()).isEqualTo(DISPATCHER);
+        // Sent, not received: the leg stays open and the parcel is on its way with nobody holding it
+        assertThat(view.receivedAt()).isNull();
+        assertThat(view.completedAt()).isNull();
+        assertThat(view.assignedCourierId()).isNull();
+        assertThat(toColombo.isCompleted()).isFalse();
+        assertThat(parcel.getStatus()).isEqualTo(ParcelStatus.IN_TRANSIT);
+        assertThat(parcel.getAssignedCourierId()).isNull();
+        // Recorded in the history and the outbox by the dispatcher
+        verify(recorder).record(parcel, ParcelStatus.HUB_SORTED, Actor.dispatcher(DISPATCHER), null, null, NOW);
+        // The pickup courier lost access
+        assertThatThrownBy(() -> parcel.changeStatus(ParcelStatus.HUB_ARRIVED, PICKUP_COURIER, null, false, NOW))
+                .isInstanceOf(ParcelNotFoundException.class);
+    }
+
+    @Test
+    void aParcelThatJustArrivedFromPickupCanBeTransferredWithoutBeingSortedFirst() {
+        ReflectionTestUtils.setField(parcel, "status", ParcelStatus.HUB_ARRIVED);
+
+        service.transferLeg(PARCEL_ID, toColombo.getId(), DISPATCHER);
+
+        assertThat(parcel.getStatus()).isEqualTo(ParcelStatus.IN_TRANSIT);
+    }
+
+    @Test
+    void aTransferCannotBeRepeated() {
+        service.transferLeg(PARCEL_ID, toColombo.getId(), DISPATCHER);
+
+        assertThatThrownBy(() -> service.transferLeg(PARCEL_ID, toColombo.getId(), DISPATCHER))
+                .isInstanceOf(ParcelConflictException.class).hasMessage("The parcel has already been transferred");
+        verify(recorder, times(1)).record(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void nothingIsTransferredBeforeThePreviousLegIsReceivedOrWhileTheParcelIsNotAtAHub() {
+        // The parcel has not been received at the sending hub yet
+        ReflectionTestUtils.setField(pickup, "completedAt", null);
+        assertThatThrownBy(() -> service.transferLeg(PARCEL_ID, toColombo.getId(), DISPATCHER))
+                .isInstanceOf(ParcelConflictException.class).hasMessage("The previous leg is not complete yet");
+
+        ReflectionTestUtils.setField(pickup, "completedAt", NOW.minusSeconds(60));
+        ReflectionTestUtils.setField(parcel, "status", ParcelStatus.PICKED_UP);
+        assertThatThrownBy(() -> service.transferLeg(PARCEL_ID, toColombo.getId(), DISPATCHER))
+                .isInstanceOf(ParcelConflictException.class).hasMessage("The parcel is not waiting at a hub");
+        assertThat(toColombo.getTransferredAt()).isNull();
+        verify(recorder, never()).record(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void onlyAHubToHubLegWithoutACourierIsTransferred() {
+        assertThatThrownBy(() -> service.transferLeg(PARCEL_ID, finalMile.getId(), DISPATCHER))
+                .isInstanceOf(ParcelConflictException.class).hasMessage("Only hub-to-hub legs are transferred");
+        assertThatThrownBy(() -> service.transferLeg(PARCEL_ID, pickup.getId(), DISPATCHER))
+                .isInstanceOf(ParcelConflictException.class);
+
+        // A leg that already has a courier (the old courier-driven way) is left to that courier
+        toColombo.assignCourier(HUB_COURIER, NOW);
+        assertThatThrownBy(() -> service.transferLeg(PARCEL_ID, toColombo.getId(), DISPATCHER))
+                .isInstanceOf(ParcelConflictException.class).hasMessage("The leg is already assigned to a courier");
         assertThat(parcel.getStatus()).isEqualTo(ParcelStatus.HUB_SORTED);
     }
 
     @Test
-    void theHandOverCanBeRepeatedUntilTheLegStarts() {
-        service.assignLegCourier(PARCEL_ID, toColombo.getId(), HUB_COURIER, DISPATCHER);
-        UUID other = UUID.randomUUID();
+    void theReceivingHubConfirmsTheParcelWhichEndsTheLegAndMakesItReadyForTheNextOne() {
+        service.transferLeg(PARCEL_ID, toColombo.getId(), DISPATCHER);
+        UUID receiver = UUID.randomUUID();
 
-        service.assignLegCourier(PARCEL_ID, toColombo.getId(), other, DISPATCHER);
+        LegView view = service.confirmLegReceipt(PARCEL_ID, toColombo.getId(), receiver);
 
-        assertThat(parcel.getAssignedCourierId()).isEqualTo(other);
+        assertThat(view.receivedAt()).isEqualTo(NOW);
+        assertThat(view.receivedBy()).isEqualTo(receiver);
+        assertThat(view.completedAt()).isEqualTo(NOW);
+        assertThat(parcel.getStatus()).isEqualTo(ParcelStatus.HUB_ARRIVED);
+        assertThat(parcel.getAssignedCourierId()).isNull();
+        verify(recorder).record(parcel, ParcelStatus.IN_TRANSIT, Actor.dispatcher(receiver), null, null, NOW);
+        // Now, and only now, the final leg can be given to a courier
+        service.assignLegCourier(PARCEL_ID, finalMile.getId(), HUB_COURIER, DISPATCHER);
+        assertThat(parcel.getAssignedCourierId()).isEqualTo(HUB_COURIER);
+    }
+
+    @Test
+    void aParcelIsNotReceivedBeforeItWasSentOrTwice() {
+        assertThatThrownBy(() -> service.confirmLegReceipt(PARCEL_ID, toColombo.getId(), DISPATCHER))
+                .isInstanceOf(ParcelConflictException.class).hasMessage("The parcel has not been transferred yet");
+
+        service.transferLeg(PARCEL_ID, toColombo.getId(), DISPATCHER);
+        service.confirmLegReceipt(PARCEL_ID, toColombo.getId(), DISPATCHER);
+        assertThatThrownBy(() -> service.confirmLegReceipt(PARCEL_ID, toColombo.getId(), DISPATCHER))
+                .isInstanceOf(ParcelConflictException.class).hasMessage("The parcel has already been received");
+        assertThatThrownBy(() -> service.confirmLegReceipt(PARCEL_ID, finalMile.getId(), DISPATCHER))
+                .isInstanceOf(ParcelConflictException.class).hasMessage("Only hub-to-hub legs are received");
+        verify(recorder, times(2)).record(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void theFinalLegStaysClosedUntilTheParcelWasReceived() {
+        service.transferLeg(PARCEL_ID, toColombo.getId(), DISPATCHER);
+
+        // Sent but not received: the parcel is on its way, not at Colombo
+        assertThatThrownBy(() -> service.assignLegCourier(PARCEL_ID, finalMile.getId(), HUB_COURIER, DISPATCHER))
+                .isInstanceOf(ParcelConflictException.class).hasMessage("The previous leg is not complete yet");
+        assertThat(parcel.getAssignedCourierId()).isNull();
+    }
+
+    @Test
+    void transferAndReceiptOfAnUnknownParcelOrLegAreNotFound() {
+        assertThatThrownBy(() -> service.transferLeg(PARCEL_ID, UUID.randomUUID(), DISPATCHER))
+                .isInstanceOf(ParcelNotFoundException.class);
+        assertThatThrownBy(() -> service.confirmLegReceipt(PARCEL_ID, UUID.randomUUID(), DISPATCHER))
+                .isInstanceOf(ParcelNotFoundException.class);
+        when(parcels.findByIdForUpdate(PARCEL_ID)).thenReturn(Optional.empty());
+        assertThatThrownBy(() -> service.transferLeg(PARCEL_ID, toColombo.getId(), DISPATCHER))
+                .isInstanceOf(ParcelNotFoundException.class);
     }
 
     @Test
@@ -180,19 +323,21 @@ class ShipmentLegServiceTest {
 
     @Test
     void theParcelMustWaitAtAHub() {
-        ReflectionTestUtils.setField(parcel, "status", ParcelStatus.IN_TRANSIT);
+        receivedAtColombo();
+        ReflectionTestUtils.setField(parcel, "status", ParcelStatus.OUT_FOR_DELIVERY);
 
-        assertThatThrownBy(() -> service.assignLegCourier(PARCEL_ID, toColombo.getId(), HUB_COURIER, DISPATCHER))
+        assertThatThrownBy(() -> service.assignLegCourier(PARCEL_ID, finalMile.getId(), HUB_COURIER, DISPATCHER))
                 .isInstanceOf(ParcelConflictException.class).hasMessage("The parcel is not waiting at a hub");
-        assertThat(parcel.getAssignedCourierId()).isEqualTo(PICKUP_COURIER);
+        assertThat(parcel.getAssignedCourierId()).isNull();
     }
 
     @Test
     void aCompletedLegCannotBeReassigned() {
-        toColombo.assignCourier(HUB_COURIER, NOW);
-        toColombo.complete(NOW);
+        receivedAtColombo();
+        finalMile.assignCourier(HUB_COURIER, NOW);
+        finalMile.complete(NOW);
 
-        assertThatThrownBy(() -> service.assignLegCourier(PARCEL_ID, toColombo.getId(), PICKUP_COURIER, DISPATCHER))
+        assertThatThrownBy(() -> service.assignLegCourier(PARCEL_ID, finalMile.getId(), PICKUP_COURIER, DISPATCHER))
                 .isInstanceOf(ParcelConflictException.class);
     }
 

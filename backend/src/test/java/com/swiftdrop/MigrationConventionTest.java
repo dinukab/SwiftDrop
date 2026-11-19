@@ -219,6 +219,10 @@ class MigrationConventionTest {
                         tuple(
                                 "202611181200",
                                 "dispatch assignments per leg",
-                                "dispatch/V202611181200__dispatch_assignments_per_leg.sql"));
+                                "dispatch/V202611181200__dispatch_assignments_per_leg.sql"),
+                        tuple(
+                                "202611191000",
+                                "delivery add leg transfers",
+                                "delivery/V202611191000__delivery_add_leg_transfers.sql"));
     }
 }
