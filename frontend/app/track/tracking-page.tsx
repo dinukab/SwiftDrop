@@ -10,6 +10,8 @@ import { Label } from "@/components/ui/label";
 const PARCEL_STATUSES = [
   "CREATED",
   "PICKED_UP",
+  "HUB_ARRIVED",
+  "HUB_SORTED",
   "IN_TRANSIT",
   "OUT_FOR_DELIVERY",
   "DELIVERED",
@@ -18,13 +20,21 @@ const PARCEL_STATUSES = [
   "CANCELLED",
 ] as const;
 
-const MILESTONE_STATUSES = [
-  "CREATED",
-  "PICKED_UP",
-  "IN_TRANSIT",
-  "OUT_FOR_DELIVERY",
-  "DELIVERED",
-] as const;
+type Milestone = { key: string; label: string };
+
+const START_MILESTONES: Milestone[] = [
+  { key: "CREATED", label: "Created" },
+  { key: "PICKED_UP", label: "Picked Up" },
+  { key: "HUB_ARRIVED", label: "At hub" },
+];
+const BETWEEN_HUBS_MILESTONES: Milestone[] = [
+  { key: "IN_TRANSIT", label: "Between hubs" },
+  { key: "DESTINATION_HUB", label: "At destination hub" },
+];
+const END_MILESTONES: Milestone[] = [
+  { key: "OUT_FOR_DELIVERY", label: "Out for Delivery" },
+  { key: "DELIVERED", label: "Delivered" },
+];
 
 type ParcelStatus = (typeof PARCEL_STATUSES)[number];
 
@@ -96,6 +106,9 @@ function formatStatus(status: ParcelStatus): string {
   // A seller can hold a parcel before pickup, or cancel it; both are shown in plain words.
   if (status === "PAUSED") return "On hold";
   if (status === "CANCELLED") return "Cancelled";
+  if (status === "HUB_ARRIVED") return "At hub";
+  if (status === "HUB_SORTED") return "Sorted at hub";
+  if (status === "IN_TRANSIT") return "Between hubs";
   return status
     .split("_")
     .map((word) => word.charAt(0) + word.slice(1).toLowerCase())
@@ -113,13 +126,39 @@ function isFinalStatus(status: ParcelStatus): boolean {
   return status === "DELIVERED" || status === "FAILED" || status === "CANCELLED";
 }
 
-function getProgressIndex(view: PublicTrackingView): number {
-  const currentIndex = MILESTONE_STATUSES.findIndex((status) => status === view.status);
-  return view.history.reduce(
-    (furthestIndex, event) =>
-      Math.max(furthestIndex, MILESTONE_STATUSES.findIndex((status) => status === event.status)),
-    Math.max(currentIndex, 0),
-  );
+// A parcel inside one province never travels between hubs, so those steps are shown only once it does
+function hasTravelledBetweenHubs(view: PublicTrackingView): boolean {
+  return view.status === "IN_TRANSIT" || view.history.some((event) => event.status === "IN_TRANSIT");
+}
+
+function milestonesFor(view: PublicTrackingView): Milestone[] {
+  return hasTravelledBetweenHubs(view)
+    ? [...START_MILESTONES, ...BETWEEN_HUBS_MILESTONES, ...END_MILESTONES]
+    : [...START_MILESTONES, ...END_MILESTONES];
+}
+
+// Sorting happens at a hub; a hub reached after the transfer is the destination hub
+function milestoneKey(status: ParcelStatus, afterTransfer: boolean): string {
+  if (status === "HUB_ARRIVED" || status === "HUB_SORTED") {
+    return afterTransfer ? "DESTINATION_HUB" : "HUB_ARRIVED";
+  }
+  return status;
+}
+
+function getProgress(view: PublicTrackingView): { milestones: Milestone[]; progressIndex: number; currentIndex: number } {
+  const milestones = milestonesFor(view);
+  const indexOf = (key: string) => milestones.findIndex((item) => item.key === key);
+  let afterTransfer = false;
+  let progressIndex = 0;
+  for (const event of view.history) {
+    progressIndex = Math.max(progressIndex, indexOf(milestoneKey(event.status, afterTransfer)));
+    if (event.status === "IN_TRANSIT") {
+      afterTransfer = true;
+    }
+  }
+  const currentIndex = indexOf(milestoneKey(view.status, view.status !== "IN_TRANSIT" && afterTransfer));
+  progressIndex = Math.max(progressIndex, currentIndex, 0);
+  return { milestones, progressIndex, currentIndex };
 }
 
 export function TrackingPage({ initialCode }: { initialCode: string }) {
@@ -326,8 +365,10 @@ export function TrackingPage({ initialCode }: { initialCode: string }) {
     complete: "Delivery complete",
     error: "Tracking unavailable",
   };
-  const progressIndex = trackingView ? getProgressIndex(trackingView) : 0;
-  const progressPercent = (progressIndex / (MILESTONE_STATUSES.length - 1)) * 100;
+  const progress = trackingView ? getProgress(trackingView) : null;
+  const milestones = progress?.milestones ?? [];
+  const progressIndex = progress?.progressIndex ?? 0;
+  const progressPercent = milestones.length > 1 ? (progressIndex / (milestones.length - 1)) * 100 : 0;
 
   return (
     <main className="container mx-auto flex-1 max-w-2xl space-y-4 px-4 py-12">
@@ -431,21 +472,24 @@ export function TrackingPage({ initialCode }: { initialCode: string }) {
                 <div className="relative pt-1">
                   <div
                     aria-hidden="true"
-                    className="absolute inset-x-[10%] top-3 h-0.5 rounded-full bg-muted"
+                    className="absolute top-3 h-0.5 rounded-full bg-muted"
+                    style={{ left: `${50 / milestones.length}%`, right: `${50 / milestones.length}%` }}
                   >
                     <div
                       className="h-full rounded-full bg-primary transition-[width] duration-300"
                       style={{ width: `${progressPercent}%` }}
                     />
                   </div>
-                  <ol aria-label="Delivery milestones" className="relative grid grid-cols-5 gap-1">
-                    {MILESTONE_STATUSES.map((status, index) => {
+                  <ol aria-label="Delivery milestones" className="relative grid gap-1"
+                    style={{ gridTemplateColumns: `repeat(${milestones.length}, minmax(0, 1fr))` }}
+                  >
+                    {milestones.map((milestone, index) => {
                       const reached = index <= progressIndex;
-                      const current = trackingView.status === status;
+                      const current = progress?.currentIndex === index;
 
                       return (
                         <li
-                          key={status}
+                          key={milestone.key}
                           aria-current={current ? "step" : undefined}
                           className="flex min-w-0 flex-col items-center gap-2 text-center text-xs"
                         >
@@ -458,7 +502,7 @@ export function TrackingPage({ initialCode }: { initialCode: string }) {
                             } ${current ? "ring-4 ring-primary/15" : ""}`}
                           />
                           <span className={reached ? "font-medium" : "text-muted-foreground"}>
-                            {formatStatus(status)}
+                            {milestone.label}
                           </span>
                         </li>
                       );

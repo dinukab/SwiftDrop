@@ -79,6 +79,7 @@ public class ParcelStatusService {
 
         parcel.changeStatus(change.toStatus(), courier.userId(), change.failureReason(), proofCaptured, now);
         // After the parcel accepted the move, so a stranger still gets the plain 404 of ADR 0006 section 7
+        legs.getObject().requireMoveAllowed(parcelId, courier.userId(), previous, change.toStatus());
         if (change.toStatus() == ParcelStatus.HUB_ARRIVED) {
             legs.getObject().arrivedAtHub(parcelId, arrivedAtHubId, now);
         } else if (change.toStatus() == ParcelStatus.DELIVERED || change.toStatus() == ParcelStatus.FAILED) {

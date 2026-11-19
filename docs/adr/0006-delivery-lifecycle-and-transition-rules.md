@@ -2,6 +2,7 @@
 
 - Status: Proposed
 - Date: 2026-10-28
+- Amended: 2026-11-19 (courier moves depend on the leg type, section 1B).
 - Amended: 2026-11-15 (merchant hold and cancellation before pickup; still Proposed, pending team
   review). See [section 1A](#1a-merchant-hold-release-and-cancellation-amendment). The original text
   below is kept where it still applies; sections 2 and the alternatives list are updated.
@@ -83,6 +84,24 @@ Rules that keep the rest of the lifecycle intact:
   can produce them.
 - The database CHECK constraints are widened by a new `delivery` migration. This is one-way in
   practice: once rows use the new statuses the old constraints cannot be restored without fixing data.
+
+### 1B. Courier moves depend on the leg (amendment, 2026-11-19)
+
+For a parcel with legs ([ADR 0007](0007-multi-leg-shipments-and-hub-handover.md)) the courier moves of section 1
+are narrowed by the type of the leg the courier holds (the open leg assigned to that courier). Every move must be
+allowed by both the status table and the leg type:
+
+| Leg type | Courier moves | Who else moves the parcel |
+|---|---|---|
+| `PICKUP` | `CREATED` to `PICKED_UP`, `PICKED_UP` to `HUB_ARRIVED` (ends the leg at the origin hub), `PICKED_UP` to `FAILED` | |
+| `INTER_HUB` | none for new parcels | Dispatchers transfer (`IN_TRANSIT`) and receive (`HUB_ARRIVED`), ADR 0007 amendment. A leg that got a courier before that amendment can still be finished by that courier. |
+| `FINAL_MILE` | `HUB_ARRIVED` or `HUB_SORTED` to `OUT_FOR_DELIVERY`, `OUT_FOR_DELIVERY` to `DELIVERED` or `FAILED` (proof and failure reason as in section 5) | |
+
+- A courier who holds no open leg (for example the pickup courier once the parcel reached the hub) cannot move the
+  parcel; the request is a `409`.
+- `HUB_SORTED` is not set by any courier of a parcel with legs and does not gate the final-mile courier. Who records
+  sorting is open.
+- A parcel without legs keeps the single-courier rules of section 1 unchanged.
 
 ### 2. Terminal States, Cancellations, and Overrides
 
