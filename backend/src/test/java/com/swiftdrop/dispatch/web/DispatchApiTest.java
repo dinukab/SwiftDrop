@@ -470,6 +470,110 @@ class DispatchApiTest {
                 .contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().isBadRequest());
     }
 
+    private String transferBody() {
+        return "{\"parcelId\":\"" + PARCEL + "\",\"legId\":\"" + LEG_ID + "\"}";
+    }
+
+    @Test
+    void aParcelIsTransferredAndReceivedByTheDispatchersOfTheRightHubsWithoutACourier() throws Exception {
+        Hub uva = hub("LK-UP");
+        when(hubService.hubForDispatcher(DISPATCHER)).thenReturn(Optional.of(uva));
+        when(parcelLegs.findLegs(PARCEL)).thenReturn(List.of(legFrom(uva.getId())));
+
+        mvc.perform(post("/api/v1/hub-transfers").with(TestPrincipal.dispatcher(DISPATCHER).postProcessor())
+                        .contentType(MediaType.APPLICATION_JSON).content(transferBody()))
+                .andExpect(status().isNoContent());
+        verify(parcelLegs).transferLeg(PARCEL, LEG_ID, DISPATCHER);
+
+        // The receiving hub (Colombo) confirms; the dispatcher comes from the token
+        UUID colomboDispatcher = UUID.fromString("00000000-0000-0000-0000-0000000000e2");
+        Hub colombo = hub("LK-WP");
+        ReflectionTestUtils.setField(colombo, "id", COLOMBO_HUB_ID);
+        when(hubService.hubForDispatcher(colomboDispatcher)).thenReturn(Optional.of(colombo));
+        mvc.perform(post("/api/v1/hub-transfers/receipts").with(TestPrincipal.dispatcher(colomboDispatcher).postProcessor())
+                        .contentType(MediaType.APPLICATION_JSON).content(transferBody()))
+                .andExpect(status().isNoContent());
+        verify(parcelLegs).confirmLegReceipt(PARCEL, LEG_ID, colomboDispatcher);
+        // No courier was involved
+        verify(parcelLegs, org.mockito.Mockito.never()).assignLegCourier(any(), any(), any(), any());
+    }
+
+    @Test
+    void anotherHubsDispatcherIsRefusedAndConflictsFromDeliveryArePassedOn() throws Exception {
+        Hub uva = hub("LK-UP");
+        when(hubService.hubForDispatcher(DISPATCHER)).thenReturn(Optional.of(uva));
+
+        // The transfer starts at Colombo: not this dispatcher's leg
+        when(parcelLegs.findLegs(PARCEL)).thenReturn(List.of(legFrom(COLOMBO_HUB_ID)));
+        mvc.perform(post("/api/v1/hub-transfers").with(TestPrincipal.dispatcher(DISPATCHER).postProcessor())
+                        .contentType(MediaType.APPLICATION_JSON).content(transferBody()))
+                .andExpect(status().isNotFound());
+        // The sending hub cannot confirm receipt of its own transfer
+        when(parcelLegs.findLegs(PARCEL)).thenReturn(List.of(legFrom(uva.getId())));
+        mvc.perform(post("/api/v1/hub-transfers/receipts").with(TestPrincipal.dispatcher(DISPATCHER).postProcessor())
+                        .contentType(MediaType.APPLICATION_JSON).content(transferBody()))
+                .andExpect(status().isNotFound());
+        verify(parcelLegs, org.mockito.Mockito.never()).transferLeg(any(), any(), any());
+        verify(parcelLegs, org.mockito.Mockito.never()).confirmLegReceipt(any(), any(), any());
+
+        doThrow(new ParcelConflictException("The parcel has already been transferred"))
+                .when(parcelLegs).transferLeg(PARCEL, LEG_ID, DISPATCHER);
+        mvc.perform(post("/api/v1/hub-transfers").with(TestPrincipal.dispatcher(DISPATCHER).postProcessor())
+                        .contentType(MediaType.APPLICATION_JSON).content(transferBody()))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.detail").value("The parcel has already been transferred"));
+    }
+
+    @Test
+    void theTransferListsShowOnlyTheDispatchersHubWithoutPersonalData() throws Exception {
+        Hub uva = hub("LK-UP");
+        when(hubService.hubForDispatcher(DISPATCHER)).thenReturn(Optional.of(uva));
+        when(hubService.requireHub(uva.getId())).thenReturn(uva);
+        when(hubService.requireHub(COLOMBO_HUB_ID)).thenReturn(hub("LK-WP"));
+        var waiting = new com.swiftdrop.delivery.api.WaitingLeg(legFrom(uva.getId()), "SD1234567890", ParcelSize.SMALL,
+                700);
+        when(parcelLegs.findReadyTransfers(any(), any())).thenReturn(new PageResult<>(List.of(waiting), 0, 20, 1, 1));
+        when(parcelLegs.findIncomingLegs(any(), any())).thenReturn(new PageResult<>(List.of(waiting), 0, 20, 1, 1));
+
+        mvc.perform(get("/api/v1/hub-transfers/ready").with(TestPrincipal.dispatcher(DISPATCHER).postProcessor()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].legId").value(LEG_ID.toString()))
+                .andExpect(jsonPath("$.items[0].sourceHubCode").value("LK-UP"))
+                .andExpect(jsonPath("$.items[0].destinationHubCode").value("LK-WP"))
+                .andExpect(jsonPath("$.items[0].transferredAt").doesNotExist())
+                .andExpect(jsonPath("$.items[0].phone").doesNotExist());
+        mvc.perform(get("/api/v1/hub-transfers/incoming").with(TestPrincipal.dispatcher(DISPATCHER).postProcessor()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalItems").value(1));
+        verify(parcelLegs).findReadyTransfers(uva.getId(), new com.swiftdrop.delivery.api.PageRequest(0, 20));
+        verify(parcelLegs).findIncomingLegs(uva.getId(), new com.swiftdrop.delivery.api.PageRequest(0, 20));
+    }
+
+    @Test
+    void theTransferEndpointsAreForDispatchersWithAHubOnly() throws Exception {
+        for (TestPrincipal other : List.of(TestPrincipal.admin(), TestPrincipal.customer(),
+                TestPrincipal.merchant(), TestPrincipal.courier())) {
+            mvc.perform(get("/api/v1/hub-transfers/ready").with(other.postProcessor())).andExpect(status().isForbidden());
+            mvc.perform(get("/api/v1/hub-transfers/incoming").with(other.postProcessor()))
+                    .andExpect(status().isForbidden());
+            mvc.perform(post("/api/v1/hub-transfers").with(other.postProcessor())
+                    .contentType(MediaType.APPLICATION_JSON).content(transferBody())).andExpect(status().isForbidden());
+            mvc.perform(post("/api/v1/hub-transfers/receipts").with(other.postProcessor())
+                    .contentType(MediaType.APPLICATION_JSON).content(transferBody())).andExpect(status().isForbidden());
+        }
+        mvc.perform(get("/api/v1/hub-transfers/ready")).andExpect(status().isUnauthorized());
+        mvc.perform(post("/api/v1/hub-transfers").contentType(MediaType.APPLICATION_JSON).content(transferBody()))
+                .andExpect(status().isUnauthorized());
+
+        when(hubService.hubForDispatcher(DISPATCHER)).thenReturn(Optional.empty());
+        mvc.perform(get("/api/v1/hub-transfers/ready").with(TestPrincipal.dispatcher(DISPATCHER).postProcessor()))
+                .andExpect(status().isConflict());
+        mvc.perform(post("/api/v1/hub-transfers").with(TestPrincipal.dispatcher(DISPATCHER).postProcessor())
+                .contentType(MediaType.APPLICATION_JSON).content(transferBody())).andExpect(status().isConflict());
+        mvc.perform(post("/api/v1/hub-transfers/receipts").with(TestPrincipal.dispatcher(DISPATCHER).postProcessor())
+                .contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().isBadRequest());
+    }
+
     private void courierIsEligible() {
         identityUser(COURIER, "Kamal", true, Role.COURIER);
         when(profiles.findByUserId(COURIER)).thenReturn(Optional.of(

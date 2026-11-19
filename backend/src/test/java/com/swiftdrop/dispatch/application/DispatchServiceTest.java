@@ -8,6 +8,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.time.Instant;
@@ -402,6 +403,99 @@ class DispatchServiceTest {
                 .isInstanceOf(CourierNotEligibleException.class);
         verify(parcelAssignment, never()).assignCourier(any(), any(), any());
         verify(parcelLegs, never()).assignLegCourier(any(), any(), any(), any());
+    }
+
+    @Test
+    void theSendingHubDispatcherTransfersAParcelWithoutAnyCourierCheckOrAssignmentRecord() {
+        var toColombo = leg(2, com.swiftdrop.delivery.api.LegType.INTER_HUB, uva.getId(), COLOMBO_HUB_ID);
+        when(parcelLegs.findLegs(PARCEL)).thenReturn(List.of(toColombo));
+
+        service.transfer(PARCEL, toColombo.id(), DISPATCHER);
+
+        verify(parcelLegs).transferLeg(PARCEL, toColombo.id(), DISPATCHER);
+        // No courier is involved: nothing is checked for one and no assignment is recorded
+        verifyNoInteractions(eligibility, historyService, parcelAssignment);
+        verify(parcelLegs, never()).assignLegCourier(any(), any(), any(), any());
+    }
+
+    @Test
+    void onlyTheSendingHubCanTransferAndAnotherHubsLegLooksMissing() {
+        // The leg starts at Colombo, but this dispatcher works for Uva (also the receiving hub cannot send)
+        var fromColombo = leg(2, com.swiftdrop.delivery.api.LegType.INTER_HUB, COLOMBO_HUB_ID, UUID.randomUUID());
+        when(parcelLegs.findLegs(PARCEL)).thenReturn(List.of(fromColombo));
+
+        assertThatThrownBy(() -> service.transfer(PARCEL, fromColombo.id(), DISPATCHER))
+                .isInstanceOf(ParcelNotFoundException.class);
+        assertThatThrownBy(() -> service.transfer(PARCEL, UUID.randomUUID(), DISPATCHER))
+                .isInstanceOf(ParcelNotFoundException.class);
+        verify(parcelLegs, never()).transferLeg(any(), any(), any());
+    }
+
+    @Test
+    void onlyTheReceivingHubCanConfirmReceiptAndTheSenderCannotReceiveItsOwnTransfer() {
+        var toColombo = leg(2, com.swiftdrop.delivery.api.LegType.INTER_HUB, uva.getId(), COLOMBO_HUB_ID);
+        when(parcelLegs.findLegs(PARCEL)).thenReturn(List.of(toColombo));
+
+        // The Uva dispatcher sent it; confirming the receipt is Colombo's job
+        assertThatThrownBy(() -> service.confirmReceipt(PARCEL, toColombo.id(), DISPATCHER))
+                .isInstanceOf(ParcelNotFoundException.class);
+        verify(parcelLegs, never()).confirmLegReceipt(any(), any(), any());
+
+        UUID colomboDispatcher = UUID.fromString("00000000-0000-0000-0000-0000000000e2");
+        Hub colombo = hub("LK-WP");
+        ReflectionTestUtils.setField(colombo, "id", COLOMBO_HUB_ID);
+        when(hubService.hubForDispatcher(colomboDispatcher)).thenReturn(Optional.of(colombo));
+
+        service.confirmReceipt(PARCEL, toColombo.id(), colomboDispatcher);
+
+        verify(parcelLegs).confirmLegReceipt(PARCEL, toColombo.id(), colomboDispatcher);
+        verifyNoInteractions(eligibility, historyService);
+    }
+
+    @Test
+    void conflictsFromDeliveryArePassedOnAndTransfersNeedAHub() {
+        var toColombo = leg(2, com.swiftdrop.delivery.api.LegType.INTER_HUB, uva.getId(), COLOMBO_HUB_ID);
+        when(parcelLegs.findLegs(PARCEL)).thenReturn(List.of(toColombo));
+        doThrow(new com.swiftdrop.delivery.api.ParcelConflictException("The parcel has already been transferred"))
+                .when(parcelLegs).transferLeg(PARCEL, toColombo.id(), DISPATCHER);
+
+        assertThatThrownBy(() -> service.transfer(PARCEL, toColombo.id(), DISPATCHER))
+                .isInstanceOf(com.swiftdrop.delivery.api.ParcelConflictException.class);
+
+        when(hubService.hubForDispatcher(DISPATCHER)).thenReturn(Optional.empty());
+        assertThatThrownBy(() -> service.transfer(PARCEL, toColombo.id(), DISPATCHER))
+                .isInstanceOf(DispatcherHubNotAssignedException.class);
+        assertThatThrownBy(() -> service.confirmReceipt(PARCEL, toColombo.id(), DISPATCHER))
+                .isInstanceOf(DispatcherHubNotAssignedException.class);
+        assertThatThrownBy(() -> service.readyTransfers(DISPATCHER, 0, 20))
+                .isInstanceOf(DispatcherHubNotAssignedException.class);
+        assertThatThrownBy(() -> service.incomingTransfers(DISPATCHER, 0, 20))
+                .isInstanceOf(DispatcherHubNotAssignedException.class);
+    }
+
+    @Test
+    void theTransferListsAreFilteredByTheDispatchersHubAndShowHubCodes() {
+        when(hubService.requireHub(uva.getId())).thenReturn(uva);
+        when(hubService.requireHub(COLOMBO_HUB_ID)).thenReturn(hub("LK-WP"));
+        var sent = new com.swiftdrop.delivery.api.LegView(LEG, PARCEL, 2, com.swiftdrop.delivery.api.LegType.INTER_HUB,
+                uva.getId(), COLOMBO_HUB_ID, null, null, null, Instant.parse("2026-11-19T10:00:00Z"), DISPATCHER, null,
+                null);
+        var waiting = new com.swiftdrop.delivery.api.WaitingLeg(sent, "SD1234567890", ParcelSize.SMALL, 700);
+        when(parcelLegs.findReadyTransfers(any(), any())).thenReturn(new PageResult<>(List.of(waiting), 0, 20, 1, 1));
+        when(parcelLegs.findIncomingLegs(any(), any())).thenReturn(new PageResult<>(List.of(waiting), 0, 20, 1, 1));
+
+        var ready = service.readyTransfers(DISPATCHER, 0, 20);
+        var incoming = service.incomingTransfers(DISPATCHER, 0, 20);
+
+        verify(parcelLegs).findReadyTransfers(uva.getId(), new PageRequest(0, 20));
+        verify(parcelLegs).findIncomingLegs(uva.getId(), new PageRequest(0, 20));
+        assertThat(ready.items()).singleElement().satisfies(entry -> {
+            assertThat(entry.trackingNumber()).isEqualTo("SD1234567890");
+            assertThat(entry.sourceHubCode()).isEqualTo("LK-UP");
+            assertThat(entry.destinationHubCode()).isEqualTo("LK-WP");
+            assertThat(entry.transferredAt()).isEqualTo(Instant.parse("2026-11-19T10:00:00Z"));
+        });
+        assertThat(incoming.totalItems()).isEqualTo(1);
     }
 
     @Test

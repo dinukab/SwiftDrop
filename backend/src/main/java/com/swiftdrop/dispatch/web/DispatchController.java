@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.swiftdrop.dispatch.application.DispatchService;
@@ -108,6 +109,62 @@ class DispatchController {
     ) {
         dispatch.assignLeg(request.parcelId(), request.legId(), request.courierUserId(), Callers.userId(jwt));
         return new AssignmentResponse(request.parcelId(), request.courierUserId());
+    }
+
+    /**
+     * Parcels received at the caller's hub that are ready to be sent on to the next hub (direct hub-to-hub transfer,
+     * no courier). 409 if the dispatcher has no hub.
+     */
+    @GetMapping("/api/v1/hub-transfers/ready")
+    PageResponse<HubTransferResponse> readyTransfers(
+            @AuthenticationPrincipal Jwt jwt,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size
+    ) {
+        var result = dispatch.readyTransfers(Callers.userId(jwt), pageNumber(page), pageSize(size));
+        return PageResponse.of(result.items().stream().map(HubTransferResponse::from).toList(), result.page(),
+                result.size(), result.totalItems());
+    }
+
+    /** Parcels sent to the caller's hub and not yet confirmed received. 409 if the dispatcher has no hub. */
+    @GetMapping("/api/v1/hub-transfers/incoming")
+    PageResponse<HubTransferResponse> incomingTransfers(
+            @AuthenticationPrincipal Jwt jwt,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size
+    ) {
+        var result = dispatch.incomingTransfers(Callers.userId(jwt), pageNumber(page), pageSize(size));
+        return PageResponse.of(result.items().stream().map(HubTransferResponse::from).toList(), result.page(),
+                result.size(), result.totalItems());
+    }
+
+    /**
+     * Sends a parcel straight to the next hub, with no courier. The caller from the token must work for the leg's
+     * source hub (404 otherwise, like a missing leg). 409 if the parcel was not received at this hub yet, was already
+     * sent, or has a courier on that leg.
+     */
+    @PostMapping("/api/v1/hub-transfers")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    void transfer(@AuthenticationPrincipal Jwt jwt, @Valid @RequestBody HubTransferRequest request) {
+        dispatch.transfer(request.parcelId(), request.legId(), Callers.userId(jwt));
+    }
+
+    /**
+     * Confirms that a transferred parcel physically arrived. The caller from the token must work for the leg's
+     * destination hub (404 otherwise). 409 if the parcel was not sent or was already received.
+     */
+    @PostMapping("/api/v1/hub-transfers/receipts")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    void confirmReceipt(@AuthenticationPrincipal Jwt jwt, @Valid @RequestBody HubTransferRequest request) {
+        dispatch.confirmReceipt(request.parcelId(), request.legId(), Callers.userId(jwt));
+    }
+
+    private static int pageNumber(Integer page) {
+        return page != null ? PageLimit.clampPage(page) : PageLimit.DEFAULT_PAGE_NUMBER;
+    }
+
+    private static int pageSize(Integer size) {
+        return size != null ? PageLimit.clampSize(size) : PageLimit.DEFAULT_PAGE_SIZE;
     }
 
     /** Every active courier with their active parcel count, least busy first. */

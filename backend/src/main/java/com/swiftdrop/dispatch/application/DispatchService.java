@@ -230,6 +230,95 @@ public class DispatchService {
                 hub.getId());
     }
 
+    /**
+     * Parcels received at the dispatcher's hub that are ready to be sent on to the next hub: the sending side of a
+     * direct hub-to-hub transfer. No courier is involved.
+     *
+     * @throws DispatcherHubNotAssignedException if the dispatcher has no hub
+     */
+    @Transactional(readOnly = true)
+    public PageResult<TransferEntry> readyTransfers(UUID dispatcherUserId, int page, int size) {
+        Hub hub = requireHub(dispatcherUserId);
+        return toTransferEntries(legs.getObject().findReadyTransfers(hub.getId(), new PageRequest(page, size)));
+    }
+
+    /**
+     * Parcels sent to the dispatcher's hub by another hub and not yet confirmed received: the receiving side of a
+     * direct hub-to-hub transfer.
+     *
+     * @throws DispatcherHubNotAssignedException if the dispatcher has no hub
+     */
+    @Transactional(readOnly = true)
+    public PageResult<TransferEntry> incomingTransfers(UUID dispatcherUserId, int page, int size) {
+        Hub hub = requireHub(dispatcherUserId);
+        return toTransferEntries(legs.getObject().findIncomingLegs(hub.getId(), new PageRequest(page, size)));
+    }
+
+    /**
+     * The sending hub's dispatcher sends a parcel straight to the next hub of its route, with no courier. The
+     * destination is the leg's planned next hub, never taken from the request. Only a dispatcher of the leg's
+     * <em>source</em> hub may do it: another hub's leg looks like a missing one. {@code delivery} checks that the
+     * parcel was received at the sending hub, that it was not sent before, and that the leg has no courier.
+     *
+     * @throws DispatcherHubNotAssignedException if the dispatcher has no hub
+     * @throws ParcelNotFoundException if the parcel or leg does not exist or the leg starts at another hub
+     * @throws com.swiftdrop.delivery.api.ParcelConflictException if the leg cannot be sent now
+     */
+    @Transactional
+    public void transfer(UUID parcelId, UUID legId, UUID dispatcherUserId) {
+        Objects.requireNonNull(parcelId, "parcelId");
+        Objects.requireNonNull(legId, "legId");
+        Hub hub = requireHub(dispatcherUserId);
+        LegView leg = requireLeg(parcelId, legId);
+        if (!hub.getId().equals(leg.sourceHubId())) {
+            throw new ParcelNotFoundException();
+        }
+        legs.getObject().transferLeg(parcelId, legId, dispatcherUserId);
+    }
+
+    /**
+     * The receiving hub's dispatcher confirms that the parcel physically arrived. Only a dispatcher of the leg's
+     * <em>destination</em> hub may do it (another hub's leg looks missing); the sending hub cannot receive its own
+     * transfer. Afterwards the parcel may be given its next leg.
+     *
+     * @throws DispatcherHubNotAssignedException if the dispatcher has no hub
+     * @throws ParcelNotFoundException if the parcel or leg does not exist or the leg ends at another hub
+     * @throws com.swiftdrop.delivery.api.ParcelConflictException if the parcel was not sent or was already received
+     */
+    @Transactional
+    public void confirmReceipt(UUID parcelId, UUID legId, UUID dispatcherUserId) {
+        Objects.requireNonNull(parcelId, "parcelId");
+        Objects.requireNonNull(legId, "legId");
+        Hub hub = requireHub(dispatcherUserId);
+        LegView leg = requireLeg(parcelId, legId);
+        if (!hub.getId().equals(leg.destinationHubId())) {
+            throw new ParcelNotFoundException();
+        }
+        legs.getObject().confirmLegReceipt(parcelId, legId, dispatcherUserId);
+    }
+
+    private LegView requireLeg(UUID parcelId, UUID legId) {
+        return legs.getObject().findLegs(parcelId).stream()
+                .filter(candidate -> candidate.id().equals(legId))
+                .findFirst()
+                .orElseThrow(ParcelNotFoundException::new);
+    }
+
+    private PageResult<TransferEntry> toTransferEntries(PageResult<WaitingLeg> found) {
+        Map<UUID, String> hubCodes = new HashMap<>();
+        List<TransferEntry> items = found.items().stream()
+                .map(waiting -> {
+                    LegView leg = waiting.leg();
+                    return new TransferEntry(leg.id(), leg.parcelId(), waiting.trackingNumber(), leg.sequence(),
+                            hubCodes.computeIfAbsent(leg.sourceHubId(), id -> hubs.getObject().requireHub(id).getCode()),
+                            hubCodes.computeIfAbsent(leg.destinationHubId(),
+                                    id -> hubs.getObject().requireHub(id).getCode()),
+                            waiting.size().name(), waiting.weightGrams(), leg.transferredAt());
+                })
+                .toList();
+        return new PageResult<>(items, found.page(), found.size(), found.totalItems(), found.totalPages());
+    }
+
     /** Names are for the dispatcher's screen only, never for logs. */
     private String nameOf(UUID userId) {
         return users.findUser(userId).map(UserSummary::fullName).orElse("Unknown user");
@@ -277,6 +366,14 @@ public class DispatchService {
     /** A leg that waits for a courier at the dispatcher's hub; no addresses or contacts. */
     public record WaitingLegEntry(UUID legId, UUID parcelId, String trackingNumber, String legType, int sequence,
             String sourceHubCode, String destinationHubCode, String size, int weightGrams) {
+    }
+
+    /**
+     * A parcel ready to be sent from, or on its way to, the dispatcher's hub; no addresses or contacts.
+     * {@code transferredAt} is null until the sending hub sent it.
+     */
+    public record TransferEntry(UUID legId, UUID parcelId, String trackingNumber, int sequence,
+            String sourceHubCode, String destinationHubCode, String size, int weightGrams, Instant transferredAt) {
     }
 
     /** One courier's load. Names are for the dispatcher's screen only, never for logs. */
