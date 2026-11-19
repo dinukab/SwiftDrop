@@ -22,6 +22,8 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import com.swiftdrop.delivery.api.LegType;
+import com.swiftdrop.delivery.api.LegView;
 import com.swiftdrop.delivery.api.ParcelLegs;
 import com.swiftdrop.delivery.api.ParcelStatus;
 import com.swiftdrop.delivery.application.CourierParcelService.CourierParcel;
@@ -46,6 +48,32 @@ class CourierParcelServiceTest {
         CourierParcelService service = at("2026-11-03T19:30:00Z");
 
         assertThat(service.startOfToday()).isEqualTo(Instant.parse("2026-11-03T18:30:00Z"));
+    }
+
+    @Test
+    void nextStatusesFollowTheLegTheCourierHolds() {
+        CourierParcelService service = at("2026-11-03T10:00:00Z");
+        Parcel atHub = parcel(ParcelStatus.HUB_ARRIVED);
+        Parcel afterHandover = parcel(ParcelStatus.HUB_ARRIVED);
+        UUID hub = UUID.randomUUID();
+        Instant now = Instant.parse("2026-11-03T09:00:00Z");
+        // Pickup courier: the leg ended at the hub, so no moves are left
+        when(legs.findLegs(atHub.getId())).thenReturn(List.of(
+                new LegView(UUID.randomUUID(), atHub.getId(), 1, LegType.PICKUP, hub, hub, COURIER_ID, now, now),
+                new LegView(UUID.randomUUID(), atHub.getId(), 2, LegType.FINAL_MILE, hub, hub, null, null, null)));
+        // Final-mile courier: only the pickup from the hub, not the sorting or inter-hub moves
+        when(legs.findLegs(afterHandover.getId())).thenReturn(List.of(
+                new LegView(UUID.randomUUID(), afterHandover.getId(), 1, LegType.PICKUP, hub, hub,
+                        UUID.randomUUID(), now, now),
+                new LegView(UUID.randomUUID(), afterHandover.getId(), 2, LegType.FINAL_MILE, hub, hub, COURIER_ID, now,
+                        null)));
+        when(parcels.findCourierDay(eq(COURIER_ID), any(), any())).thenReturn(List.of(atHub, afterHandover));
+        when(proofs.findParcelIdsWithProof(any())).thenReturn(Set.of());
+
+        List<CourierParcel> today = service.today(COURIER_ID);
+
+        assertThat(today.get(0).nextStatuses()).isEmpty();
+        assertThat(today.get(1).nextStatuses()).containsExactly(ParcelStatus.OUT_FOR_DELIVERY);
     }
 
     @Test

@@ -242,6 +242,9 @@ tracking     → delivery
   `PICKED_UP`; each change records time and actor, `FAILED` requires a reason, notes and proof are
   recorded as applicable. `tracking` sends the current state on connect and never keeps its own
   history.
+- **Decided (ADR 0006 section 1B):** for a parcel with legs the courier's moves depend on the leg type: the
+  pickup courier moves `CREATED` to `PICKED_UP` to `HUB_ARRIVED` (or `FAILED`), the final-mile courier moves
+  `OUT_FOR_DELIVERY` to `DELIVERED` or `FAILED` (with proof), and hub-to-hub legs are moved by dispatchers.
 - **Implemented:** nothing.
 - **Open:** the stages from which `FAILED` is allowed, reassignment, cancellation, retries after
   failure, dispatcher/admin overrides, whether proof is mandatory for `DELIVERED`; what the public

@@ -10,6 +10,8 @@ import org.springframework.stereotype.Component;
 
 import com.swiftdrop.delivery.api.LegType;
 import com.swiftdrop.delivery.api.ParcelConflictException;
+import com.swiftdrop.delivery.api.ParcelStatus;
+import com.swiftdrop.delivery.domain.ParcelLifecycle;
 import com.swiftdrop.delivery.domain.ShipmentLeg;
 import com.swiftdrop.delivery.domain.ShipmentLegRepository;
 
@@ -33,6 +35,26 @@ class LegProgress {
         List<ShipmentLeg> all = legs.findByParcelIdOrderBySequenceAsc(parcelId);
         if (!all.isEmpty()) {
             all.get(0).assignCourier(courierUserId, now);
+        }
+    }
+
+    /**
+     * Checks a courier's status change against the leg the courier holds: the open leg assigned to that courier. A
+     * courier who holds no open leg (the pickup courier after the parcel reached the hub) cannot move the parcel.
+     *
+     * @throws ParcelConflictException if the courier holds no open leg or the leg type does not allow the move
+     */
+    void requireMoveAllowed(UUID parcelId, UUID courierId, ParcelStatus from, ParcelStatus to) {
+        List<ShipmentLeg> all = legs.findByParcelIdOrderBySequenceAsc(parcelId);
+        if (all.isEmpty()) {
+            return;
+        }
+        ShipmentLeg held = all.stream()
+                .filter(leg -> !leg.isCompleted() && courierId.equals(leg.getAssignedCourierId()))
+                .findFirst()
+                .orElseThrow(() -> new ParcelConflictException("The courier holds no open leg of this parcel"));
+        if (!ParcelLifecycle.canMove(held.getLegType(), from, to)) {
+            throw new ParcelConflictException("Illegal status transition for a " + held.getLegType() + " leg");
         }
     }
 

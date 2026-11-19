@@ -85,21 +85,40 @@ public class CourierParcelService {
             return List.of();
         }
         Set<UUID> withProof = proofs.findParcelIdsWithProof(day.stream().map(Parcel::getId).toList());
-        return day.stream()
-                .map(parcel -> new CourierParcel(parcel, withProof.contains(parcel.getId()),
-                        ParcelLifecycle.nextStatuses(parcel.getStatus()), arrivalHub(parcel)))
-                .toList();
+        return day.stream().map(parcel -> {
+            List<LegView> parcelLegs = legs.getObject().findLegs(parcel.getId());
+            return new CourierParcel(parcel, withProof.contains(parcel.getId()),
+                    nextStatuses(parcel, courierId, parcelLegs), arrivalHub(parcel, parcelLegs));
+        }).toList();
+    }
+
+    /**
+     * What the courier may do next (ADR 0006 section 1B): for a parcel with legs only what the courier's open leg
+     * allows, nothing when the courier holds no open leg any more.
+     */
+    private static Set<ParcelStatus> nextStatuses(Parcel parcel, UUID courierId, List<LegView> parcelLegs) {
+        Set<ParcelStatus> next = ParcelLifecycle.nextStatuses(parcel.getStatus());
+        if (parcelLegs.isEmpty()) {
+            return next;
+        }
+        return parcelLegs.stream()
+                .filter(leg -> leg.completedAt() == null && courierId.equals(leg.assignedCourierId()))
+                .findFirst()
+                .map(leg -> next.stream()
+                        .filter(to -> ParcelLifecycle.canMove(leg.legType(), parcel.getStatus(), to))
+                        .collect(java.util.stream.Collectors.toSet()))
+                .orElse(Set.of());
     }
 
     /**
      * After pickup the courier brings the parcel to the pickup zone's hub, not the destination's. Moving it on to
      * the destination zone is not part of the courier's job.
      */
-    private UUID arrivalHub(Parcel parcel) {
+    private static UUID arrivalHub(Parcel parcel, List<LegView> parcelLegs) {
         if (parcel.getStatus() != ParcelStatus.PICKED_UP) {
             return null;
         }
-        return legs.getObject().findLegs(parcel.getId()).stream()
+        return parcelLegs.stream()
                 .filter(leg -> leg.legType() == LegType.PICKUP)
                 .map(LegView::destinationHubId)
                 .findFirst()

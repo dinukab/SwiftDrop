@@ -121,4 +121,21 @@ class ParcelLifecycleTest {
         assertThat(ParcelLifecycle.nextStatuses(PAUSED)).isEmpty();
         assertThat(ParcelLifecycle.nextStatuses(CANCELLED)).isEmpty();
     }
+
+    @org.junit.jupiter.api.Test
+    void legTypesNarrowTheCourierMovesAndNeverWidenThem() {
+        for (com.swiftdrop.delivery.api.LegType legType : com.swiftdrop.delivery.api.LegType.values()) {
+            for (ParcelStatus from : ParcelStatus.values()) {
+                for (ParcelStatus to : ParcelStatus.values()) {
+                    if (ParcelLifecycle.canMove(legType, from, to)) {
+                        assertThat(ParcelLifecycle.canMove(from, to)).as(legType + " " + from + "->" + to).isTrue();
+                    }
+                }
+            }
+        }
+        assertThat(ParcelLifecycle.canMove(com.swiftdrop.delivery.api.LegType.PICKUP, PICKED_UP, HUB_ARRIVED)).isTrue();
+        assertThat(ParcelLifecycle.canMove(com.swiftdrop.delivery.api.LegType.PICKUP, HUB_ARRIVED, OUT_FOR_DELIVERY)).isFalse();
+        assertThat(ParcelLifecycle.canMove(com.swiftdrop.delivery.api.LegType.FINAL_MILE, HUB_SORTED, OUT_FOR_DELIVERY)).isTrue();
+        assertThat(ParcelLifecycle.canMove(com.swiftdrop.delivery.api.LegType.FINAL_MILE, PICKED_UP, HUB_ARRIVED)).isFalse();
+    }
 }
