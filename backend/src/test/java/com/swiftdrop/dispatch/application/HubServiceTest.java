@@ -175,4 +175,17 @@ class HubServiceTest {
         when(hubs.findById(closed.getId())).thenReturn(Optional.of(closed));
         assertThat(service.hubForDispatcher(DISPATCHER)).isEmpty();
     }
+
+    @Test
+    void listsOnlyDispatchersWhoseHubIsActive() {
+        UUID other = UUID.fromString("00000000-0000-0000-0000-0000000000e2");
+        Hub closed = hub("LK-NP", "Northern Province Hub", false, false);
+        when(hubs.findAll()).thenReturn(List.of(uva, colombo, closed));
+        when(bindings.findAll()).thenReturn(List.of(
+                new DispatcherHub(DISPATCHER, uva.getId(), NOW),
+                new DispatcherHub(other, closed.getId(), NOW),
+                new DispatcherHub(UUID.randomUUID(), UUID.randomUUID(), NOW)));
+
+        assertThat(service.listDispatcherHubs()).containsOnlyKeys(DISPATCHER).containsEntry(DISPATCHER, uva);
+    }
 }

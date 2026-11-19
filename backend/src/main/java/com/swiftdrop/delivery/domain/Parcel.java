@@ -211,6 +211,60 @@ public class Parcel {
     }
 
     /**
+     * Hands the parcel to the courier of the next leg (ADR 0007). Allowed only while the parcel waits at a hub
+     * ({@code HUB_ARRIVED} or {@code HUB_SORTED}). Not a status change: the sequence stays the same. The caller
+     * must hold a lock on the parcel row.
+     *
+     * @throws ParcelConflictException if the parcel is not waiting at a hub
+     */
+    public void handOverTo(UUID courierUserId, Instant now) {
+        Objects.requireNonNull(courierUserId, "courierUserId");
+        Objects.requireNonNull(now, "now");
+        if (status != ParcelStatus.HUB_ARRIVED && status != ParcelStatus.HUB_SORTED) {
+            throw new ParcelConflictException("The parcel is not waiting at a hub");
+        }
+        this.assignedCourierId = courierUserId;
+        this.assignedAt = now;
+        this.updatedAt = now;
+    }
+
+    /**
+     * The sending hub's dispatcher sends the parcel to the next hub (ADR 0007, direct hub-to-hub transfer): it must
+     * wait at a hub, becomes {@code IN_TRANSIT}, and has no courier while it travels, so the previous courier loses
+     * access. A status change by a dispatcher, not a courier, so it does not go through
+     * {@link #changeStatus}. The caller must hold a lock on the parcel row.
+     *
+     * @throws ParcelConflictException if the parcel is not waiting at a hub
+     */
+    public void transferOut(Instant now) {
+        Objects.requireNonNull(now, "now");
+        if (status != ParcelStatus.HUB_ARRIVED && status != ParcelStatus.HUB_SORTED) {
+            throw new ParcelConflictException("The parcel is not waiting at a hub");
+        }
+        this.status = ParcelStatus.IN_TRANSIT;
+        this.assignedCourierId = null;
+        this.assignedAt = null;
+        this.lastSequence++;
+        this.updatedAt = now;
+    }
+
+    /**
+     * The receiving hub's dispatcher confirms the parcel arrived: {@code IN_TRANSIT} becomes {@code HUB_ARRIVED}.
+     * The parcel still has no courier. The caller must hold a lock on the parcel row.
+     *
+     * @throws ParcelConflictException if the parcel is not in transit between hubs
+     */
+    public void receiveAtHub(Instant now) {
+        Objects.requireNonNull(now, "now");
+        if (status != ParcelStatus.IN_TRANSIT) {
+            throw new ParcelConflictException("The parcel is not in transit between hubs");
+        }
+        this.status = ParcelStatus.HUB_ARRIVED;
+        this.lastSequence++;
+        this.updatedAt = now;
+    }
+
+    /**
      * Moves the parcel to {@code target} on behalf of a courier and takes the next sequence number
      * (ADR 0006 §1, ADR 0004 §4.1). The caller must hold a lock on the parcel row.
      *

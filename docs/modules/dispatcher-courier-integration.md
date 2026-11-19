@@ -72,11 +72,14 @@ North Central, Uva, Sabaragamuwa), with Colombo (Western) as Main Hub. They alre
 | Needed | Today |
 |---|---|
 | Several assignments per parcel | One `assigned_courier_id`; assignment only while `CREATED` |
-| Legs and assignment history | None |
-| Hub arrival / handover statuses | Lifecycle has no hub states (ADR 0006) |
-| Dispatcher belongs to a hub | No link between a dispatcher user and a province |
-| Parcel hub | `ParcelSummary` has no zone; pickup/dropoff zone IDs are in `delivery` |
-| Courier availability, home hub, current hub | `CourierProfile` has only `active` |
+| Legs and assignment history | `ShipmentLeg` entity and `shipment_legs` table exist (courier PR #24) but nothing creates or reads them; no assignment history |
+| Hub arrival / handover statuses | `HUB_ARRIVED`, `HUB_SORTED` added to the lifecycle, but the CHECK constraints now allow them (`V202611171300`) |
+| Dispatcher belongs to a hub | Done in dispatch Phase 1 (`dispatcher_hubs`, `GET /dispatchers/me`); not yet enforced |
+| Parcel hub | Done in Phase 3: `ParcelSummary` has `pickupProvinceCode` and `dropoffProvinceCode`; `findUnassignedParcels(page, provinceCode)` filters by pickup province |
+| Courier home hub, current hub | Columns, entity and service methods exist (PR #24). Phase 7: `CourierLocationTracker` sets the current hub after a confirmed arrival, and assignment refuses a courier based at another hub; no endpoint shows or sets them yet |
+| Courier availability | Not implemented (only `active`) |
+| Hub-to-hub transport | No courier: dispatchers transfer and receive (ADR 0007 amendment). The courier module is unchanged for the pickup, pickup arrival and final mile. Between hubs a parcel is `IN_TRANSIT` with no assigned courier |
+| Different courier per leg | Impossible today: `FinalMileService` and `changeStatus` require `courierId == parcel.assignedCourierId`, set only while `CREATED` |
 | Module boundary | Dispatch may not read pricing zones (`dispatch` depends only on identity and delivery) |
 
 ## 8. Integration dependencies and approvals needed
@@ -96,3 +99,16 @@ picks up, re-assignment returns 409.
 Planned: same-province journey with pickup and final-mile couriers; cross-province journey with three
 couriers; dispatcher from another hub gets 404/403; two dispatchers assign one leg at once, one wins; courier
 current hub changes only after the hub confirms arrival.
+
+## 10. What the courier merge (PR #24) changed for this integration
+
+Analysed 2026-11-18 at `fecb6e7`. Added by the courier owner: hub statuses and lifecycle moves, `ShipmentLeg`,
+`CourierHubService`, `FinalMileService`, three courier endpoints, and `home_hub_id`/`current_hub_id` on couriers.
+Issues that block the dispatcher's leg phases are listed in `courier.md` section 8; the main ones are the
+database constraint gap, the single `assignedCourierId`, and the `shipment_legs` foreign keys to dispatch tables.
+Decisions needed from the courier and delivery owners before dispatch Phase 5 or 6:
+
+1. Who confirms a hub arrival: the courier (as built) or the receiving hub's dispatcher (as in the brief).
+2. Whether `shipment_legs` stays in `delivery` (as built) or moves to `dispatch` (as agreed on 2026-11-17), and
+   whether `assigned_courier_id` holds the courier user ID or the profile ID.
+3. ~~A migration adding the two statuses to the CHECK constraints~~: done 2026-11-18 (`V202611171300`).

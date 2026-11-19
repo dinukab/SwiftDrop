@@ -1,6 +1,5 @@
 package com.swiftdrop.delivery.application;
 
-import java.time.Clock;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -13,50 +12,42 @@ import com.swiftdrop.delivery.api.ParcelNotFoundException;
 import com.swiftdrop.delivery.api.ParcelStatus;
 import com.swiftdrop.delivery.domain.Parcel;
 import com.swiftdrop.delivery.domain.ParcelRepository;
-/** Courier hub arrival confirmation for hub-based delivery. */
+
+/**
+ * Courier hub arrival confirmation for hub-based delivery. The status change goes through
+ * {@link ParcelStatusService}, so it takes the parcel lock and writes the history row and the outbox
+ * event like every other status change.
+ */
 @Service
 @Lazy
-@Transactional(readOnly = true)
 public class CourierHubService {
 
+    private final ParcelStatusService statuses;
     private final ParcelRepository parcels;
-    private final Clock clock;
 
     @Autowired
-    public CourierHubService(ParcelRepository parcels) {
-        this(parcels, Clock.systemUTC());
-    }
-
-    CourierHubService(ParcelRepository parcels, Clock clock) {
+    public CourierHubService(ParcelStatusService statuses, ParcelRepository parcels) {
+        this.statuses = Objects.requireNonNull(statuses, "statuses");
         this.parcels = Objects.requireNonNull(parcels, "parcels");
-        this.clock = Objects.requireNonNull(clock, "clock");
     }
 
     /**
-     * Confirms that a courier has arrived at a hub with a parcel. Updates parcel status to
-     * HUB_ARRIVED.
+     * Confirms that a courier has arrived at a hub with a parcel and moves it to {@code HUB_ARRIVED}.
+     * For a parcel with legs (ADR 0007) {@code hubId} must be the destination hub of the leg in progress, which then
+     * ends; for a parcel without legs it is not checked.
      *
-     * @param parcelId — the parcel being delivered to the hub
-     * @param hubId — the destination hub (for context/validation; courier location tracking is separate)
-     * @param courierId — the courier making the delivery
      * @return the updated parcel
-     * @throws ParcelNotFoundException if parcel not found or not assigned to courier
-     * @throws ParcelConflictException if parcel is not in a status that allows hub arrival
+     * @throws ParcelNotFoundException if the parcel is unknown or not assigned to the courier
+     * @throws com.swiftdrop.delivery.api.ParcelConflictException if the parcel cannot move to
+     *         {@code HUB_ARRIVED} from its current status
      */
     @Transactional
     public Parcel confirmHubArrival(UUID parcelId, UUID hubId, UUID courierId) {
         Objects.requireNonNull(parcelId, "parcelId must not be null");
         Objects.requireNonNull(hubId, "hubId must not be null");
         Objects.requireNonNull(courierId, "courierId must not be null");
-
-        // Load parcel and verify assigned courier
-        Parcel parcel = parcels.findById(parcelId).orElseThrow(ParcelNotFoundException::new);
-        if (!courierId.equals(parcel.getAssignedCourierId())) {
-            throw new ParcelNotFoundException();
-        }
-
-        // Update parcel status to HUB_ARRIVED
-        parcel.changeStatus(ParcelStatus.HUB_ARRIVED, courierId, null, false, clock.instant());
-        return parcels.saveAndFlush(parcel);
+        statuses.changeStatus(parcelId, new StatusChange(ParcelStatus.HUB_ARRIVED, null, null),
+                Actor.courier(courierId), hubId);
+        return parcels.findById(parcelId).orElseThrow(ParcelNotFoundException::new);
     }
 }

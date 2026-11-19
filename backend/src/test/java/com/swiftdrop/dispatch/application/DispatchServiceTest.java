@@ -8,6 +8,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.time.Instant;
@@ -19,17 +20,29 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.BeanUtils;
 import org.springframework.data.domain.PageImpl;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import com.swiftdrop.delivery.api.ParcelAssignment;
+import com.swiftdrop.delivery.api.ParcelLegs;
 import com.swiftdrop.delivery.api.ParcelConflictException;
+import com.swiftdrop.delivery.api.PageRequest;
+import com.swiftdrop.delivery.api.ParcelNotFoundException;
 import com.swiftdrop.delivery.api.ParcelQueries;
+import com.swiftdrop.delivery.api.ParcelSource;
+import com.swiftdrop.delivery.api.ParcelStatus;
+import com.swiftdrop.delivery.api.ParcelSummary;
 import com.swiftdrop.delivery.api.PageResult;
 import com.swiftdrop.dispatch.domain.CourierProfile;
 import com.swiftdrop.dispatch.domain.CourierProfileRepository;
+import com.swiftdrop.dispatch.domain.AssignmentRecord;
+import com.swiftdrop.dispatch.domain.Hub;
+import com.swiftdrop.delivery.api.LegType;
 import com.swiftdrop.dispatch.domain.VehicleType;
 import com.swiftdrop.identity.api.UserDirectory;
 import com.swiftdrop.identity.api.UserSummary;
+import com.swiftdrop.pricing.api.ParcelSize;
 
 class DispatchServiceTest {
 
@@ -42,6 +55,10 @@ class DispatchServiceTest {
     private CourierEligibility eligibility;
     private CourierProfileRepository profiles;
     private UserDirectory users;
+    private HubService hubService;
+    private AssignmentHistoryService historyService;
+    private ParcelLegs parcelLegs;
+    private Hub uva;
     private DispatchService service;
 
     @BeforeEach
@@ -51,16 +68,80 @@ class DispatchServiceTest {
         eligibility = mock(CourierEligibility.class);
         profiles = mock(CourierProfileRepository.class);
         users = mock(UserDirectory.class);
-        service = new DispatchService(parcelQueries, parcelAssignment, eligibility, profiles, users);
+        hubService = mock(HubService.class);
+        historyService = mock(AssignmentHistoryService.class);
+        parcelLegs = mock(ParcelLegs.class);
+        uva = hub("LK-UP");
+        service = new DispatchService(parcelQueries, parcelAssignment, eligibility, profiles, users,
+                () -> hubService, () -> historyService, () -> parcelLegs);
+        // By default the dispatcher works for the Uva hub and the parcel waits for pickup there
+        when(hubService.hubForDispatcher(DISPATCHER)).thenReturn(Optional.of(uva));
+        when(parcelQueries.findParcelById(PARCEL)).thenReturn(Optional.of(parcelPickedUpIn("LK-UP")));
+    }
+
+    private static Hub hub(String code) {
+        Hub hub = BeanUtils.instantiateClass(Hub.class);
+        ReflectionTestUtils.setField(hub, "id", UUID.randomUUID());
+        ReflectionTestUtils.setField(hub, "code", code);
+        ReflectionTestUtils.setField(hub, "name", code + " Hub");
+        ReflectionTestUtils.setField(hub, "active", true);
+        return hub;
+    }
+
+    private static ParcelSummary parcelPickedUpIn(String provinceCode) {
+        return new ParcelSummary(PARCEL, "SD1234567890", ParcelStatus.CREATED, ParcelSize.SMALL, 500,
+                ParcelSource.CUSTOMER, UUID.randomUUID(), null, null, null, Instant.parse("2026-11-17T10:00:00Z"),
+                provinceCode, "LK-SP");
     }
 
     @Test
-    void assignChecksEligibilityThenRecordsTheAssignment() {
+    void assignChecksTheHubThenEligibilityThenRecordsTheAssignment() {
         service.assign(PARCEL, COURIER, DISPATCHER);
 
-        var order = org.mockito.Mockito.inOrder(eligibility, parcelAssignment);
+        var order = org.mockito.Mockito.inOrder(parcelQueries, eligibility, parcelAssignment);
+        order.verify(parcelQueries).findParcelById(PARCEL);
         order.verify(eligibility).requireEligible(COURIER);
         order.verify(parcelAssignment).assignCourier(PARCEL, COURIER, DISPATCHER);
+    }
+
+    @Test
+    void aParcelFromAnotherHubLooksLikeAMissingParcelAndNothingIsAssigned() {
+        when(parcelQueries.findParcelById(PARCEL)).thenReturn(Optional.of(parcelPickedUpIn("LK-SP")));
+
+        assertThatThrownBy(() -> service.assign(PARCEL, COURIER, DISPATCHER))
+                .isInstanceOf(ParcelNotFoundException.class);
+        verify(eligibility, never()).requireEligible(any());
+        verify(parcelAssignment, never()).assignCourier(any(), any(), any());
+    }
+
+    @Test
+    void anUnknownParcelIsNotFound() {
+        when(parcelQueries.findParcelById(PARCEL)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.assign(PARCEL, COURIER, DISPATCHER))
+                .isInstanceOf(ParcelNotFoundException.class);
+        verify(parcelAssignment, never()).assignCourier(any(), any(), any());
+    }
+
+    @Test
+    void aParcelWithAnUnknownPickupProvinceIsNotAssignable() {
+        when(parcelQueries.findParcelById(PARCEL)).thenReturn(Optional.of(parcelPickedUpIn(null)));
+
+        assertThatThrownBy(() -> service.assign(PARCEL, COURIER, DISPATCHER))
+                .isInstanceOf(ParcelNotFoundException.class);
+    }
+
+    @Test
+    void aDispatcherWithoutAHubCannotAssignOrListAnything() {
+        when(hubService.hubForDispatcher(DISPATCHER)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.assign(PARCEL, COURIER, DISPATCHER))
+                .isInstanceOf(DispatcherHubNotAssignedException.class);
+        assertThatThrownBy(() -> service.unassigned(DISPATCHER, 0, 10))
+                .isInstanceOf(DispatcherHubNotAssignedException.class);
+        verify(parcelQueries, never()).findParcelById(any());
+        verify(parcelQueries, never()).findUnassignedParcels(any(), any());
+        verify(parcelAssignment, never()).assignCourier(any(), any(), any());
     }
 
     @Test
@@ -83,11 +164,13 @@ class DispatchServiceTest {
     }
 
     @Test
-    void unassignedDelegatesToDeliveryWithThePage() {
-        PageResult<com.swiftdrop.delivery.api.ParcelSummary> page = new PageResult<>(List.of(), 2, 10, 0, 0);
-        when(parcelQueries.findUnassignedParcels(any())).thenReturn(page);
+    void theQueueIsFilteredByTheDispatchersHubCode() {
+        PageResult<ParcelSummary> page = new PageResult<>(List.of(), 2, 10, 0, 0);
+        when(parcelQueries.findUnassignedParcels(any(), any())).thenReturn(page);
 
-        assertThat(service.unassigned(2, 10)).isEqualTo(page);
+        assertThat(service.unassigned(DISPATCHER, 2, 10)).isEqualTo(page);
+
+        verify(parcelQueries).findUnassignedParcels(new PageRequest(2, 10), "LK-UP");
     }
 
     @Test
@@ -112,6 +195,28 @@ class DispatchServiceTest {
     }
 
     @Test
+    void workloadsLeaveOutCouriersThatAssignmentWouldRefuse() {
+        UUID ok = UUID.fromString("00000000-0000-0000-0000-0000000000b1");
+        UUID disabled = UUID.fromString("00000000-0000-0000-0000-0000000000b2");
+        UUID customer = UUID.fromString("00000000-0000-0000-0000-0000000000b3");
+        UUID gone = UUID.fromString("00000000-0000-0000-0000-0000000000b4");
+        when(profiles.findByActive(org.mockito.ArgumentMatchers.eq(true), any()))
+                .thenReturn(new PageImpl<>(List.of(
+                        profile(ok, VehicleType.BIKE), profile(disabled, VehicleType.BIKE),
+                        profile(customer, VehicleType.BIKE), profile(gone, VehicleType.BIKE))));
+        when(users.findUser(ok)).thenReturn(Optional.of(user(ok, "Eligible Eli")));
+        when(users.findUser(disabled)).thenReturn(Optional.of(
+                new UserSummary(disabled, "Disabled Dan", "dan@example.com", Set.of("COURIER"), false)));
+        when(users.findUser(customer)).thenReturn(Optional.of(
+                new UserSummary(customer, "Plain Pat", "pat@example.com", Set.of("CUSTOMER"), true)));
+        when(users.findUser(gone)).thenReturn(Optional.empty());
+        when(parcelQueries.countActiveParcelsByCourier()).thenReturn(Map.of());
+
+        assertThat(service.workloads()).extracting(DispatchService.CourierWorkload::courierUserId)
+                .containsExactly(ok);
+    }
+
+    @Test
     void theWorkloadViewAsksOnlyForActiveProfiles() {
         when(profiles.findByActive(org.mockito.ArgumentMatchers.eq(true), any()))
                 .thenReturn(new PageImpl<>(List.of()));
@@ -127,5 +232,314 @@ class DispatchServiceTest {
     private static UserSummary user(UUID id, String name) {
         return new UserSummary(id, name, name.replace(' ', '.').toLowerCase() + "@example.com",
                 Set.of("COURIER"), true);
+    }
+
+    @Test
+    void aSuccessfulAssignmentIsRecordedInTheHistoryAfterDeliveryAcceptedIt() {
+        service.assign(PARCEL, COURIER, DISPATCHER);
+
+        var order = org.mockito.Mockito.inOrder(parcelAssignment, historyService);
+        order.verify(parcelAssignment).assignCourier(PARCEL, COURIER, DISPATCHER);
+        order.verify(historyService).record(PARCEL, COURIER, DISPATCHER, uva.getId());
+    }
+
+    @Test
+    void nothingIsRecordedWhenDeliveryRefusesTheAssignment() {
+        doThrow(new ParcelConflictException("A courier can only be assigned before pickup"))
+                .when(parcelAssignment).assignCourier(PARCEL, COURIER, DISPATCHER);
+
+        assertThatThrownBy(() -> service.assign(PARCEL, COURIER, DISPATCHER))
+                .isInstanceOf(ParcelConflictException.class);
+        verify(historyService, never()).record(any(), any(), any(), any());
+    }
+
+    @Test
+    void nothingIsRecordedForAnotherHubsParcelOrAnIneligibleCourier() {
+        when(parcelQueries.findParcelById(PARCEL)).thenReturn(Optional.of(parcelPickedUpIn("LK-SP")));
+        assertThatThrownBy(() -> service.assign(PARCEL, COURIER, DISPATCHER))
+                .isInstanceOf(ParcelNotFoundException.class);
+
+        when(parcelQueries.findParcelById(PARCEL)).thenReturn(Optional.of(parcelPickedUpIn("LK-UP")));
+        doThrow(new CourierNotEligibleException("Courier profile is not active"))
+                .when(eligibility).requireEligible(COURIER);
+        assertThatThrownBy(() -> service.assign(PARCEL, COURIER, DISPATCHER))
+                .isInstanceOf(CourierNotEligibleException.class);
+
+        verify(historyService, never()).record(any(), any(), any(), any());
+    }
+
+    @Test
+    void theHistoryNamesWhoAssignedWhomAndFlagsTheEndedAssignment() {
+        UUID other = UUID.fromString("00000000-0000-0000-0000-0000000000d2");
+        Instant t1 = Instant.parse("2026-11-18T09:00:00Z");
+        Instant t2 = Instant.parse("2026-11-18T09:30:00Z");
+        AssignmentRecord first = new AssignmentRecord(PARCEL, LegType.PICKUP, COURIER, DISPATCHER, uva.getId(), t1);
+        first.end(AssignmentRecord.EndReason.REASSIGNED, t2);
+        AssignmentRecord second = new AssignmentRecord(PARCEL, LegType.PICKUP, other, DISPATCHER, uva.getId(), t2);
+        when(historyService.history(PARCEL)).thenReturn(List.of(first, second));
+        when(hubService.requireHub(uva.getId())).thenReturn(uva);
+        when(users.findUser(COURIER)).thenReturn(Optional.of(user(COURIER, "Kamal Perera")));
+        when(users.findUser(other)).thenReturn(Optional.of(user(other, "Nimal Silva")));
+        when(users.findUser(DISPATCHER)).thenReturn(Optional.of(
+                new UserSummary(DISPATCHER, "Dina Dispatcher", "dina@example.com", Set.of("DISPATCHER"), true)));
+
+        List<DispatchService.AssignmentHistoryEntry> entries = service.assignmentHistory(PARCEL, DISPATCHER);
+
+        assertThat(entries).extracting(DispatchService.AssignmentHistoryEntry::courierName)
+                .containsExactly("Kamal Perera", "Nimal Silva");
+        assertThat(entries).extracting(DispatchService.AssignmentHistoryEntry::dispatcherName)
+                .containsOnly("Dina Dispatcher");
+        assertThat(entries).extracting(DispatchService.AssignmentHistoryEntry::hubCode).containsOnly("LK-UP");
+        assertThat(entries.get(0).endReason()).isEqualTo("REASSIGNED");
+        assertThat(entries.get(0).endedAt()).isEqualTo(t2);
+        assertThat(entries.get(1).endedAt()).isNull();
+        assertThat(entries.get(1).endReason()).isNull();
+        assertThat(entries.get(0).legType()).isEqualTo("PICKUP");
+    }
+
+    @Test
+    void theHistoryOfAnotherHubsParcelLooksLikeAMissingParcel() {
+        when(parcelQueries.findParcelById(PARCEL)).thenReturn(Optional.of(parcelPickedUpIn("LK-SP")));
+
+        assertThatThrownBy(() -> service.assignmentHistory(PARCEL, DISPATCHER))
+                .isInstanceOf(ParcelNotFoundException.class);
+        verify(historyService, never()).history(any());
+    }
+
+    @Test
+    void theHistoryNeedsADispatcherWithAHub() {
+        when(hubService.hubForDispatcher(DISPATCHER)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.assignmentHistory(PARCEL, DISPATCHER))
+                .isInstanceOf(DispatcherHubNotAssignedException.class);
+    }
+
+    private static final UUID LEG = UUID.fromString("00000000-0000-0000-0000-0000000000f1");
+    private static final UUID COLOMBO_HUB_ID = UUID.fromString("00000000-0000-0000-0000-0000000000c1");
+
+    private com.swiftdrop.delivery.api.LegView leg(int sequence, com.swiftdrop.delivery.api.LegType type,
+            UUID source, UUID destination) {
+        return new com.swiftdrop.delivery.api.LegView(sequence == 2 ? LEG : UUID.randomUUID(), PARCEL, sequence, type,
+                source, destination, null, null, null);
+    }
+
+    @Test
+    void theFirstPickupAssignmentPlansTheLegsFromTheOriginToTheDestinationThroughTheMainHub() {
+        Hub southern = hub("LK-SP");
+        Hub colombo = hub("LK-WP");
+        when(parcelLegs.findLegs(PARCEL)).thenReturn(List.of());
+        when(hubService.findActiveByCode("LK-SP")).thenReturn(Optional.of(southern));
+        when(hubService.findMainHub()).thenReturn(Optional.of(colombo));
+
+        service.assign(PARCEL, COURIER, DISPATCHER);
+
+        var order = org.mockito.Mockito.inOrder(parcelLegs, parcelAssignment);
+        order.verify(parcelLegs).planLegs(PARCEL, RoutePlanner.plan(uva.getId(), southern.getId(), colombo.getId()));
+        order.verify(parcelAssignment).assignCourier(PARCEL, COURIER, DISPATCHER);
+    }
+
+    @Test
+    void legsAreNotPlannedTwiceOrForAnUnknownDestinationProvince() {
+        when(parcelLegs.findLegs(PARCEL)).thenReturn(List.of(leg(1, com.swiftdrop.delivery.api.LegType.PICKUP,
+                uva.getId(), uva.getId())));
+        service.assign(PARCEL, COURIER, DISPATCHER);
+
+        when(parcelLegs.findLegs(PARCEL)).thenReturn(List.of());
+        when(hubService.findActiveByCode("LK-SP")).thenReturn(Optional.empty());
+        service.assign(PARCEL, COURIER, DISPATCHER);
+
+        verify(parcelLegs, never()).planLegs(any(), any());
+    }
+
+    @Test
+    void aLegIsAssignedByTheDispatcherOfItsSourceHubAndRecordedInTheHistory() {
+        var toColombo = leg(2, com.swiftdrop.delivery.api.LegType.INTER_HUB, uva.getId(), COLOMBO_HUB_ID);
+        when(parcelLegs.findLegs(PARCEL)).thenReturn(List.of(toColombo));
+
+        service.assignLeg(PARCEL, toColombo.id(), COURIER, DISPATCHER);
+
+        var order = org.mockito.Mockito.inOrder(eligibility, parcelLegs, historyService);
+        order.verify(eligibility).requireEligible(COURIER);
+        order.verify(parcelLegs).assignLegCourier(PARCEL, toColombo.id(), COURIER, DISPATCHER);
+        order.verify(historyService).record(PARCEL, com.swiftdrop.delivery.api.LegType.INTER_HUB, 2, COURIER,
+                DISPATCHER, uva.getId());
+    }
+
+    @Test
+    void aLegStartingAtAnotherHubOrAnUnknownLegLooksLikeAMissingOne() {
+        var colomboLeg = leg(2, com.swiftdrop.delivery.api.LegType.INTER_HUB, COLOMBO_HUB_ID, UUID.randomUUID());
+        when(parcelLegs.findLegs(PARCEL)).thenReturn(List.of(colomboLeg));
+
+        assertThatThrownBy(() -> service.assignLeg(PARCEL, colomboLeg.id(), COURIER, DISPATCHER))
+                .isInstanceOf(ParcelNotFoundException.class);
+        assertThatThrownBy(() -> service.assignLeg(PARCEL, UUID.randomUUID(), COURIER, DISPATCHER))
+                .isInstanceOf(ParcelNotFoundException.class);
+        verify(parcelLegs, never()).assignLegCourier(any(), any(), any(), any());
+        verify(historyService, never()).record(any(), any(), org.mockito.ArgumentMatchers.anyInt(), any(), any(), any());
+    }
+
+    @Test
+    void anIneligibleCourierIsNotHandedALeg() {
+        var toColombo = leg(2, com.swiftdrop.delivery.api.LegType.INTER_HUB, uva.getId(), COLOMBO_HUB_ID);
+        when(parcelLegs.findLegs(PARCEL)).thenReturn(List.of(toColombo));
+        doThrow(new CourierNotEligibleException("Courier profile is not active"))
+                .when(eligibility).requireEligible(COURIER);
+
+        assertThatThrownBy(() -> service.assignLeg(PARCEL, toColombo.id(), COURIER, DISPATCHER))
+                .isInstanceOf(CourierNotEligibleException.class);
+        verify(parcelLegs, never()).assignLegCourier(any(), any(), any(), any());
+    }
+
+    @Test
+    void aCourierBasedAtAnotherHubIsNeitherGivenAPickupNorALeg() {
+        doThrow(new CourierNotEligibleException("Courier is not based at this hub"))
+                .when(eligibility).requireAtHub(COURIER, uva.getId());
+        var toColombo = leg(2, com.swiftdrop.delivery.api.LegType.INTER_HUB, uva.getId(), COLOMBO_HUB_ID);
+        when(parcelLegs.findLegs(PARCEL)).thenReturn(List.of(toColombo));
+
+        assertThatThrownBy(() -> service.assign(PARCEL, COURIER, DISPATCHER))
+                .isInstanceOf(CourierNotEligibleException.class);
+        assertThatThrownBy(() -> service.assignLeg(PARCEL, toColombo.id(), COURIER, DISPATCHER))
+                .isInstanceOf(CourierNotEligibleException.class);
+        verify(parcelAssignment, never()).assignCourier(any(), any(), any());
+        verify(parcelLegs, never()).assignLegCourier(any(), any(), any(), any());
+    }
+
+    @Test
+    void theSendingHubDispatcherTransfersAParcelWithoutAnyCourierCheckOrAssignmentRecord() {
+        var toColombo = leg(2, com.swiftdrop.delivery.api.LegType.INTER_HUB, uva.getId(), COLOMBO_HUB_ID);
+        when(parcelLegs.findLegs(PARCEL)).thenReturn(List.of(toColombo));
+
+        service.transfer(PARCEL, toColombo.id(), DISPATCHER);
+
+        verify(parcelLegs).transferLeg(PARCEL, toColombo.id(), DISPATCHER);
+        // No courier is involved: nothing is checked for one and no assignment is recorded
+        verifyNoInteractions(eligibility, historyService, parcelAssignment);
+        verify(parcelLegs, never()).assignLegCourier(any(), any(), any(), any());
+    }
+
+    @Test
+    void onlyTheSendingHubCanTransferAndAnotherHubsLegLooksMissing() {
+        // The leg starts at Colombo, but this dispatcher works for Uva (also the receiving hub cannot send)
+        var fromColombo = leg(2, com.swiftdrop.delivery.api.LegType.INTER_HUB, COLOMBO_HUB_ID, UUID.randomUUID());
+        when(parcelLegs.findLegs(PARCEL)).thenReturn(List.of(fromColombo));
+
+        assertThatThrownBy(() -> service.transfer(PARCEL, fromColombo.id(), DISPATCHER))
+                .isInstanceOf(ParcelNotFoundException.class);
+        assertThatThrownBy(() -> service.transfer(PARCEL, UUID.randomUUID(), DISPATCHER))
+                .isInstanceOf(ParcelNotFoundException.class);
+        verify(parcelLegs, never()).transferLeg(any(), any(), any());
+    }
+
+    @Test
+    void onlyTheReceivingHubCanConfirmReceiptAndTheSenderCannotReceiveItsOwnTransfer() {
+        var toColombo = leg(2, com.swiftdrop.delivery.api.LegType.INTER_HUB, uva.getId(), COLOMBO_HUB_ID);
+        when(parcelLegs.findLegs(PARCEL)).thenReturn(List.of(toColombo));
+
+        // The Uva dispatcher sent it; confirming the receipt is Colombo's job
+        assertThatThrownBy(() -> service.confirmReceipt(PARCEL, toColombo.id(), DISPATCHER))
+                .isInstanceOf(ParcelNotFoundException.class);
+        verify(parcelLegs, never()).confirmLegReceipt(any(), any(), any());
+
+        UUID colomboDispatcher = UUID.fromString("00000000-0000-0000-0000-0000000000e2");
+        Hub colombo = hub("LK-WP");
+        ReflectionTestUtils.setField(colombo, "id", COLOMBO_HUB_ID);
+        when(hubService.hubForDispatcher(colomboDispatcher)).thenReturn(Optional.of(colombo));
+
+        service.confirmReceipt(PARCEL, toColombo.id(), colomboDispatcher);
+
+        verify(parcelLegs).confirmLegReceipt(PARCEL, toColombo.id(), colomboDispatcher);
+        verifyNoInteractions(eligibility, historyService);
+    }
+
+    @Test
+    void conflictsFromDeliveryArePassedOnAndTransfersNeedAHub() {
+        var toColombo = leg(2, com.swiftdrop.delivery.api.LegType.INTER_HUB, uva.getId(), COLOMBO_HUB_ID);
+        when(parcelLegs.findLegs(PARCEL)).thenReturn(List.of(toColombo));
+        doThrow(new com.swiftdrop.delivery.api.ParcelConflictException("The parcel has already been transferred"))
+                .when(parcelLegs).transferLeg(PARCEL, toColombo.id(), DISPATCHER);
+
+        assertThatThrownBy(() -> service.transfer(PARCEL, toColombo.id(), DISPATCHER))
+                .isInstanceOf(com.swiftdrop.delivery.api.ParcelConflictException.class);
+
+        when(hubService.hubForDispatcher(DISPATCHER)).thenReturn(Optional.empty());
+        assertThatThrownBy(() -> service.transfer(PARCEL, toColombo.id(), DISPATCHER))
+                .isInstanceOf(DispatcherHubNotAssignedException.class);
+        assertThatThrownBy(() -> service.confirmReceipt(PARCEL, toColombo.id(), DISPATCHER))
+                .isInstanceOf(DispatcherHubNotAssignedException.class);
+        assertThatThrownBy(() -> service.readyTransfers(DISPATCHER, 0, 20))
+                .isInstanceOf(DispatcherHubNotAssignedException.class);
+        assertThatThrownBy(() -> service.incomingTransfers(DISPATCHER, 0, 20))
+                .isInstanceOf(DispatcherHubNotAssignedException.class);
+    }
+
+    @Test
+    void theTransferListsAreFilteredByTheDispatchersHubAndShowHubCodes() {
+        when(hubService.requireHub(uva.getId())).thenReturn(uva);
+        when(hubService.requireHub(COLOMBO_HUB_ID)).thenReturn(hub("LK-WP"));
+        var sent = new com.swiftdrop.delivery.api.LegView(LEG, PARCEL, 2, com.swiftdrop.delivery.api.LegType.INTER_HUB,
+                uva.getId(), COLOMBO_HUB_ID, null, null, null, Instant.parse("2026-11-19T10:00:00Z"), DISPATCHER, null,
+                null);
+        var waiting = new com.swiftdrop.delivery.api.WaitingLeg(sent, "SD1234567890", ParcelSize.SMALL, 700);
+        when(parcelLegs.findReadyTransfers(any(), any())).thenReturn(new PageResult<>(List.of(waiting), 0, 20, 1, 1));
+        when(parcelLegs.findIncomingLegs(any(), any())).thenReturn(new PageResult<>(List.of(waiting), 0, 20, 1, 1));
+
+        var ready = service.readyTransfers(DISPATCHER, 0, 20);
+        var incoming = service.incomingTransfers(DISPATCHER, 0, 20);
+
+        verify(parcelLegs).findReadyTransfers(uva.getId(), new PageRequest(0, 20));
+        verify(parcelLegs).findIncomingLegs(uva.getId(), new PageRequest(0, 20));
+        assertThat(ready.items()).singleElement().satisfies(entry -> {
+            assertThat(entry.trackingNumber()).isEqualTo("SD1234567890");
+            assertThat(entry.sourceHubCode()).isEqualTo("LK-UP");
+            assertThat(entry.destinationHubCode()).isEqualTo("LK-WP");
+            assertThat(entry.transferredAt()).isEqualTo(Instant.parse("2026-11-19T10:00:00Z"));
+        });
+        assertThat(incoming.totalItems()).isEqualTo(1);
+    }
+
+    @Test
+    void legAssignmentAndTheLegQueueNeedAHub() {
+        when(hubService.hubForDispatcher(DISPATCHER)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.assignLeg(PARCEL, LEG, COURIER, DISPATCHER))
+                .isInstanceOf(DispatcherHubNotAssignedException.class);
+        assertThatThrownBy(() -> service.waitingLegs(DISPATCHER, 0, 10))
+                .isInstanceOf(DispatcherHubNotAssignedException.class);
+    }
+
+    @Test
+    void theLegQueueIsFilteredByTheDispatchersHubAndShowsHubCodes() {
+        var waiting = new com.swiftdrop.delivery.api.WaitingLeg(
+                leg(2, com.swiftdrop.delivery.api.LegType.INTER_HUB, uva.getId(), COLOMBO_HUB_ID),
+                "SD1234567890", ParcelSize.SMALL, 500);
+        when(parcelLegs.findWaitingLegs(uva.getId(), new PageRequest(0, 10)))
+                .thenReturn(new PageResult<>(List.of(waiting), 0, 10, 1, 1));
+        when(hubService.requireHub(uva.getId())).thenReturn(uva);
+        when(hubService.requireHub(COLOMBO_HUB_ID)).thenReturn(hub("LK-WP"));
+
+        var result = service.waitingLegs(DISPATCHER, 0, 10);
+
+        assertThat(result.items()).hasSize(1);
+        assertThat(result.items().get(0).sourceHubCode()).isEqualTo("LK-UP");
+        assertThat(result.items().get(0).destinationHubCode()).isEqualTo("LK-WP");
+        assertThat(result.items().get(0).trackingNumber()).isEqualTo("SD1234567890");
+        assertThat(result.items().get(0).legType()).isEqualTo("INTER_HUB");
+    }
+
+    @Test
+    void theHistoryIsVisibleToTheDispatcherOfAnyHubTheParcelTouches() {
+        // Picked up in Southern and delivered in Southern, but one leg starts at the Uva hub
+        when(parcelQueries.findParcelById(PARCEL)).thenReturn(Optional.of(parcelPickedUpIn("LK-SP")));
+        when(parcelLegs.findLegs(PARCEL)).thenReturn(List.of(
+                leg(2, com.swiftdrop.delivery.api.LegType.INTER_HUB, uva.getId(), COLOMBO_HUB_ID)));
+        when(historyService.history(PARCEL)).thenReturn(List.of());
+
+        assertThat(service.assignmentHistory(PARCEL, DISPATCHER)).isEmpty();
+
+        // A hub that is neither the pickup, the dropoff nor on any leg still sees nothing
+        when(parcelLegs.findLegs(PARCEL)).thenReturn(List.of());
+        assertThatThrownBy(() -> service.assignmentHistory(PARCEL, DISPATCHER))
+                .isInstanceOf(ParcelNotFoundException.class);
     }
 }

@@ -51,6 +51,7 @@ class ParcelStatusServiceTest {
     private ParcelRepository parcels;
     private DeliveryProofRepository proofs;
     private ParcelStatusHistoryRepository history;
+    private LegProgress legProgress;
     private OutboxEventRepository outbox;
     private ApplicationEventPublisher publisher;
     private ParcelStatusService service;
@@ -66,7 +67,8 @@ class ParcelStatusServiceTest {
         when(history.save(any())).thenAnswer(call -> call.getArgument(0));
         when(outbox.save(any())).thenAnswer(call -> call.getArgument(0));
         ParcelEventRecorder recorder = new ParcelEventRecorder(history, outbox, new ParcelEventSerializer(), publisher);
-        service = new ParcelStatusService(parcels, proofs, recorder, Clock.fixed(NOW, ZoneOffset.UTC));
+        legProgress = mock(LegProgress.class);
+        service = new ParcelStatusService(parcels, proofs, recorder, () -> legProgress, Clock.fixed(NOW, ZoneOffset.UTC));
 
         parcel = Parcel.forCustomer("SD7K3M9Q2XWB", CUSTOMER_ID,
                 new ParcelAddress("Nimal Perera", "+94771234567", "12 Temple Rd", null, "Colombo", UUID.randomUUID(), null),

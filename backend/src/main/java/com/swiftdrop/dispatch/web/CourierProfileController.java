@@ -5,6 +5,7 @@ import java.util.UUID;
 
 import jakarta.validation.Valid;
 
+import org.springframework.beans.factory.ObjectFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -19,6 +20,8 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.swiftdrop.dispatch.application.CourierProfileService;
+import com.swiftdrop.dispatch.application.HubNotFoundException;
+import com.swiftdrop.dispatch.application.HubService;
 import com.swiftdrop.dispatch.domain.CourierProfile;
 import com.swiftdrop.identity.api.UserDirectory;
 import com.swiftdrop.shared.web.PageLimit;
@@ -36,10 +39,12 @@ class CourierProfileController {
 
     private final CourierProfileService profiles;
     private final UserDirectory users;
+    private final ObjectFactory<HubService> hubs;
 
-    CourierProfileController(CourierProfileService profiles, UserDirectory users) {
+    CourierProfileController(CourierProfileService profiles, UserDirectory users, ObjectFactory<HubService> hubs) {
         this.profiles = profiles;
         this.users = users;
+        this.hubs = hubs;
     }
 
     @GetMapping
@@ -57,7 +62,11 @@ class CourierProfileController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     CourierProfileResponse create(@Valid @RequestBody CreateCourierProfileRequest request) {
-        return toResponse(profiles.createProfile(request.userId(), request.phone(), request.vehicleType()));
+        if (request.hubCode() == null || request.hubCode().isBlank()) {
+            return toResponse(profiles.createProfile(request.userId(), request.phone(), request.vehicleType()));
+        }
+        UUID homeHubId = hubs.getObject().findActiveByCode(request.hubCode()).orElseThrow(HubNotFoundException::new).getId();
+        return toResponse(profiles.createProfile(request.userId(), request.phone(), request.vehicleType(), homeHubId));
     }
 
     @PatchMapping("/{id}")

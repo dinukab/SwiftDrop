@@ -203,4 +203,23 @@ class HubApiTest {
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.detail").value("User does not have the DISPATCHER role"));
     }
+
+    @Test
+    void anAdminListsTheDispatchersThatHaveAHub() throws Exception {
+        when(hubs.listDispatcherHubs()).thenReturn(java.util.Map.of(DISPATCHER, hub("LK-UP", "Uva Province Hub", false)));
+
+        mvc.perform(get("/api/v1/dispatcher-hubs").with(TestPrincipal.admin().postProcessor()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].userId").value(DISPATCHER.toString()))
+                .andExpect(jsonPath("$[0].hub.code").value("LK-UP"));
+    }
+
+    @Test
+    void theDispatcherHubListIsForAdminsOnly() throws Exception {
+        for (TestPrincipal other : List.of(TestPrincipal.dispatcher(), TestPrincipal.customer(),
+                TestPrincipal.merchant(), TestPrincipal.courier())) {
+            mvc.perform(get("/api/v1/dispatcher-hubs").with(other.postProcessor())).andExpect(status().isForbidden());
+        }
+        mvc.perform(get("/api/v1/dispatcher-hubs")).andExpect(status().isUnauthorized());
+    }
 }

@@ -12,10 +12,12 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.swiftdrop.dispatch.application.DispatchService;
@@ -39,12 +41,13 @@ class DispatchController {
 
     @GetMapping("/api/v1/unassigned-parcels")
     PageResponse<UnassignedParcelResponse> unassigned(
+            @AuthenticationPrincipal Jwt jwt,
             @RequestParam(required = false) Integer page,
             @RequestParam(required = false) Integer size
     ) {
         int pageNum = page != null ? PageLimit.clampPage(page) : PageLimit.DEFAULT_PAGE_NUMBER;
         int pageSize = size != null ? PageLimit.clampSize(size) : PageLimit.DEFAULT_PAGE_SIZE;
-        var result = dispatch.unassigned(pageNum, pageSize);
+        var result = dispatch.unassigned(Callers.userId(jwt), pageNum, pageSize);
         List<UnassignedParcelResponse> items = result.items().stream()
                 .map(UnassignedParcelResponse::from)
                 .toList();
@@ -53,16 +56,115 @@ class DispatchController {
 
     /**
      * Assigns a courier to a parcel that is still {@code CREATED}. The dispatcher is the caller from the
-     * token, never a body field. 409 if the courier is not eligible or the parcel is past pickup; 404 if
-     * the parcel does not exist.
+     * token, never a body field. 409 if the courier is not eligible, the parcel is past pickup or the dispatcher
+     * has no hub; 404 if the parcel does not exist or is not waiting for pickup in the dispatcher's hub (the
+     * two cases look the same on purpose).
      */
     @PostMapping("/api/v1/parcel-assignments")
     AssignmentResponse assign(
             @AuthenticationPrincipal Jwt jwt,
             @Valid @RequestBody AssignmentRequest request
     ) {
-        dispatch.assign(request.parcelId(), request.courierUserId(), UUID.fromString(jwt.getSubject()));
+        dispatch.assign(request.parcelId(), request.courierUserId(), Callers.userId(jwt));
         return new AssignmentResponse(request.parcelId(), request.courierUserId());
+    }
+
+    /**
+     * The parcel's assignment history, oldest first. Only for a dispatcher of the hub the parcel is picked up in:
+     * another hub's parcel gives 404, the same as a missing one; 409 if the dispatcher has no hub.
+     */
+    @GetMapping("/api/v1/parcels/{id}/assignment-history")
+    List<AssignmentHistoryResponse> assignmentHistory(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id) {
+        return dispatch.assignmentHistory(id, Callers.userId(jwt)).stream()
+                .map(AssignmentHistoryResponse::from)
+                .toList();
+    }
+
+    /**
+     * Legs that wait for a courier in the caller's hub: the parcel has arrived and the previous leg is complete.
+     * 409 if the dispatcher has no hub. Pickup legs are assigned from the unassigned-parcel queue.
+     */
+    @GetMapping("/api/v1/waiting-legs")
+    PageResponse<WaitingLegResponse> waitingLegs(
+            @AuthenticationPrincipal Jwt jwt,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size
+    ) {
+        int pageNum = page != null ? PageLimit.clampPage(page) : PageLimit.DEFAULT_PAGE_NUMBER;
+        int pageSize = size != null ? PageLimit.clampSize(size) : PageLimit.DEFAULT_PAGE_SIZE;
+        var result = dispatch.waitingLegs(Callers.userId(jwt), pageNum, pageSize);
+        return PageResponse.of(result.items().stream().map(WaitingLegResponse::from).toList(), result.page(),
+                result.size(), result.totalItems());
+    }
+
+    /**
+     * Hands a parcel that waits at a hub to a courier for its next leg. The dispatcher is the caller from the token
+     * and must work for the leg's source hub (404 otherwise, like a missing leg). 409 if the courier is not eligible,
+     * the leg is not next, the previous leg is not complete, or the parcel is not at a hub.
+     */
+    @PostMapping("/api/v1/leg-assignments")
+    AssignmentResponse assignLeg(
+            @AuthenticationPrincipal Jwt jwt,
+            @Valid @RequestBody AssignLegRequest request
+    ) {
+        dispatch.assignLeg(request.parcelId(), request.legId(), request.courierUserId(), Callers.userId(jwt));
+        return new AssignmentResponse(request.parcelId(), request.courierUserId());
+    }
+
+    /**
+     * Parcels received at the caller's hub that are ready to be sent on to the next hub (direct hub-to-hub transfer,
+     * no courier). 409 if the dispatcher has no hub.
+     */
+    @GetMapping("/api/v1/hub-transfers/ready")
+    PageResponse<HubTransferResponse> readyTransfers(
+            @AuthenticationPrincipal Jwt jwt,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size
+    ) {
+        var result = dispatch.readyTransfers(Callers.userId(jwt), pageNumber(page), pageSize(size));
+        return PageResponse.of(result.items().stream().map(HubTransferResponse::from).toList(), result.page(),
+                result.size(), result.totalItems());
+    }
+
+    /** Parcels sent to the caller's hub and not yet confirmed received. 409 if the dispatcher has no hub. */
+    @GetMapping("/api/v1/hub-transfers/incoming")
+    PageResponse<HubTransferResponse> incomingTransfers(
+            @AuthenticationPrincipal Jwt jwt,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size
+    ) {
+        var result = dispatch.incomingTransfers(Callers.userId(jwt), pageNumber(page), pageSize(size));
+        return PageResponse.of(result.items().stream().map(HubTransferResponse::from).toList(), result.page(),
+                result.size(), result.totalItems());
+    }
+
+    /**
+     * Sends a parcel straight to the next hub, with no courier. The caller from the token must work for the leg's
+     * source hub (404 otherwise, like a missing leg). 409 if the parcel was not received at this hub yet, was already
+     * sent, or has a courier on that leg.
+     */
+    @PostMapping("/api/v1/hub-transfers")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    void transfer(@AuthenticationPrincipal Jwt jwt, @Valid @RequestBody HubTransferRequest request) {
+        dispatch.transfer(request.parcelId(), request.legId(), Callers.userId(jwt));
+    }
+
+    /**
+     * Confirms that a transferred parcel physically arrived. The caller from the token must work for the leg's
+     * destination hub (404 otherwise). 409 if the parcel was not sent or was already received.
+     */
+    @PostMapping("/api/v1/hub-transfers/receipts")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    void confirmReceipt(@AuthenticationPrincipal Jwt jwt, @Valid @RequestBody HubTransferRequest request) {
+        dispatch.confirmReceipt(request.parcelId(), request.legId(), Callers.userId(jwt));
+    }
+
+    private static int pageNumber(Integer page) {
+        return page != null ? PageLimit.clampPage(page) : PageLimit.DEFAULT_PAGE_NUMBER;
+    }
+
+    private static int pageSize(Integer size) {
+        return size != null ? PageLimit.clampSize(size) : PageLimit.DEFAULT_PAGE_SIZE;
     }
 
     /** Every active courier with their active parcel count, least busy first. */

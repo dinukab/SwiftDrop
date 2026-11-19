@@ -1,17 +1,25 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { AlertCircle, CheckCircle2, ChevronLeft, ChevronRight, Loader2, RefreshCw, Truck, X } from "lucide-react";
+import { AlertCircle, CheckCircle2, ChevronLeft, ChevronRight, History, Loader2, RefreshCw, Truck } from "lucide-react";
 import { formatApiError, type PageResponse } from "@/lib/api";
 import {
   assignCourier,
   getCourierWorkloads,
+  getMyHub,
   getUnassignedParcels,
+  provinceName,
   type CourierWorkload,
+  type Hub,
   type UnassignedParcel,
 } from "@/lib/dispatch";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { HubBanner } from "@/components/dispatch/hub-banner";
+import { AssignmentHistoryDialog } from "@/components/dispatch/assignment-history-dialog";
+import { AssignCourierDialog } from "@/components/dispatch/assign-courier-dialog";
+import { WaitingLegsCard } from "@/components/dispatch/waiting-legs-card";
+import { HubTransfersCard } from "@/components/dispatch/hub-transfers-card";
 
 const PAGE_SIZE = 10;
 
@@ -38,6 +46,11 @@ export default function DispatcherPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [assigning, setAssigning] = useState<UnassignedParcel | null>(null);
+  const [historyFor, setHistoryFor] = useState<UnassignedParcel | null>(null);
+  // undefined while loading, null when an admin has not assigned a hub yet
+  const [hub, setHub] = useState<Hub | null | undefined>(undefined);
+  // Bumped by Refresh so the waiting-legs card reloads together with the queue
+  const [refreshKey, setRefreshKey] = useState(0);
 
   /** Applies one loaded board to the screen. Called only after the fetch has completed. */
   const apply = (board: Board) => {
@@ -48,8 +61,29 @@ export default function DispatcherPage() {
     setError(null);
   };
 
-  // Reload whenever the page changes. State is only set inside the promise callbacks, after the fetch.
+  // The dispatcher's own hub comes first: the queue is limited to it, so there is nothing to load without one.
   useEffect(() => {
+    let current = true;
+    getMyHub()
+      .then((result) => {
+        if (!current) return;
+        setHub(result.hub);
+        if (!result.hub) setLoading(false);
+      })
+      .catch((err: unknown) => {
+        if (!current) return;
+        setError(formatApiError(err));
+        setHub(null);
+        setLoading(false);
+      });
+    return () => {
+      current = false;
+    };
+  }, []);
+
+  // Reload whenever the page changes (once the hub is known). State is only set inside the promise callbacks.
+  useEffect(() => {
+    if (!hub) return;
     let current = true;
     fetchBoard(page)
       .then((board) => {
@@ -64,10 +98,11 @@ export default function DispatcherPage() {
     return () => {
       current = false;
     };
-  }, [page]);
+  }, [page, hub]);
 
   /** Reloads on demand (after the Refresh button or an assignment), from an event handler. */
   const reload = () => {
+    if (!hub) return;
     setLoading(true);
     fetchBoard(page)
       .then(apply)
@@ -77,6 +112,7 @@ export default function DispatcherPage() {
 
   const refresh = () => {
     setNotice(null);
+    setRefreshKey((n) => n + 1);
     reload();
   };
 
@@ -92,15 +128,18 @@ export default function DispatcherPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Dispatch</h1>
           <p className="text-muted-foreground text-sm">
-            Assign couriers to parcels waiting for pickup. A parcel is held or cancelled by its merchant,
-            and drops out of this queue automatically.
+            Assign couriers to parcels waiting for pickup and for final delivery. Parcels move between hubs without a
+            courier: send them on and confirm what arrives. A parcel is held or cancelled by its merchant, and drops
+            out of the pickup queue automatically.
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={refresh} disabled={loading}>
+        <Button variant="outline" size="sm" onClick={refresh} disabled={loading || !hub}>
           <RefreshCw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} />
           Refresh
         </Button>
       </div>
+
+      <HubBanner hub={hub} />
 
       {error && (
         <div role="alert" className="p-4 bg-destructive/10 border border-destructive/20 text-destructive rounded-lg flex items-center gap-3">
@@ -115,11 +154,14 @@ export default function DispatcherPage() {
         </div>
       )}
 
+      {hub && (
       <div className="grid gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle>Waiting for a courier</CardTitle>
-            <CardDescription>{totalItems} parcel{totalItems === 1 ? "" : "s"} to assign, oldest first</CardDescription>
+            <CardDescription>
+              {totalItems} parcel{totalItems === 1 ? "" : "s"} to pick up in {provinceName(hub.code)}, oldest first
+            </CardDescription>
           </CardHeader>
           <CardContent>
             {loading && parcels.length === 0 && (
@@ -131,7 +173,8 @@ export default function DispatcherPage() {
             {!loading && parcels.length === 0 && !error && (
               <div className="text-center py-12 space-y-2">
                 <Truck className="w-10 h-10 text-muted-foreground mx-auto" />
-                <p className="text-sm font-medium">Nothing waiting for a courier</p>
+                <p className="text-sm font-medium">Nothing waiting for pickup in your hub</p>
+                <p className="text-xs text-muted-foreground">New bookings from {provinceName(hub.code)} appear here.</p>
               </div>
             )}
 
@@ -143,6 +186,7 @@ export default function DispatcherPage() {
                       <tr>
                         <th className="px-4 py-3">Tracking</th>
                         <th className="px-4 py-3">Source</th>
+                        <th className="px-4 py-3">Route</th>
                         <th className="px-4 py-3">Size / Weight</th>
                         <th className="px-4 py-3">Created</th>
                         <th className="px-4 py-3"><span className="sr-only">Actions</span></th>
@@ -157,13 +201,24 @@ export default function DispatcherPage() {
                               ? `Store · ${parcel.merchantOrderReference ?? ""}`
                               : "Customer"}
                           </td>
+                          <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
+                            {provinceName(parcel.pickupProvinceCode)} → {provinceName(parcel.dropoffProvinceCode)}
+                          </td>
                           <td className="px-4 py-3 text-muted-foreground">
                             {parcel.size} ({(parcel.weightGrams / 1000).toFixed(1)} kg)
                           </td>
                           <td className="px-4 py-3 text-muted-foreground text-xs">
                             {new Date(parcel.createdAt).toLocaleString()}
                           </td>
-                          <td className="px-4 py-3 text-right">
+                          <td className="px-4 py-3 text-right whitespace-nowrap">
+                            <Button
+                              size="xs"
+                              variant="ghost"
+                              onClick={() => setHistoryFor(parcel)}
+                              aria-label={`Assignment history of ${parcel.trackingNumber}`}
+                            >
+                              <History className="w-3 h-3" />
+                            </Button>{" "}
                             <Button
                               size="xs"
                               variant="outline"
@@ -220,121 +275,54 @@ export default function DispatcherPage() {
           </CardContent>
         </Card>
       </div>
+      )}
+
+      {hub && (
+        <HubTransfersCard
+          hubName={provinceName(hub.code)}
+          refreshKey={refreshKey}
+          onDone={(message) => {
+            setNotice(message);
+            // A received parcel may now wait for a delivery courier here, so every list reloads
+            setRefreshKey((n) => n + 1);
+          }}
+        />
+      )}
+
+      {hub && (
+        <WaitingLegsCard
+          hubName={provinceName(hub.code)}
+          couriers={workloads}
+          refreshKey={refreshKey}
+          onAssigned={(message) => {
+            setNotice(message);
+            reload();
+          }}
+        />
+      )}
 
       {assigning && (
-        <AssignDialog
-          parcel={assigning}
+        <AssignCourierDialog
+          title="Assign a courier"
+          subject={
+            assigning.trackingNumber +
+            (assigning.source === "MERCHANT" && assigning.merchantOrderReference ? ` · ${assigning.merchantOrderReference}` : "")
+          }
           couriers={workloads}
+          assign={(courierUserId) => assignCourier(assigning.id, courierUserId)}
           onClose={() => setAssigning(null)}
-          onAssigned={onAssigned}
+          onAssigned={(courier) => onAssigned(assigning, courier)}
+        />
+      )}
+
+      {historyFor && (
+        <AssignmentHistoryDialog
+          parcelId={historyFor.id}
+          trackingNumber={historyFor.trackingNumber}
+          onClose={() => setHistoryFor(null)}
         />
       )}
     </div>
   );
 }
 
-/** Picks a courier for one parcel. Shows each courier's load so the least busy is an easy choice. */
-function AssignDialog({
-  parcel,
-  couriers,
-  onClose,
-  onAssigned,
-}: {
-  parcel: UnassignedParcel;
-  couriers: CourierWorkload[];
-  onClose: () => void;
-  onAssigned: (parcel: UnassignedParcel, courier: CourierWorkload) => void;
-}) {
-  const [selected, setSelected] = useState<string | null>(couriers[0]?.courierUserId ?? null);
-  const [busy, setBusy] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !busy) onClose();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [busy, onClose]);
-
-  const confirm = async () => {
-    const courier = couriers.find((c) => c.courierUserId === selected);
-    if (!courier) return;
-    setBusy(true);
-    setProblem(null);
-    try {
-      await assignCourier(parcel.id, courier.courierUserId);
-      onAssigned(parcel, courier);
-    } catch (err) {
-      // 409 carries the reason (not eligible, or already picked up); show it as it is
-      setProblem(formatApiError(err));
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => !busy && onClose()}>
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="assign-title"
-        className="w-full max-w-md space-y-4 rounded-xl border bg-background p-6 shadow-lg"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="flex items-start justify-between gap-4">
-          <div className="space-y-1">
-            <h2 id="assign-title" className="text-lg font-semibold">Assign a courier</h2>
-            <p className="text-sm text-muted-foreground">
-              <span className="font-mono">{parcel.trackingNumber}</span>
-              {parcel.source === "MERCHANT" && parcel.merchantOrderReference ? ` · ${parcel.merchantOrderReference}` : ""}
-            </p>
-          </div>
-          <button type="button" aria-label="Close" onClick={onClose} disabled={busy} className="text-muted-foreground hover:text-foreground">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        {couriers.length === 0 ? (
-          <p className="text-sm text-muted-foreground">There are no active couriers to assign.</p>
-        ) : (
-          <fieldset className="space-y-2">
-            <legend className="sr-only">Courier</legend>
-            {couriers.map((courier) => (
-              <label
-                key={courier.courierUserId}
-                className={`flex cursor-pointer items-center justify-between rounded-lg border px-3 py-2 ${
-                  selected === courier.courierUserId ? "border-primary bg-primary/5" : ""
-                }`}
-              >
-                <span className="flex items-center gap-3">
-                  <input
-                    type="radio"
-                    name="courier"
-                    value={courier.courierUserId}
-                    checked={selected === courier.courierUserId}
-                    onChange={() => setSelected(courier.courierUserId)}
-                  />
-                  <span className="text-sm font-medium">{courier.name}</span>
-                  <span className="text-xs text-muted-foreground">{courier.vehicleType.toLowerCase()}</span>
-                </span>
-                <span className="text-xs text-muted-foreground">{courier.activeParcels} active</span>
-              </label>
-            ))}
-          </fieldset>
-        )}
-
-        {problem && (
-          <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{problem}</p>
-        )}
-
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" size="sm" onClick={onClose} disabled={busy}>Cancel</Button>
-          <Button size="sm" onClick={confirm} disabled={busy || !selected}>
-            {busy && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-            Assign
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}

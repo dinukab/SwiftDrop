@@ -103,14 +103,12 @@ class DispatchPersistenceIT {
         profiles.saveAndFlush(new CourierProfile(userId, "+94771234567", VehicleType.CAR, NOW));
 
         // Duplicate user_id violates uq_couriers_user_id
-        assertThatThrownBy(() -> profiles.saveAndFlush(
-                new CourierProfile(userId, "+94779999999", VehicleType.BIKE, NOW)))
-                .isInstanceOf(DataIntegrityViolationException.class);
+        assertEntityViolation(() -> profiles.saveAndFlush(
+                new CourierProfile(userId, "+94779999999", VehicleType.BIKE, NOW)));
 
         // Non-existent user_id violates fk_couriers_user
-        assertThatThrownBy(() -> profiles.saveAndFlush(
-                new CourierProfile(UUID.randomUUID(), "+94771234567", VehicleType.VAN, NOW)))
-                .isInstanceOf(DataIntegrityViolationException.class);
+        assertEntityViolation(() -> profiles.saveAndFlush(
+                new CourierProfile(UUID.randomUUID(), "+94771234567", VehicleType.VAN, NOW)));
 
         // Invalid vehicle_type violates ck_couriers_vehicle_type
         UUID secondUserId = insertUser("courier-bad-vehicle", "COURIER", true);
@@ -139,6 +137,17 @@ class DispatchPersistenceIT {
 
         assertThatThrownBy(() -> service.createProfile(disabledCourierId, "+94771234567", VehicleType.BIKE))
                 .isInstanceOf(CourierUserNotEligibleException.class);
+    }
+
+    /**
+     * A failed statement aborts the whole PostgreSQL transaction, so each expected violation runs behind a
+     * savepoint, and the failed entity is dropped from the persistence context.
+     */
+    private void assertEntityViolation(Runnable action) {
+        jdbc.execute("SAVEPOINT expected_entity_violation");
+        assertThatThrownBy(action::run).isInstanceOf(DataIntegrityViolationException.class);
+        jdbc.execute("ROLLBACK TO SAVEPOINT expected_entity_violation");
+        entityManager.clear();
     }
 
     private void assertViolation(String sql, Object... args) {
@@ -182,6 +191,55 @@ class DispatchPersistenceIT {
         UUID other = insertUser("dispatcher-bad-hub", "DISPATCHER", true);
         assertThatThrownBy(() -> dispatcherHubs.saveAndFlush(new DispatcherHub(other, UUID.randomUUID(), NOW)))
                 .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    private static final String INSERT_ASSIGNMENT = "INSERT INTO parcel_assignments (id, parcel_id, leg_type, "
+            + "leg_sequence, courier_user_id, dispatcher_user_id, hub_id, assigned_at, ended_at, end_reason) "
+            + "VALUES (gen_random_uuid(), ?, ?, ?, ?, ?, ?, now(), %s)";
+
+    @Test
+    void databaseAllowsOnlyOneActiveAssignmentPerParcelAndLeg() {
+        UUID parcel = UUID.randomUUID();
+        UUID courierA = insertUser("assign-courier-a", "COURIER", true);
+        UUID courierB = insertUser("assign-courier-b", "COURIER", true);
+        UUID dispatcher = insertUser("assign-dispatcher", "DISPATCHER", true);
+        UUID hub = hubRepository.findByCode("LK-UP").orElseThrow().getId();
+        String active = String.format(INSERT_ASSIGNMENT, "NULL, NULL");
+
+        jdbc.update(active, parcel, "PICKUP", 1, courierA, dispatcher, hub);
+
+        // A second active row for the same parcel and leg is rejected
+        assertViolation(active, parcel, "PICKUP", 1, courierB, dispatcher, hub);
+        // Another leg of the same parcel, and the same leg of another parcel, are fine
+        jdbc.update(active, parcel, "FINAL_MILE", 4, courierB, dispatcher, hub);
+        // Two hub-to-hub legs of one parcel (Uva to Southern through Colombo) are two legs, so both may be active
+        jdbc.update(active, parcel, "INTER_HUB", 2, courierB, dispatcher, hub);
+        jdbc.update(active, parcel, "INTER_HUB", 3, courierB, dispatcher, hub);
+        jdbc.update(active, UUID.randomUUID(), "PICKUP", 1, courierB, dispatcher, hub);
+        // An ended row does not count as active
+        jdbc.update(String.format(INSERT_ASSIGNMENT, "now(), 'REASSIGNED'"), parcel, "PICKUP", 1, courierB,
+                dispatcher, hub);
+        assertThat(jdbc.queryForObject(
+                "SELECT COUNT(*) FROM parcel_assignments WHERE parcel_id = ? AND ended_at IS NULL",
+                Integer.class, parcel)).isEqualTo(4);
+    }
+
+    @Test
+    void databaseChecksTheAssignmentRows() {
+        UUID courier = insertUser("check-courier", "COURIER", true);
+        UUID dispatcher = insertUser("check-dispatcher", "DISPATCHER", true);
+        UUID hub = hubRepository.findByCode("LK-UP").orElseThrow().getId();
+        String active = String.format(INSERT_ASSIGNMENT, "NULL, NULL");
+
+        // Unknown leg type, an end time without a reason, and a reason without an end time
+        assertViolation(active, UUID.randomUUID(), "SIDEWAYS", 1, courier, dispatcher, hub);
+        assertViolation(String.format(INSERT_ASSIGNMENT, "now(), NULL"), UUID.randomUUID(), "PICKUP", 1, courier,
+                dispatcher, hub);
+        assertViolation(String.format(INSERT_ASSIGNMENT, "NULL, 'REASSIGNED'"), UUID.randomUUID(), "PICKUP", 1,
+                courier, dispatcher, hub);
+        // Unknown courier or hub
+        assertViolation(active, UUID.randomUUID(), "PICKUP", 1, UUID.randomUUID(), dispatcher, hub);
+        assertViolation(active, UUID.randomUUID(), "PICKUP", 1, courier, dispatcher, UUID.randomUUID());
     }
 
     private UUID insertUser(String prefix, String roleName, boolean enabled) {

@@ -38,6 +38,11 @@ public interface ParcelRepository extends JpaRepository<Parcel, UUID> {
     /** Parcels waiting for a courier (ADM-1); uses the partial index {@code ix_parcels_unassigned}. */
     Page<Parcel> findByStatusAndAssignedCourierIdIsNull(ParcelStatus status, Pageable pageable);
 
+    /** Parcels waiting for a courier whose pickup is in one zone (hub-scoped dispatch queue). */
+    @Query("SELECT p FROM Parcel p WHERE p.status = :status AND p.assignedCourierId IS NULL AND p.pickup.zoneId = :zoneId")
+    Page<Parcel> findUnassignedByPickupZone(@Param("status") ParcelStatus status, @Param("zoneId") UUID zoneId,
+            Pageable pageable);
+
     /** A merchant's parcels (MER-4); always scoped by merchant, never across merchants. */
     Page<Parcel> findByMerchantId(UUID merchantId, Pageable pageable);
 

@@ -66,6 +66,8 @@ export type ParcelStatus =
   | "CREATED"
   | "PICKED_UP"
   | "IN_TRANSIT"
+  | "HUB_ARRIVED"
+  | "HUB_SORTED"
   | "OUT_FOR_DELIVERY"
   | "DELIVERED"
   | "FAILED"
@@ -100,6 +102,8 @@ export interface CourierParcelResponse {
   proofCaptured: boolean;
   assignedAt: string | null;
   updatedAt: string;
+  /** Hub of the pickup address's zone: where a picked-up parcel is taken. Null otherwise. */
+  arrivalHubId: string | null;
 }
 
 export interface StatusChangeRequest {

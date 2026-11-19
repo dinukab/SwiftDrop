@@ -1,8 +1,11 @@
 package com.swiftdrop.dispatch.application;
 
 import java.time.Clock;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -61,6 +64,38 @@ public class HubService {
         return bindings.findById(dispatcherUserId)
                 .flatMap(binding -> hubs.findById(binding.getHubId()))
                 .filter(Hub::isActive);
+    }
+
+    /**
+     * Every dispatcher that has a hub, with that hub, for the admin screen. Dispatchers without a binding,
+     * or whose hub was deactivated, are absent.
+     */
+    public Map<UUID, Hub> listDispatcherHubs() {
+        Map<UUID, Hub> hubsById = new HashMap<>();
+        for (Hub hub : hubs.findAll()) {
+            hubsById.put(hub.getId(), hub);
+        }
+        Map<UUID, Hub> result = new LinkedHashMap<>();
+        for (DispatcherHub binding : bindings.findAll()) {
+            Hub hub = hubsById.get(binding.getHubId());
+            if (hub != null && hub.isActive()) {
+                result.put(binding.getUserId(), hub);
+            }
+        }
+        return result;
+    }
+
+    /** The active hub of a province code such as {@code LK-UP}, empty if there is none. */
+    public Optional<Hub> findActiveByCode(String provinceCode) {
+        if (provinceCode == null || provinceCode.isBlank()) {
+            return Optional.empty();
+        }
+        return hubs.findByCode(provinceCode.trim().toUpperCase(Locale.ROOT)).filter(Hub::isActive);
+    }
+
+    /** The Main Hub (Colombo), empty if none is active. */
+    public Optional<Hub> findMainHub() {
+        return hubs.findByMainTrueAndActiveTrue();
     }
 
     /** Throws if hub not found. */

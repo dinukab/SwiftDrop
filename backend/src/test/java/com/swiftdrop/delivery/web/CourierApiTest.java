@@ -140,7 +140,7 @@ class CourierApiTest {
     @Test
     void courierSeesTheDayWithContactsAndNextStatuses() throws Exception {
         when(courierParcels.today(COURIER_ID)).thenReturn(List.of(
-                new CourierParcel(parcel, false, Set.of(ParcelStatus.PICKED_UP))));
+                new CourierParcel(parcel, false, Set.of(ParcelStatus.PICKED_UP), null)));
 
         mvc.perform(get("/api/v1/courier/parcels").with(TestPrincipal.courier(COURIER_ID).postProcessor()))
                 .andExpect(status().isOk())
