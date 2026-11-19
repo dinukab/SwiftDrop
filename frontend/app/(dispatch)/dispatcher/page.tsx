@@ -19,6 +19,7 @@ import { HubBanner } from "@/components/dispatch/hub-banner";
 import { AssignmentHistoryDialog } from "@/components/dispatch/assignment-history-dialog";
 import { AssignCourierDialog } from "@/components/dispatch/assign-courier-dialog";
 import { WaitingLegsCard } from "@/components/dispatch/waiting-legs-card";
+import { HubTransfersCard } from "@/components/dispatch/hub-transfers-card";
 
 const PAGE_SIZE = 10;
 
@@ -127,8 +128,9 @@ export default function DispatcherPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Dispatch</h1>
           <p className="text-muted-foreground text-sm">
-            Assign couriers to parcels waiting for pickup. A parcel is held or cancelled by its merchant,
-            and drops out of this queue automatically.
+            Assign couriers to parcels waiting for pickup and for final delivery. Parcels move between hubs without a
+            courier: send them on and confirm what arrives. A parcel is held or cancelled by its merchant, and drops
+            out of the pickup queue automatically.
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={refresh} disabled={loading || !hub}>
@@ -273,6 +275,18 @@ export default function DispatcherPage() {
           </CardContent>
         </Card>
       </div>
+      )}
+
+      {hub && (
+        <HubTransfersCard
+          hubName={provinceName(hub.code)}
+          refreshKey={refreshKey}
+          onDone={(message) => {
+            setNotice(message);
+            // A received parcel may now wait for a delivery courier here, so every list reloads
+            setRefreshKey((n) => n + 1);
+          }}
+        />
       )}
 
       {hub && (

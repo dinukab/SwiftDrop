@@ -19,9 +19,10 @@ import { AssignmentHistoryDialog } from "@/components/dispatch/assignment-histor
 const PAGE_SIZE = 10;
 
 /**
- * Parcels that have arrived at the dispatcher's hub and wait for their next leg: hub to hub, or the final
- * delivery. The server lists only legs that start at this hub and whose previous leg is complete, and
- * refuses everything else, so this card only shows and sends what the dispatcher chooses.
+ * Parcels this hub has received that wait for a courier to deliver them (final mile). Hub-to-hub legs have no
+ * courier: they are sent and received in the transfers card. The server lists only final legs that start at this hub
+ * and whose previous leg is complete (so a parcel sent here is not listed until this hub confirmed receipt), and
+ * refuses everything else.
  */
 export function WaitingLegsCard({
   hubName,
@@ -70,9 +71,9 @@ export function WaitingLegsCard({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Waiting for the next leg</CardTitle>
+        <CardTitle>Waiting for a delivery courier</CardTitle>
         <CardDescription>
-          {totalItems} parcel{totalItems === 1 ? "" : "s"} at {hubName} hub waiting to continue its journey
+          {totalItems} parcel{totalItems === 1 ? "" : "s"} received at {hubName} hub, ready for final delivery
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -93,9 +94,9 @@ export function WaitingLegsCard({
         {!loading && legs.length === 0 && !error && (
           <div className="space-y-2 py-8 text-center">
             <PackageCheck className="mx-auto h-10 w-10 text-muted-foreground" />
-            <p className="text-sm font-medium">No parcels are waiting at your hub</p>
+            <p className="text-sm font-medium">No parcels are waiting for a delivery courier</p>
             <p className="text-xs text-muted-foreground">
-              A parcel appears here once its courier confirms arrival at {hubName} hub.
+              A parcel appears here once {hubName} hub has received it and its route ends here.
             </p>
           </div>
         )}
@@ -107,7 +108,7 @@ export function WaitingLegsCard({
                 <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
                   <tr>
                     <th className="px-4 py-3">Tracking</th>
-                    <th className="px-4 py-3">Next leg</th>
+                    <th className="px-4 py-3">Delivery</th>
                     <th className="px-4 py-3">Size / Weight</th>
                     <th className="px-4 py-3"><span className="sr-only">Actions</span></th>
                   </tr>
@@ -117,10 +118,7 @@ export function WaitingLegsCard({
                     <tr key={leg.legId} className="hover:bg-muted/30">
                       <td className="px-4 py-3 font-mono font-medium">{leg.trackingNumber}</td>
                       <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">
-                        {legName(leg.legType)}
-                        {leg.legType === "FINAL_MILE"
-                          ? ""
-                          : `: ${provinceName(leg.sourceHubCode)} → ${provinceName(leg.destinationHubCode)}`}
+                        {legName(leg.legType)} in {provinceName(leg.destinationHubCode)}
                         <span className="ml-2 text-xs">(leg {leg.sequence})</span>
                       </td>
                       <td className="px-4 py-3 text-muted-foreground">
@@ -164,7 +162,7 @@ export function WaitingLegsCard({
 
       {assigning && (
         <AssignCourierDialog
-          title="Assign a courier to the next leg"
+          title="Assign a delivery courier"
           subject={`${assigning.trackingNumber} · ${legName(assigning.legType)}`}
           couriers={couriers}
           assign={(courierUserId) => assignLegCourier(assigning.parcelId, assigning.legId, courierUserId)}

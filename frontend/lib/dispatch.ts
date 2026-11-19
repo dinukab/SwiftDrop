@@ -153,3 +153,45 @@ export function getWaitingLegs(page: number, size: number): Promise<PageResponse
 export function assignLegCourier(parcelId: string, legId: string, courierUserId: string): Promise<unknown> {
   return api.post(`/api/v1/leg-assignments`, { parcelId, legId, courierUserId });
 }
+
+/**
+ * A parcel ready to be sent from the dispatcher's hub, or on its way to it (direct hub-to-hub transfer, no courier).
+ * `transferredAt` is null while it waits to be sent.
+ */
+export interface HubTransfer {
+  legId: string;
+  parcelId: string;
+  trackingNumber: string;
+  sequence: number;
+  /** Hub codes are province codes such as "LK-UP". */
+  sourceHubCode: string;
+  destinationHubCode: string;
+  size: "SMALL" | "MEDIUM" | "LARGE";
+  weightGrams: number;
+  transferredAt: string | null;
+}
+
+/** Parcels received at the dispatcher's hub that are ready to be sent on to the next hub. */
+export function getReadyTransfers(page: number, size: number): Promise<PageResponse<HubTransfer>> {
+  const params = new URLSearchParams({ page: String(page), size: String(size) });
+  return api.get<PageResponse<HubTransfer>>(`/api/v1/hub-transfers/ready?${params.toString()}`);
+}
+
+/** Parcels sent to the dispatcher's hub and not yet confirmed received. */
+export function getIncomingTransfers(page: number, size: number): Promise<PageResponse<HubTransfer>> {
+  const params = new URLSearchParams({ page: String(page), size: String(size) });
+  return api.get<PageResponse<HubTransfer>>(`/api/v1/hub-transfers/incoming?${params.toString()}`);
+}
+
+/**
+ * Sends the parcel straight to the next hub, with no courier. The destination is the leg's planned next hub.
+ * 404 if the leg starts at another hub; 409 with the reason if the parcel was not received here yet or was already sent.
+ */
+export function transferParcel(parcelId: string, legId: string): Promise<unknown> {
+  return api.post(`/api/v1/hub-transfers`, { parcelId, legId });
+}
+
+/** Confirms the parcel physically arrived at this hub. 404 if it is not meant for this hub; 409 if it was not sent. */
+export function confirmParcelReceipt(parcelId: string, legId: string): Promise<unknown> {
+  return api.post(`/api/v1/hub-transfers/receipts`, { parcelId, legId });
+}

@@ -43,8 +43,9 @@ import com.swiftdrop.pricing.api.FeeQuote;
 import com.swiftdrop.pricing.api.ParcelSize;
 
 /**
- * The multi-courier hub journey of ADR 0007 on real PostgreSQL with the real beans: different couriers for
- * pickup, hub transport and final delivery, each leg assigned by the dispatcher of its source hub.
+ * The hub journey of ADR 0007 (with the direct hub-to-hub transfer amendment) on real PostgreSQL with the real
+ * beans: couriers only for pickup and final delivery; between hubs the sending dispatcher transfers and the
+ * receiving dispatcher confirms receipt.
  */
 @SpringBootTest(properties = {
         "swiftdrop.security.jwt.secret=test-only-jwt-secret-not-used-outside-tests-0123456789",
@@ -89,9 +90,8 @@ class MultiLegJourneyIT {
     private UUID colomboDispatcher;
     private UUID southernDispatcher;
     private UUID pickupCourier;
-    private UUID uvaToColomboCourier;
-    private UUID colomboToSouthernCourier;
     private UUID finalCourier;
+    private UUID otherCourier;
     private UUID uvaHub;
     private UUID colomboHub;
     private UUID southernHub;
@@ -112,99 +112,119 @@ class MultiLegJourneyIT {
         hubs.assignDispatcher(colomboDispatcher, "LK-WP");
         hubs.assignDispatcher(southernDispatcher, "LK-SP");
         pickupCourier = courier("pickup");
-        uvaToColomboCourier = courier("uva-colombo");
-        colomboToSouthernCourier = courier("colombo-southern");
         finalCourier = courier("final");
+        otherCourier = courier("other");
     }
 
     @Test
-    void aParcelFromUvaToSouthernTravelsWithFourCouriersAndEachHubAssignsItsOwnLeg() {
+    void aParcelFromUvaToSouthernMovesBetweenHubsByDirectTransfersAndOnlyPickupAndDeliveryHaveCouriers() {
         UUID parcel = parcel("ORD-1", "LK-UP", "LK-SP");
 
-        // 1. The Uva dispatcher assigns the pickup courier; the four legs are planned
+        // Stage 1: the Uva dispatcher assigns the pickup courier; the four legs are planned
         dispatch.assign(parcel, pickupCourier, uvaDispatcher);
         assertThat(legTypes(parcel)).containsExactly("PICKUP", "INTER_HUB", "INTER_HUB", "FINAL_MILE");
         assertThat(heldBy(parcel)).isEqualTo(pickupCourier);
-        assertThat(legCourier(parcel, 1)).isEqualTo(pickupCourier);
-        // Only the holder can act on the parcel
-        assertThatThrownBy(() -> move(parcel, uvaToColomboCourier, ParcelStatus.PICKED_UP))
-                .isInstanceOf(ParcelNotFoundException.class);
-
-        // 2. Pickup and arrival at the origin hub: the hub must be named, and must be the right one
         move(parcel, pickupCourier, ParcelStatus.PICKED_UP);
-        assertThatThrownBy(() -> move(parcel, pickupCourier, ParcelStatus.HUB_ARRIVED))
-                .isInstanceOf(ParcelConflictException.class);
+
+        // Not ready to send before the parcel was received at the sending hub
+        UUID toColombo = legId(parcel, 2);
+        UUID toSouthern = legId(parcel, 3);
+        assertThatThrownBy(() -> dispatch.transfer(parcel, toColombo, uvaDispatcher))
+                .isInstanceOf(ParcelConflictException.class).hasMessage("The previous leg is not complete yet");
+        // The courier names the right hub when arriving
         assertThatThrownBy(() -> hubArrivals.confirmHubArrival(parcel, colomboHub, pickupCourier))
                 .isInstanceOf(ParcelConflictException.class);
         hubArrivals.confirmHubArrival(parcel, uvaHub, pickupCourier);
-        move(parcel, pickupCourier, ParcelStatus.HUB_SORTED);
-        assertThat(legDone(parcel, 1)).isTrue();
-        // Phase 7: the courier's current hub follows the arrival they confirmed
         assertThat(currentHub(pickupCourier)).isEqualTo(uvaHub);
 
-        // A courier based at another hub is not given this hub's work
-        UUID southernBased = courier("southern-based");
-        jdbc.update("UPDATE couriers SET home_hub_id = ? WHERE user_id = ?", southernHub, southernBased);
-        assertThatThrownBy(() -> dispatch.assignLeg(parcel, legId(parcel, 2), southernBased, uvaDispatcher))
+        // Stage 2: Uva sends it to Colombo with no courier
+        assertThat(ready(uvaDispatcher)).containsExactly(parcel);
+        assertThat(ready(colomboDispatcher)).isEmpty();
+        // Hub-to-hub legs are never given to a courier, and only the sending hub can send
+        assertThatThrownBy(() -> dispatch.assignLeg(parcel, toColombo, otherCourier, uvaDispatcher))
+                .isInstanceOf(ParcelConflictException.class);
+        assertThatThrownBy(() -> dispatch.transfer(parcel, toColombo, colomboDispatcher))
+                .isInstanceOf(ParcelNotFoundException.class);
+        assertThatThrownBy(() -> dispatch.transfer(parcel, toColombo, southernDispatcher))
+                .isInstanceOf(ParcelNotFoundException.class);
+        int assignmentRows = assignmentRows(parcel);
+        dispatch.transfer(parcel, toColombo, uvaDispatcher);
+        assertThatThrownBy(() -> dispatch.transfer(parcel, toColombo, uvaDispatcher))
+                .isInstanceOf(ParcelConflictException.class).hasMessage("The parcel has already been transferred");
+        assertThat(status(parcel)).isEqualTo("IN_TRANSIT");
+        assertThat(heldBy(parcel)).isNull();
+        assertThat(assignmentRows(parcel)).isEqualTo(assignmentRows);
+        // The pickup courier no longer has the parcel
+        assertThatThrownBy(() -> move(parcel, pickupCourier, ParcelStatus.HUB_ARRIVED))
+                .isInstanceOf(ParcelNotFoundException.class);
+
+        // Stage 3: sent is not received. It is incoming at Colombo and not ready to go on from there
+        assertThat(ready(uvaDispatcher)).isEmpty();
+        assertThat(incoming(colomboDispatcher)).containsExactly(parcel);
+        assertThat(ready(colomboDispatcher)).isEmpty();
+        assertThatThrownBy(() -> dispatch.transfer(parcel, toSouthern, colomboDispatcher))
+                .isInstanceOf(ParcelConflictException.class);
+        // Only the receiving hub confirms; neither the sender nor another hub can
+        assertThatThrownBy(() -> dispatch.confirmReceipt(parcel, toColombo, uvaDispatcher))
+                .isInstanceOf(ParcelNotFoundException.class);
+        assertThatThrownBy(() -> dispatch.confirmReceipt(parcel, toColombo, southernDispatcher))
+                .isInstanceOf(ParcelNotFoundException.class);
+        dispatch.confirmReceipt(parcel, toColombo, colomboDispatcher);
+        assertThat(status(parcel)).isEqualTo("HUB_ARRIVED");
+        assertThat(incoming(colomboDispatcher)).isEmpty();
+        assertThatThrownBy(() -> dispatch.confirmReceipt(parcel, toColombo, colomboDispatcher))
+                .isInstanceOf(ParcelConflictException.class);
+
+        // Every intermediate hub works the same way: Colombo sends it to Southern, Southern confirms
+        assertThat(ready(colomboDispatcher)).containsExactly(parcel);
+        dispatch.transfer(parcel, toSouthern, colomboDispatcher);
+        assertThat(incoming(southernDispatcher)).containsExactly(parcel);
+        // Stage 4 is closed until Southern has confirmed the receipt
+        UUID finalLeg = legId(parcel, 4);
+        assertThatThrownBy(() -> dispatch.assignLeg(parcel, finalLeg, finalCourier, southernDispatcher))
+                .isInstanceOf(ParcelConflictException.class).hasMessage("The previous leg is not complete yet");
+        assertThat(waitingFinalLegs(southernDispatcher)).isEmpty();
+        dispatch.confirmReceipt(parcel, toSouthern, southernDispatcher);
+
+        // Stage 4: the Southern dispatcher assigns the final-mile courier, who delivers
+        assertThat(waitingFinalLegs(southernDispatcher)).containsExactly(parcel);
+        UUID uvaBased = courier("uva-based");
+        jdbc.update("UPDATE couriers SET home_hub_id = ? WHERE user_id = ?", uvaHub, uvaBased);
+        assertThatThrownBy(() -> dispatch.assignLeg(parcel, finalLeg, uvaBased, southernDispatcher))
                 .isInstanceOf(CourierNotEligibleException.class).hasMessage("Courier is not based at this hub");
-
-        // 3. Only the dispatcher of the leg's source hub assigns it, and only once the previous leg is done
-        assertThat(waitingLegSequences(uvaDispatcher)).containsExactly(2);
-        assertThat(waitingLegSequences(colomboDispatcher)).isEmpty();
-        UUID legToColombo = legId(parcel, 2);
-        assertThatThrownBy(() -> dispatch.assignLeg(parcel, legToColombo, uvaToColomboCourier, colomboDispatcher))
+        assertThatThrownBy(() -> dispatch.assignLeg(parcel, finalLeg, finalCourier, colomboDispatcher))
                 .isInstanceOf(ParcelNotFoundException.class);
-        assertThatThrownBy(() -> dispatch.assignLeg(parcel, legId(parcel, 3), colomboToSouthernCourier,
-                colomboDispatcher)).isInstanceOf(ParcelConflictException.class);
-        dispatch.assignLeg(parcel, legToColombo, uvaToColomboCourier, uvaDispatcher);
-        assertThat(heldBy(parcel)).isEqualTo(uvaToColomboCourier);
-        // The pickup courier has let go of the parcel
-        assertThatThrownBy(() -> move(parcel, pickupCourier, ParcelStatus.IN_TRANSIT))
-                .isInstanceOf(ParcelNotFoundException.class);
-
-        // 4. Uva to Colombo
-        move(parcel, uvaToColomboCourier, ParcelStatus.IN_TRANSIT);
-        hubArrivals.confirmHubArrival(parcel, colomboHub, uvaToColomboCourier);
-        move(parcel, uvaToColomboCourier, ParcelStatus.HUB_SORTED);
-        assertThat(currentHub(uvaToColomboCourier)).isEqualTo(colomboHub);
-
-        // 5. The Colombo dispatcher assigns the next leg
-        assertThat(waitingLegSequences(colomboDispatcher)).containsExactly(3);
-        assertThat(waitingLegSequences(uvaDispatcher)).isEmpty();
-        dispatch.assignLeg(parcel, legId(parcel, 3), colomboToSouthernCourier, colomboDispatcher);
-        move(parcel, colomboToSouthernCourier, ParcelStatus.IN_TRANSIT);
-        hubArrivals.confirmHubArrival(parcel, southernHub, colomboToSouthernCourier);
-        move(parcel, colomboToSouthernCourier, ParcelStatus.HUB_SORTED);
-
-        // 6. The Southern dispatcher assigns the final delivery
-        assertThat(waitingLegSequences(southernDispatcher)).containsExactly(4);
-        dispatch.assignLeg(parcel, legId(parcel, 4), finalCourier, southernDispatcher);
+        dispatch.assignLeg(parcel, finalLeg, finalCourier, southernDispatcher);
+        assertThat(heldBy(parcel)).isEqualTo(finalCourier);
         finalMile.pickupFromHub(parcel, finalCourier);
         assertThatThrownBy(() -> finalMile.completeDelivery(parcel, finalCourier))
                 .as("delivery needs proof").isInstanceOf(ParcelConflictException.class);
         proofs.capture(parcel, Actor.courier(finalCourier), "Kumari Silva", JPEG);
         finalMile.completeDelivery(parcel, finalCourier);
 
-        // Every leg is complete, the parcel is delivered, and each step is in the status history
-        assertThat(jdbc.queryForObject("SELECT status FROM parcels WHERE id = ?", String.class, parcel))
-                .isEqualTo("DELIVERED");
+        // Delivered; every leg is complete; the status history names the dispatchers for the hub moves
+        assertThat(status(parcel)).isEqualTo("DELIVERED");
         assertThat(jdbc.queryForObject(
                 "SELECT COUNT(*) FROM shipment_legs WHERE parcel_id = ? AND completed_at IS NULL", Integer.class, parcel))
                 .isZero();
-        assertThat(jdbc.queryForList("SELECT to_status FROM parcel_status_history WHERE parcel_id = ? ORDER BY sequence",
-                String.class, parcel)).containsExactly("CREATED", "PICKED_UP", "HUB_ARRIVED", "HUB_SORTED",
-                        "IN_TRANSIT", "HUB_ARRIVED", "HUB_SORTED", "IN_TRANSIT", "HUB_ARRIVED", "HUB_SORTED",
-                        "OUT_FOR_DELIVERY", "DELIVERED");
-
-        // The assignment history has one active assignment per leg, with the courier of each
+        assertThat(jdbc.queryForList("SELECT to_status || ':' || actor_role FROM parcel_status_history "
+                + "WHERE parcel_id = ? ORDER BY sequence", String.class, parcel)).containsExactly(
+                        "CREATED:MERCHANT", "PICKED_UP:COURIER", "HUB_ARRIVED:COURIER", "IN_TRANSIT:DISPATCHER",
+                        "HUB_ARRIVED:DISPATCHER", "IN_TRANSIT:DISPATCHER", "HUB_ARRIVED:DISPATCHER",
+                        "OUT_FOR_DELIVERY:COURIER", "DELIVERED:COURIER");
+        // Transfer and receipt are recorded on the hub-to-hub legs, which never had a courier
+        assertThat(jdbc.queryForObject("SELECT transferred_by = ? AND received_by = ? AND assigned_courier_id IS NULL "
+                + "FROM shipment_legs WHERE parcel_id = ? AND sequence = 2", Boolean.class, uvaDispatcher,
+                colomboDispatcher, parcel)).isTrue();
+        assertThat(jdbc.queryForObject("SELECT transferred_by = ? AND received_by = ? AND assigned_courier_id IS NULL "
+                + "FROM shipment_legs WHERE parcel_id = ? AND sequence = 3", Boolean.class, colomboDispatcher,
+                southernDispatcher, parcel)).isTrue();
+        // Courier assignments exist only for the pickup and the final mile; dispatcher receipts moved no courier
         List<DispatchService.AssignmentHistoryEntry> history = dispatch.assignmentHistory(parcel, southernDispatcher);
-        assertThat(history).extracting(DispatchService.AssignmentHistoryEntry::legSequence)
-                .containsExactly(1, 2, 3, 4);
+        assertThat(history).extracting(DispatchService.AssignmentHistoryEntry::legSequence).containsExactly(1, 4);
         assertThat(history).extracting(DispatchService.AssignmentHistoryEntry::courierUserId)
-                .containsExactly(pickupCourier, uvaToColomboCourier, colomboToSouthernCourier, finalCourier);
-        assertThat(history).extracting(DispatchService.AssignmentHistoryEntry::hubCode)
-                .containsExactly("LK-UP", "LK-UP", "LK-WP", "LK-SP");
-        assertThat(history).allMatch(entry -> entry.endedAt() == null);
+                .containsExactly(pickupCourier, finalCourier);
+        assertThat(currentHub(pickupCourier)).isEqualTo(uvaHub);
         // A hub the parcel never touched sees nothing
         UUID northernDispatcher = user("northern-dispatcher", "DISPATCHER");
         hubs.assignDispatcher(northernDispatcher, "LK-NP");
@@ -213,7 +233,7 @@ class MultiLegJourneyIT {
     }
 
     @Test
-    void aParcelWithinOneProvinceNeedsOnlyAPickupAndAFinalLeg() {
+    void aParcelWithinOneProvinceNeedsOnlyAPickupAndAFinalLegAndNoTransfer() {
         UUID parcel = parcel("ORD-2", "LK-UP", "LK-UP");
 
         dispatch.assign(parcel, pickupCourier, uvaDispatcher);
@@ -221,32 +241,47 @@ class MultiLegJourneyIT {
 
         move(parcel, pickupCourier, ParcelStatus.PICKED_UP);
         hubArrivals.confirmHubArrival(parcel, uvaHub, pickupCourier);
-        move(parcel, pickupCourier, ParcelStatus.HUB_SORTED);
 
-        assertThat(waitingLegSequences(uvaDispatcher)).containsExactly(2);
+        // Nothing to transfer: the same hub is both ends, and the final leg is assigned straight away
+        assertThat(ready(uvaDispatcher)).isEmpty();
+        assertThat(waitingFinalLegs(uvaDispatcher)).containsExactly(parcel);
         dispatch.assignLeg(parcel, legId(parcel, 2), finalCourier, uvaDispatcher);
         finalMile.pickupFromHub(parcel, finalCourier);
         proofs.capture(parcel, Actor.courier(finalCourier), "Kumari Silva", JPEG);
         finalMile.completeDelivery(parcel, finalCourier);
 
-        assertThat(jdbc.queryForObject("SELECT status FROM parcels WHERE id = ?", String.class, parcel))
-                .isEqualTo("DELIVERED");
+        assertThat(status(parcel)).isEqualTo("DELIVERED");
         assertThat(dispatch.assignmentHistory(parcel, uvaDispatcher)).hasSize(2);
     }
 
     @Test
-    void aLegCanBeReassignedUntilItsCourierStartsAndOnlyThatLegIsAffected() {
-        UUID parcel = parcel("ORD-3", "LK-UP", "LK-SP");
+    void aColomboParcelGoesStraightFromItsHubToTheDestinationHubWithOneTransfer() {
+        UUID parcel = parcel("ORD-5", "LK-WP", "LK-SP");
+        dispatch.assign(parcel, pickupCourier, colomboDispatcher);
+        assertThat(legTypes(parcel)).containsExactly("PICKUP", "INTER_HUB", "FINAL_MILE");
+        move(parcel, pickupCourier, ParcelStatus.PICKED_UP);
+        hubArrivals.confirmHubArrival(parcel, colomboHub, pickupCourier);
+
+        dispatch.transfer(parcel, legId(parcel, 2), colomboDispatcher);
+        dispatch.confirmReceipt(parcel, legId(parcel, 2), southernDispatcher);
+
+        assertThat(waitingFinalLegs(southernDispatcher)).containsExactly(parcel);
+        dispatch.assignLeg(parcel, legId(parcel, 3), finalCourier, southernDispatcher);
+        assertThat(heldBy(parcel)).isEqualTo(finalCourier);
+    }
+
+    @Test
+    void aFinalLegCanBeReassignedUntilItsCourierStartsAndOnlyThatLegIsAffected() {
+        UUID parcel = parcel("ORD-3", "LK-UP", "LK-UP");
         dispatch.assign(parcel, pickupCourier, uvaDispatcher);
         move(parcel, pickupCourier, ParcelStatus.PICKED_UP);
         hubArrivals.confirmHubArrival(parcel, uvaHub, pickupCourier);
-        move(parcel, pickupCourier, ParcelStatus.HUB_SORTED);
         UUID leg = legId(parcel, 2);
 
-        dispatch.assignLeg(parcel, leg, uvaToColomboCourier, uvaDispatcher);
-        dispatch.assignLeg(parcel, leg, colomboToSouthernCourier, uvaDispatcher);
+        dispatch.assignLeg(parcel, leg, finalCourier, uvaDispatcher);
+        dispatch.assignLeg(parcel, leg, otherCourier, uvaDispatcher);
 
-        assertThat(heldBy(parcel)).isEqualTo(colomboToSouthernCourier);
+        assertThat(heldBy(parcel)).isEqualTo(otherCourier);
         List<DispatchService.AssignmentHistoryEntry> history = dispatch.assignmentHistory(parcel, uvaDispatcher);
         assertThat(history).hasSize(3);
         assertThat(history.get(0).legSequence()).isEqualTo(1);
@@ -255,9 +290,9 @@ class MultiLegJourneyIT {
         assertThat(history.get(1).endReason()).isEqualTo("REASSIGNED");
         assertThat(history.get(2).endReason()).isNull();
 
-        // Once the new courier sets off the leg is theirs
-        move(parcel, colomboToSouthernCourier, ParcelStatus.IN_TRANSIT);
-        assertThatThrownBy(() -> dispatch.assignLeg(parcel, leg, uvaToColomboCourier, uvaDispatcher))
+        // Once the new courier takes the parcel from the hub the leg is theirs
+        finalMile.pickupFromHub(parcel, otherCourier);
+        assertThatThrownBy(() -> dispatch.assignLeg(parcel, leg, finalCourier, uvaDispatcher))
                 .isInstanceOf(ParcelConflictException.class);
     }
 
@@ -271,8 +306,7 @@ class MultiLegJourneyIT {
         assertThat(legTypes(parcel)).isEmpty();
         move(parcel, pickupCourier, ParcelStatus.PICKED_UP);
         move(parcel, pickupCourier, ParcelStatus.HUB_ARRIVED);
-        assertThat(jdbc.queryForObject("SELECT status FROM parcels WHERE id = ?", String.class, parcel))
-                .isEqualTo("HUB_ARRIVED");
+        assertThat(status(parcel)).isEqualTo("HUB_ARRIVED");
     }
 
     // --- helpers ---
@@ -285,8 +319,16 @@ class MultiLegJourneyIT {
         return jdbc.queryForObject("SELECT current_hub_id FROM couriers WHERE user_id = ?", UUID.class, courierUserId);
     }
 
+    private String status(UUID parcel) {
+        return jdbc.queryForObject("SELECT status FROM parcels WHERE id = ?", String.class, parcel);
+    }
+
     private UUID heldBy(UUID parcel) {
         return jdbc.queryForObject("SELECT assigned_courier_id FROM parcels WHERE id = ?", UUID.class, parcel);
+    }
+
+    private int assignmentRows(UUID parcel) {
+        return jdbc.queryForObject("SELECT COUNT(*) FROM parcel_assignments WHERE parcel_id = ?", Integer.class, parcel);
     }
 
     private List<String> legTypes(UUID parcel) {
@@ -299,22 +341,26 @@ class MultiLegJourneyIT {
                 parcel, sequence);
     }
 
-    private UUID legCourier(UUID parcel, int sequence) {
-        return jdbc.queryForObject("SELECT assigned_courier_id FROM shipment_legs WHERE parcel_id = ? AND sequence = ?",
-                UUID.class, parcel, sequence);
+    /** Parcels of this test (other tests leave their own rows behind) waiting for their final-mile courier. */
+    private List<UUID> waitingFinalLegs(UUID dispatcher) {
+        return mine(dispatch.waitingLegs(dispatcher, 0, 100).items().stream()
+                .map(DispatchService.WaitingLegEntry::parcelId).toList());
     }
 
-    private boolean legDone(UUID parcel, int sequence) {
-        return jdbc.queryForObject("SELECT completed_at IS NOT NULL FROM shipment_legs WHERE parcel_id = ? "
-                + "AND sequence = ?", Boolean.class, parcel, sequence);
+    private List<UUID> ready(UUID dispatcher) {
+        return mine(dispatch.readyTransfers(dispatcher, 0, 100).items().stream()
+                .map(DispatchService.TransferEntry::parcelId).toList());
     }
 
-    /** The waiting legs of this test's parcels only (other tests leave their own rows behind). */
-    private List<Integer> waitingLegSequences(UUID dispatcher) {
-        return dispatch.waitingLegs(dispatcher, 0, 100).items().stream()
-                .filter(leg -> jdbc.queryForObject("SELECT merchant_id FROM parcels WHERE id = ?", UUID.class,
-                        leg.parcelId()).equals(merchantId))
-                .map(DispatchService.WaitingLegEntry::sequence)
+    private List<UUID> incoming(UUID dispatcher) {
+        return mine(dispatch.incomingTransfers(dispatcher, 0, 100).items().stream()
+                .map(DispatchService.TransferEntry::parcelId).toList());
+    }
+
+    private List<UUID> mine(List<UUID> parcelIds) {
+        return parcelIds.stream()
+                .filter(id -> merchantId.equals(jdbc.queryForObject("SELECT merchant_id FROM parcels WHERE id = ?",
+                        UUID.class, id)))
                 .toList();
     }
 
