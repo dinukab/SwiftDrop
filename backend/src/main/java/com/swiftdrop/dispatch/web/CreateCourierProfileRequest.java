@@ -13,12 +13,14 @@ import com.swiftdrop.dispatch.domain.VehicleType;
 record CreateCourierProfileRequest(
         @NotNull UUID userId,
         @NotBlank @Size(max = CourierProfile.MAX_PHONE_LENGTH) String phone,
-        @NotNull VehicleType vehicleType
+        @NotNull VehicleType vehicleType,
+        /** Province code of the courier's home hub, for example {@code LK-UP}. Optional. */
+        @Size(max = 10) String hubCode
 ) {
 
     /** Never includes the phone number: it is personal data. */
     @Override
     public String toString() {
-        return "CreateCourierProfileRequest[userId=" + userId + ", vehicleType=" + vehicleType + ", ***]";
+        return "CreateCourierProfileRequest[userId=" + userId + ", vehicleType=" + vehicleType + ", hubCode=" + hubCode + ", ***]";
     }
 }

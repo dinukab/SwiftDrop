@@ -22,6 +22,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import com.swiftdrop.delivery.api.ParcelLegs;
 import com.swiftdrop.delivery.api.ParcelStatus;
 import com.swiftdrop.delivery.application.CourierParcelService.CourierParcel;
 import com.swiftdrop.delivery.domain.DeliveryProofRepository;
@@ -37,6 +38,7 @@ class CourierParcelServiceTest {
 
     private final ParcelRepository parcels = mock(ParcelRepository.class);
     private final DeliveryProofRepository proofs = mock(DeliveryProofRepository.class);
+    private final ParcelLegs legs = mock(ParcelLegs.class);
 
     @Test
     void todayStartsAtMidnightInColomboNotUtc() {
@@ -84,7 +86,7 @@ class CourierParcelServiceTest {
     }
 
     private CourierParcelService at(String instant) {
-        return new CourierParcelService(parcels, proofs, COLOMBO, Clock.fixed(Instant.parse(instant), ZoneOffset.UTC));
+        return new CourierParcelService(parcels, proofs, () -> legs, COLOMBO, Clock.fixed(Instant.parse(instant), ZoneOffset.UTC));
     }
 
     private static Parcel parcel(ParcelStatus status) {

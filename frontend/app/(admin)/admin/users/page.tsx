@@ -14,6 +14,7 @@ import {
   type CourierProfileResponse,
   type VehicleType,
 } from "@/lib/api";
+import { assignDispatcherHub, getHubs, type Hub } from "@/lib/dispatch";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -426,7 +427,26 @@ export default function AdminUsersPage() {
   const [staffVehicle, setStaffVehicle] = useState<VehicleType>("BIKE");
   // Set when the courier login exists but its profile failed; a retry then only saves the profile
   const [pendingCourier, setPendingCourier] = useState<UserResponse | null>(null);
-  const accountLocked = pendingCourier !== null;
+  // Same for a dispatcher whose zone (hub) could not be saved
+  const [pendingDispatcher, setPendingDispatcher] = useState<UserResponse | null>(null);
+  const accountLocked = pendingCourier !== null || pendingDispatcher !== null;
+  const [staffZone, setStaffZone] = useState("");
+  const [zones, setZones] = useState<Hub[]>([]);
+  const [zonesError, setZonesError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getHubs()
+      .then((hubs) => {
+        if (!cancelled) setZones(hubs);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setZonesError(formatApiError(err));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   function resetStaffForm() {
     setStaffFullName("");
@@ -438,7 +458,9 @@ export default function AdminUsersPage() {
     setStaffFormGeneralError(null);
     setStaffPhone("");
     setStaffVehicle("BIKE");
+    setStaffZone("");
     setPendingCourier(null);
+    setPendingDispatcher(null);
   }
 
   function finishStaffCreation(createdUser: UserResponse, detail: string) {
@@ -464,12 +486,27 @@ export default function AdminUsersPage() {
         userId: courier.id,
         phone: staffPhone.trim(),
         vehicleType: staffVehicle,
+        hubCode: staffZone,
       });
       return true;
     } catch (err: unknown) {
       setPendingCourier(courier);
       setStaffFormGeneralError(
-        `The courier login for ${courier.email} was created, but the dispatch details were not saved: ${formatApiError(err)} Correct the phone or vehicle and click "Save Courier Details".`
+        `The courier login for ${courier.email} was created, but the dispatch details were not saved: ${formatApiError(err)} Correct the phone, vehicle or zone and click "Save Courier Details".`
+      );
+      return false;
+    }
+  }
+
+  /** Binds the new dispatcher to their zone's hub. Returns false (with the error shown) if it failed. */
+  async function assignDispatcherZone(dispatcher: UserResponse): Promise<boolean> {
+    try {
+      await assignDispatcherHub(dispatcher.id, staffZone);
+      return true;
+    } catch (err: unknown) {
+      setPendingDispatcher(dispatcher);
+      setStaffFormGeneralError(
+        `The dispatcher login for ${dispatcher.email} was created, but the zone was not saved: ${formatApiError(err)} Choose the zone again and click "Save Zone".`
       );
       return false;
     }
@@ -531,6 +568,10 @@ export default function AdminUsersPage() {
       }
     }
 
+    if ((staffRole === "COURIER" || staffRole === "DISPATCHER") && !staffZone) {
+      errors.zone = "Choose the zone this person works in.";
+    }
+
     // Retrying only the courier profile: the login already exists, so skip its checks
     if (accountLocked) {
       delete errors.fullName;
@@ -556,6 +597,17 @@ export default function AdminUsersPage() {
       return;
     }
 
+    if (pendingDispatcher) {
+      try {
+        if (await assignDispatcherZone(pendingDispatcher)) {
+          finishStaffCreation(pendingDispatcher, " with its zone");
+        }
+      } finally {
+        setIsSubmittingStaff(false);
+      }
+      return;
+    }
+
     const payload: CreateStaffUserRequest = {
       fullName: trimmedName,
       email: trimmedEmail,
@@ -570,6 +622,12 @@ export default function AdminUsersPage() {
         // A courier also needs a dispatch profile (phone, vehicle) to be assignable
         if (await createCourierProfile(createdUser)) {
           finishStaffCreation(createdUser, " with its courier profile");
+        }
+        return;
+      }
+      if (staffRole === "DISPATCHER") {
+        if (await assignDispatcherZone(createdUser)) {
+          finishStaffCreation(createdUser, " with its zone");
         }
         return;
       }
@@ -1463,6 +1521,43 @@ export default function AdminUsersPage() {
               )}
             </div>
 
+            {(staffRole === "COURIER" || staffRole === "DISPATCHER") && (
+              <div className="space-y-1.5">
+                <Label htmlFor="staff-zone">Zone</Label>
+                <select
+                  id="staff-zone"
+                  value={staffZone}
+                  onChange={(e) => setStaffZone(e.target.value)}
+                  disabled={isSubmittingStaff}
+                  aria-invalid={Boolean(staffFormErrors.zone)}
+                  aria-describedby={staffFormErrors.zone ? "staff-zone-error" : undefined}
+                  className={`h-9 w-full rounded-md border bg-background px-3 text-sm ${
+                    staffFormErrors.zone ? "border-destructive" : "border-input"
+                  }`}
+                >
+                  <option value="">Select a zone</option>
+                  {zones.map((zone) => (
+                    <option key={zone.code} value={zone.code}>
+                      {zone.name}
+                    </option>
+                  ))}
+                </select>
+                {staffFormErrors.zone ? (
+                  <p id="staff-zone-error" className="text-[11px] text-destructive font-medium" role="alert">
+                    {staffFormErrors.zone}
+                  </p>
+                ) : zonesError ? (
+                  <p className="text-[11px] text-destructive font-medium" role="alert">
+                    Could not load zones: {zonesError}
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-muted-foreground">
+                    The provincial hub this {staffRole === "COURIER" ? "courier" : "dispatcher"} works from.
+                  </p>
+                )}
+              </div>
+            )}
+
             {/* Courier dispatch details: saved as the courier profile used for assignment */}
             {staffRole === "COURIER" && (
               <fieldset className="space-y-4 rounded-xl border border-border p-4">
@@ -1554,7 +1649,7 @@ export default function AdminUsersPage() {
                   {accountLocked ? "Saving..." : "Creating..."}
                 </>
               ) : accountLocked ? (
-                "Save Courier Details"
+                pendingDispatcher ? "Save Zone" : "Save Courier Details"
               ) : (
                 "Create Staff"
               )}
