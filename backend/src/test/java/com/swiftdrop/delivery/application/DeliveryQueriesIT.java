@@ -123,6 +123,36 @@ class DeliveryQueriesIT {
     }
 
     @Test
+    void unassignedQueryCanBeFilteredByPickupProvinceAndShowsBothProvinces() {
+        UUID uva = zoneId("LK-UP");
+        UUID western = zoneId("LK-WP");
+        UUID southern = zoneId("LK-SP");
+        UUID fromUva = orderBetween("ORD-UVA", uva, southern).parcelId();
+        UUID fromWestern = orderBetween("ORD-WP", western, uva).parcelId();
+        UUID assignedFromUva = orderBetween("ORD-UVA-2", uva, western).parcelId();
+        assignment.assignCourier(assignedFromUva, insertUser("courier"), dispatcherId);
+
+        List<ParcelSummary> uvaQueue = queries.findUnassignedParcels(new PageRequest(0, 100), "lk-up").items().stream()
+                .filter(summary -> merchantId.equals(summary.merchantId()))
+                .toList();
+        assertThat(uvaQueue).extracting(ParcelSummary::id).containsExactly(fromUva);
+        assertThat(uvaQueue.get(0).pickupProvinceCode()).isEqualTo("LK-UP");
+        assertThat(uvaQueue.get(0).dropoffProvinceCode()).isEqualTo("LK-SP");
+
+        // Without a filter both waiting parcels appear, each with its provinces
+        List<ParcelSummary> all = queries.findUnassignedParcels(new PageRequest(0, 100)).items().stream()
+                .filter(summary -> merchantId.equals(summary.merchantId()))
+                .toList();
+        assertThat(all).extracting(ParcelSummary::id).containsExactlyInAnyOrder(fromUva, fromWestern);
+        assertThat(all).filteredOn(summary -> summary.id().equals(fromWestern))
+                .extracting(ParcelSummary::pickupProvinceCode, ParcelSummary::dropoffProvinceCode)
+                .containsExactly(org.assertj.core.groups.Tuple.tuple("LK-WP", "LK-UP"));
+
+        // A province with no zone has no parcels
+        assertThat(queries.findUnassignedParcels(new PageRequest(0, 100), "LK-XX").items()).isEmpty();
+    }
+
+    @Test
     void workloadCountsOnlyUnfinishedParcels() {
         UUID busy = insertUser("courier");
         UUID idle = insertUser("courier");
@@ -193,6 +223,17 @@ class DeliveryQueriesIT {
 
         assertThat(rebuilt).hasSize(2).isEqualTo(outbox);
         assertThat(events.eventsBetween(created.parcelId(), 2, 2)).containsExactly(outbox.get(1));
+    }
+
+    private UUID zoneId(String code) {
+        return jdbc.queryForObject("SELECT id FROM zones WHERE code = ?", UUID.class, code);
+    }
+
+    private CreatedParcel orderBetween(String reference, UUID pickupZone, UUID dropoffZone) {
+        return creation.createMerchantParcel(new NewMerchantParcel(merchantId, reference,
+                new DeliveryContact("Nimal Perera", "+94771234567", "12 Temple Rd", null, "Pickup", pickupZone, null),
+                new DeliveryContact("Kumari Silva", "+94711234567", "4 Lake View", null, "Dropoff", dropoffZone, null),
+                ParcelSize.SMALL, 1000, null));
     }
 
     private CreatedParcel order(String reference) {

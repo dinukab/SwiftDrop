@@ -53,10 +53,12 @@ class ZonePairFeeCalculator implements FeeCalculator {
                 .findByOriginZoneIdAndDestinationZoneIdAndActiveTrue(originZoneId, destinationZoneId)
                 .orElseThrow(RouteNotPricedException::new);
 
-        // Every started kilogram is charged: 1 g → 1 kg, 1001 g → 2 kg
-        long chargeableKg = (weightGrams + GRAMS_PER_KG - 1) / GRAMS_PER_KG;
+        // The base fee covers the first kilogram. Every started kilogram above that is charged at
+        // per_kg_fee: 1–1000 g → 0 extra kg, 1001–2000 g → 1 extra kg, and so on.
+        long startedKg = (weightGrams + GRAMS_PER_KG - 1) / GRAMS_PER_KG;
+        long extraKg = Math.max(0L, startedKg - 1);
         BigDecimal baseFee = rule.getBaseFee();
-        BigDecimal weightFee = rule.getPerKgFee().multiply(BigDecimal.valueOf(chargeableKg));
+        BigDecimal weightFee = rule.getPerKgFee().multiply(BigDecimal.valueOf(extraKg));
         BigDecimal sizeFee = surcharge(rule, size);
         BigDecimal total = baseFee.add(weightFee).add(sizeFee);
 

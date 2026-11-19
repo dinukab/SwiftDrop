@@ -4,17 +4,20 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
-import java.util.EnumSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
+import org.springframework.beans.factory.ObjectFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.swiftdrop.delivery.api.LegType;
+import com.swiftdrop.delivery.api.LegView;
+import com.swiftdrop.delivery.api.ParcelLegs;
 import com.swiftdrop.delivery.api.ParcelStatus;
 import com.swiftdrop.delivery.domain.DeliveryProofRepository;
 import com.swiftdrop.delivery.domain.Parcel;
@@ -30,28 +33,38 @@ import com.swiftdrop.delivery.domain.ParcelRepository;
 @Transactional(readOnly = true)
 public class CourierParcelService {
 
-    private static final EnumSet<ParcelStatus> TERMINAL = EnumSet.of(ParcelStatus.DELIVERED, ParcelStatus.FAILED);
+    private static final Set<ParcelStatus> TERMINAL = ParcelStatus.finalStatuses();
 
     private final ParcelRepository parcels;
     private final DeliveryProofRepository proofs;
+    private final ObjectFactory<ParcelLegs> legs;
     private final ZoneId businessZone;
     private final Clock clock;
 
     @Autowired
     public CourierParcelService(ParcelRepository parcels, DeliveryProofRepository proofs,
+            ObjectFactory<ParcelLegs> legs,
             @Value("${swiftdrop.delivery.business-time-zone:Asia/Colombo}") String businessZone) {
-        this(parcels, proofs, ZoneId.of(businessZone), Clock.systemUTC());
+        this(parcels, proofs, legs, ZoneId.of(businessZone), Clock.systemUTC());
     }
 
-    CourierParcelService(ParcelRepository parcels, DeliveryProofRepository proofs, ZoneId businessZone, Clock clock) {
+    CourierParcelService(ParcelRepository parcels, DeliveryProofRepository proofs, ObjectFactory<ParcelLegs> legs,
+            ZoneId businessZone, Clock clock) {
         this.parcels = parcels;
         this.proofs = proofs;
+        this.legs = legs;
         this.businessZone = businessZone;
         this.clock = clock;
     }
 
-    /** One parcel on the courier's list. */
-    public record CourierParcel(Parcel parcel, boolean proofCaptured, Set<ParcelStatus> nextStatuses) {
+    /**
+     * One parcel on the courier's list.
+     *
+     * @param arrivalHubId the hub of the pickup address's zone, where the courier takes a picked-up parcel; null
+     *                     when the parcel is not picked up or has no legs
+     */
+    public record CourierParcel(Parcel parcel, boolean proofCaptured, Set<ParcelStatus> nextStatuses,
+            UUID arrivalHubId) {
 
         public CourierParcel {
             Objects.requireNonNull(parcel, "parcel");
@@ -74,8 +87,23 @@ public class CourierParcelService {
         Set<UUID> withProof = proofs.findParcelIdsWithProof(day.stream().map(Parcel::getId).toList());
         return day.stream()
                 .map(parcel -> new CourierParcel(parcel, withProof.contains(parcel.getId()),
-                        ParcelLifecycle.nextStatuses(parcel.getStatus())))
+                        ParcelLifecycle.nextStatuses(parcel.getStatus()), arrivalHub(parcel)))
                 .toList();
+    }
+
+    /**
+     * After pickup the courier brings the parcel to the pickup zone's hub, not the destination's. Moving it on to
+     * the destination zone is not part of the courier's job.
+     */
+    private UUID arrivalHub(Parcel parcel) {
+        if (parcel.getStatus() != ParcelStatus.PICKED_UP) {
+            return null;
+        }
+        return legs.getObject().findLegs(parcel.getId()).stream()
+                .filter(leg -> leg.legType() == LegType.PICKUP)
+                .map(LegView::destinationHubId)
+                .findFirst()
+                .orElse(null);
     }
 
     Instant startOfToday() {

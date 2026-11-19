@@ -32,7 +32,23 @@ export interface CreateStaffUserRequest {
   fullName: string;
   email: string;
   password: string;
-  role?: "COURIER" | "DISPATCHER_ADMIN";
+  role?: "COURIER" | "DISPATCHER" | "ADMIN";
+}
+
+export type VehicleType = "BIKE" | "CAR" | "VAN";
+
+/** Courier dispatch profile from /api/v1/couriers (admin only). */
+export interface CourierProfileResponse {
+  id: string;
+  userId: string;
+  fullName: string | null;
+  email: string | null;
+  accountEnabled: boolean;
+  phone: string;
+  vehicleType: VehicleType;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface UpdateUserStatusRequest {
@@ -44,6 +60,179 @@ export interface AccessTokenResponse {
   tokenType: string;
   expiresIn: number;
 }
+
+// Courier API types
+export type ParcelStatus =
+  | "CREATED"
+  | "PICKED_UP"
+  | "IN_TRANSIT"
+  | "HUB_ARRIVED"
+  | "HUB_SORTED"
+  | "OUT_FOR_DELIVERY"
+  | "DELIVERED"
+  | "FAILED"
+  // A merchant can hold (PAUSED) or cancel (CANCELLED) a parcel before it is picked up.
+  | "PAUSED"
+  | "CANCELLED";
+
+export type FailureReason = "RECIPIENT_UNAVAILABLE" | "ADDRESS_NOT_FOUND" | "REFUSED" | "DAMAGED" | "OTHER";
+
+export type ParcelSize = "SMALL" | "MEDIUM" | "LARGE";
+
+export interface AddressResponse {
+  contactName: string;
+  phone: string;
+  line1: string;
+  line2: string | null;
+  city: string;
+  zoneId: string;
+  postalCode: string | null;
+}
+
+export interface CourierParcelResponse {
+  id: string;
+  trackingNumber: string;
+  status: ParcelStatus;
+  nextStatuses: ParcelStatus[];
+  pickup: AddressResponse;
+  dropoff: AddressResponse;
+  size: ParcelSize;
+  weightGrams: number;
+  description: string | null;
+  proofCaptured: boolean;
+  assignedAt: string | null;
+  updatedAt: string;
+  /** Hub of the pickup address's zone: where a picked-up parcel is taken. Null otherwise. */
+  arrivalHubId: string | null;
+}
+
+export interface StatusChangeRequest {
+  toStatus: ParcelStatus;
+  failureReason?: string;
+  note?: string;
+}
+
+// Customer booking API types (contract §4.2–4.3)
+export interface ZoneResponse {
+  id: string;
+  code: string;
+  name: string;
+}
+
+// Admin zone maintenance (ADM-3, sub-part 8.4): includes inactive zones
+export interface AdminZoneResponse {
+  id: string;
+  code: string;
+  name: string;
+  active: boolean;
+}
+
+export interface AdminZoneRequest {
+  code: string;
+  name: string;
+  active: boolean;
+}
+
+// Admin pricing rules (ADM-3, sub-part 8.4). Amounts arrive as strings such as "300.00".
+export interface PricingRuleResponse {
+  id: string;
+  originZoneId: string;
+  destinationZoneId: string;
+  baseFee: string;
+  perKgFee: string;
+  smallSizeSurcharge: string;
+  mediumSizeSurcharge: string;
+  largeSizeSurcharge: string;
+  currency: string;
+  active: boolean;
+  version: number;
+}
+
+export interface PricingRuleRequest {
+  originZoneId: string;
+  destinationZoneId: string;
+  baseFee: string;
+  perKgFee: string;
+  smallSizeSurcharge: string;
+  mediumSizeSurcharge: string;
+  largeSizeSurcharge: string;
+  currency: string;
+  active: boolean;
+}
+
+export interface BookingAddress {
+  contactName: string;
+  phone: string;
+  line1: string;
+  line2?: string;
+  city: string;
+  zoneId: string;
+  postalCode?: string;
+}
+
+export interface CreateParcelRequest {
+  pickup: BookingAddress;
+  dropoff: BookingAddress;
+  size: ParcelSize;
+  weightGrams: number;
+  description?: string;
+}
+
+export interface PriceQuoteRequest {
+  pickupZoneId: string;
+  dropoffZoneId: string;
+  size: ParcelSize;
+  weightGrams: number;
+}
+
+export interface PriceQuoteResponse {
+  amount: string;
+  currency: string;
+  pricingRuleId: string;
+  breakdown: {
+    baseFee: string;
+    weightFee: string;
+    sizeSurcharge: string;
+  };
+}
+
+export interface ParcelCreatedResponse {
+  id: string;
+  trackingNumber: string;
+  status: ParcelStatus;
+  fee: { amount: string; currency: string };
+  assignedCourierId: string | null;
+  createdAt: string;
+}
+
+export type ParcelSource = "CUSTOMER" | "MERCHANT";
+
+export interface ParcelHistoryItem {
+  id: string;
+  trackingNumber: string;
+  status: ParcelStatus;
+  source: ParcelSource;
+  size: ParcelSize;
+  weightGrams: number;
+  pickupCity: string;
+  dropoffCity: string;
+  fee: { amount: string; currency: string };
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Proof of Delivery API types
+export interface ProofResponse {
+  parcelId: string;
+  recipientName: string;
+  hasPhoto: boolean;
+  photoSizeBytes: number | null;
+  capturedAt: string;
+}
+
+type UnauthorizedHandler = () => void;
+
+let unauthorizedHandler: UnauthorizedHandler | null = null;
 
 export class ApiError extends Error {
   readonly status: number;
@@ -57,14 +246,106 @@ export class ApiError extends Error {
   }
 }
 
+// Multipart file upload helper
+export async function uploadProof(parcelId: string, recipientName: string, photoFile: File | null, token: string): Promise<ProofResponse> {
+  const formData = new FormData();
+  formData.append("recipientName", recipientName);
+  if (photoFile) {
+    formData.append("photo", photoFile);
+  }
+
+  const baseUrl = getApiBaseUrl().replace(/\/+$/, "");
+  const url = `${baseUrl}/api/v1/parcels/${parcelId}/proof`;
+
+  const headers = new Headers();
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
+  const response = await fetch(url, {
+    method: "PUT",
+    headers,
+    body: formData,
+  });
+
+  if (!response.ok) {
+    if (response.status === 401 && unauthorizedHandler) {
+      unauthorizedHandler();
+    }
+
+    let problem: ProblemDetail | undefined;
+    const contentType = response.headers.get("content-type") || "";
+
+    if (contentType.includes("json")) {
+      try {
+        problem = (await response.json()) as ProblemDetail;
+      } catch {
+        // Fall back to status text if JSON parsing fails
+      }
+    }
+
+    const message = problem?.detail || problem?.title || `Request failed with status ${response.status}`;
+    throw new ApiError(response.status, message, problem);
+  }
+
+  return (await response.json()) as ProofResponse;
+}
+
+// Get proof photo as blob
+export async function getProofPhoto(parcelId: string, token: string): Promise<Blob> {
+  const baseUrl = getApiBaseUrl().replace(/\/+$/, "");
+  const url = `${baseUrl}/api/v1/parcels/${parcelId}/proof/photo`;
+
+  const headers = new Headers();
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
+  const response = await fetch(url, {
+    method: "GET",
+    headers,
+  });
+
+  if (!response.ok) {
+    if (response.status === 401 && unauthorizedHandler) {
+      unauthorizedHandler();
+    }
+    throw new ApiError(response.status, "Failed to fetch proof photo");
+  }
+
+  return await response.blob();
+}
+
+export type MerchantStatus = "PENDING_APPROVAL" | "APPROVED" | "REJECTED" | "SUSPENDED";
+
+export interface MerchantResponse {
+  id: string;
+  userId: string;
+  businessName: string;
+  contactPhone: string | null;
+  status: MerchantStatus;
+  rejectionReason: string | null;
+  createdAt: string;
+  reviewedAt: string | null;
+  reviewedBy: string | null;
+}
+
+export interface RegisterMerchantRequest {
+  fullName: string;
+  email: string;
+  password: string;
+  businessName: string;
+  contactPhone?: string;
+}
+
+export interface RejectMerchantRequest {
+  reason: string;
+}
+
 export interface RequestOptions extends Omit<RequestInit, "body"> {
   token?: string | null;
   body?: unknown;
 }
-
-type UnauthorizedHandler = () => void;
-
-let unauthorizedHandler: UnauthorizedHandler | null = null;
 
 export function onUnauthorized(handler: UnauthorizedHandler): () => void {
   unauthorizedHandler = handler;

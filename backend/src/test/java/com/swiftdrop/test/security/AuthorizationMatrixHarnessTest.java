@@ -44,6 +44,7 @@ import com.swiftdrop.identity.domain.GoogleLoginCodeRepository;
 import com.swiftdrop.identity.domain.UserRepository;
 import com.swiftdrop.pricing.api.FeeCalculator;
 import com.swiftdrop.pricing.domain.PricingRuleRepository;
+import com.swiftdrop.merchant.domain.MerchantRepository;
 import com.swiftdrop.pricing.domain.ZoneRepository;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -94,6 +95,21 @@ class AuthorizationMatrixHarnessTest {
     @MockitoBean
     private CourierProfileRepository courierProfiles;
 
+    @MockitoBean
+    private MerchantRepository merchants;
+
+    @org.junit.jupiter.api.BeforeEach
+    void stubAuthenticatedUser() {
+        org.mockito.Mockito.when(users.findById(org.mockito.ArgumentMatchers.any()))
+                .thenAnswer(inv -> {
+                        com.swiftdrop.identity.domain.User stubUser = new com.swiftdrop.identity.domain.User(
+                                "stub@example.com", "hash", "Stub User",
+                                java.util.Set.of(com.swiftdrop.identity.domain.Role.CUSTOMER));
+                        org.springframework.test.util.ReflectionTestUtils.setField(stubUser, "id", inv.getArgument(0));
+                        return java.util.Optional.of(stubUser);
+                    });
+    }
+
     @TestFactory
     Stream<DynamicTest> authorizationMatrixDynamicTests() {
         return AuthorizationMatrixExecutor.toDynamicTests(mvc, matrixRows());
@@ -139,7 +155,7 @@ class AuthorizationMatrixHarnessTest {
                 AuthorizationMatrixRow.row("Merchant access to customer endpoint forbidden",
                         HttpMethod.GET, "/test/harness/customer-only", TestPrincipal.merchant(), HttpStatus.FORBIDDEN),
                 AuthorizationMatrixRow.row("Admin access to customer endpoint forbidden",
-                        HttpMethod.GET, "/test/harness/customer-only", TestPrincipal.dispatcherAdmin(), HttpStatus.FORBIDDEN),
+                        HttpMethod.GET, "/test/harness/customer-only", TestPrincipal.admin(), HttpStatus.FORBIDDEN),
 
                 // Courier-only endpoint
                 AuthorizationMatrixRow.row("Courier access permitted",
@@ -155,7 +171,7 @@ class AuthorizationMatrixHarnessTest {
 
                 // Dispatcher/Admin endpoint
                 AuthorizationMatrixRow.row("Dispatcher/Admin access permitted",
-                        HttpMethod.GET, "/test/harness/admin-only", TestPrincipal.dispatcherAdmin(), HttpStatus.OK),
+                        HttpMethod.GET, "/test/harness/admin-only", TestPrincipal.admin(), HttpStatus.OK),
                 AuthorizationMatrixRow.row("Courier access to admin endpoint forbidden",
                         HttpMethod.GET, "/test/harness/admin-only", TestPrincipal.courier(), HttpStatus.FORBIDDEN),
 
@@ -201,7 +217,7 @@ class AuthorizationMatrixHarnessTest {
         }
 
         @GetMapping("/admin-only")
-        @PreAuthorize("hasRole('DISPATCHER_ADMIN')")
+        @PreAuthorize("hasRole('ADMIN')")
         String adminOnly() {
             return "admin-ok";
         }
