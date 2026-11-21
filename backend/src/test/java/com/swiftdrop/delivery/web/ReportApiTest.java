@@ -1,6 +1,7 @@
 package com.swiftdrop.delivery.web;
 
 import static com.swiftdrop.test.security.AuthorizationMatrixRow.row;
+import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -9,8 +10,10 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Stream;
 
@@ -28,6 +31,8 @@ import org.springframework.test.web.servlet.MockMvc;
 import com.swiftdrop.delivery.application.DeliveryReportService;
 import com.swiftdrop.delivery.application.DeliveryReportService.DailyCount;
 import com.swiftdrop.delivery.application.DeliveryReportService.DailyDeliveries;
+import com.swiftdrop.delivery.application.DeliveryReportService.DailyOutcome;
+import com.swiftdrop.delivery.application.DeliveryReportService.DeliveryOutcomes;
 import com.swiftdrop.delivery.application.InvalidReportRangeException;
 import com.swiftdrop.delivery.domain.DeliveryProofRepository;
 import com.swiftdrop.delivery.domain.OutboxEventRepository;
@@ -57,6 +62,7 @@ import com.swiftdrop.test.security.TestPrincipal;
 class ReportApiTest {
 
     private static final String DAILY = "/api/v1/reports/daily-deliveries";
+    private static final String OUTCOMES = "/api/v1/reports/delivery-outcomes";
 
     @Autowired
     private MockMvc mvc;
@@ -140,13 +146,66 @@ class ReportApiTest {
         verify(reports, never()).dailyDeliveries(any(), any());
     }
 
+    @Test
+    void adminGetsOutcomesWithRateAndEveryDay() throws Exception {
+        LocalDate from = LocalDate.parse("2026-11-01");
+        LocalDate to = LocalDate.parse("2026-11-02");
+        when(reports.deliveryOutcomes(from, to)).thenReturn(new DeliveryOutcomes(from, to,
+                ZoneId.of("Asia/Colombo"), 7, 1, new BigDecimal("0.8750"),
+                List.of(new DailyOutcome(from, 7, 1), new DailyOutcome(to, 0, 0))));
+
+        mvc.perform(get(OUTCOMES).param("from", "2026-11-01").param("to", "2026-11-02")
+                        .with(TestPrincipal.admin().postProcessor()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.from").value("2026-11-01"))
+                .andExpect(jsonPath("$.to").value("2026-11-02"))
+                .andExpect(jsonPath("$.timeZone").value("Asia/Colombo"))
+                .andExpect(jsonPath("$.delivered").value(7))
+                .andExpect(jsonPath("$.failed").value(1))
+                .andExpect(jsonPath("$.successRate").value(0.875))
+                .andExpect(jsonPath("$.days.length()").value(2))
+                .andExpect(jsonPath("$.days[0].date").value("2026-11-01"))
+                .andExpect(jsonPath("$.days[0].delivered").value(7))
+                .andExpect(jsonPath("$.days[0].failed").value(1))
+                .andExpect(jsonPath("$.days[1].delivered").value(0));
+    }
+
+    @Test
+    void outcomesWithoutFinishedParcelsHaveANullRate() throws Exception {
+        LocalDate day = LocalDate.parse("2026-11-21");
+        when(reports.deliveryOutcomes(null, null)).thenReturn(emptyOutcomes(day));
+
+        mvc.perform(get(OUTCOMES).with(TestPrincipal.admin().postProcessor()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.successRate").value(nullValue()));
+    }
+
+    @Test
+    void outcomesAnswer400ForAnInvalidRange() throws Exception {
+        when(reports.deliveryOutcomes(any(), any()))
+                .thenThrow(new InvalidReportRangeException("The date range must be at most 92 days"));
+
+        mvc.perform(get(OUTCOMES).param("from", "2026-01-01").param("to", "2026-12-31")
+                        .with(TestPrincipal.admin().postProcessor()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value("The date range must be at most 92 days"));
+    }
+
     /** TST-2: only admins may read reports. */
     @TestFactory
     Stream<DynamicTest> reportAuthorizationMatrix() {
         LocalDate day = LocalDate.parse("2026-11-21");
         when(reports.dailyDeliveries(any(), any())).thenReturn(new DailyDeliveries(day, day,
                 ZoneId.of("Asia/Colombo"), 0, List.of(new DailyCount(day, 0))));
-        return AuthorizationMatrixExecutor.toDynamicTests(mvc, matrixRows(DAILY));
+        when(reports.deliveryOutcomes(any(), any())).thenReturn(emptyOutcomes(day));
+        List<AuthorizationMatrixRow> rows = new ArrayList<>(matrixRows(DAILY));
+        rows.addAll(matrixRows(OUTCOMES));
+        return AuthorizationMatrixExecutor.toDynamicTests(mvc, rows);
+    }
+
+    private static DeliveryOutcomes emptyOutcomes(LocalDate day) {
+        return new DeliveryOutcomes(day, day, ZoneId.of("Asia/Colombo"), 0, 0, null,
+                List.of(new DailyOutcome(day, 0, 0)));
     }
 
     private static List<AuthorizationMatrixRow> matrixRows(String path) {

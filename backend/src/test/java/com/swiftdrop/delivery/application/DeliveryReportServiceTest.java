@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -20,13 +21,17 @@ import org.junit.jupiter.api.Test;
 
 import com.swiftdrop.delivery.application.DeliveryReportService.DailyCount;
 import com.swiftdrop.delivery.application.DeliveryReportService.DailyDeliveries;
+import com.swiftdrop.delivery.application.DeliveryReportService.DailyOutcome;
+import com.swiftdrop.delivery.application.DeliveryReportService.DeliveryOutcomes;
 import com.swiftdrop.delivery.domain.ParcelRepository;
+import com.swiftdrop.delivery.domain.ParcelStatusHistoryRepository;
 
 class DeliveryReportServiceTest {
 
     private static final ZoneId COLOMBO = ZoneId.of("Asia/Colombo");
 
     private final ParcelRepository parcels = mock(ParcelRepository.class);
+    private final ParcelStatusHistoryRepository history = mock(ParcelStatusHistoryRepository.class);
 
     @Test
     void rangeCoversWholeColomboDaysNotUtcDays() {
@@ -131,7 +136,72 @@ class DeliveryReportServiceTest {
                 .isInstanceOf(InvalidReportRangeException.class);
     }
 
+    @Test
+    void outcomesUseTheSameColomboRangeAndFillEveryDay() {
+        DeliveryReportService service = at("2026-11-10T10:00:00Z");
+        when(history.countOutcomesPerDay(anyString(), any(), any())).thenReturn(List.of(
+                new Object[] {"2026-11-01", "DELIVERED", 3L},
+                new Object[] {"2026-11-01", "FAILED", 1L},
+                new Object[] {"2026-11-03", "DELIVERED", 4L}));
+
+        DeliveryOutcomes report = service.deliveryOutcomes(LocalDate.parse("2026-11-01"),
+                LocalDate.parse("2026-11-03"));
+
+        verify(history).countOutcomesPerDay("Asia/Colombo", Instant.parse("2026-10-31T18:30:00Z"),
+                Instant.parse("2026-11-03T18:30:00Z"));
+        assertThat(report.days()).containsExactly(
+                new DailyOutcome(LocalDate.parse("2026-11-01"), 3, 1),
+                new DailyOutcome(LocalDate.parse("2026-11-02"), 0, 0),
+                new DailyOutcome(LocalDate.parse("2026-11-03"), 4, 0));
+        assertThat(report.delivered()).isEqualTo(7);
+        assertThat(report.failed()).isEqualTo(1);
+        assertThat(report.successRate()).isEqualByComparingTo("0.875");
+    }
+
+    @Test
+    void successRateIsNullWithoutOutcomes() {
+        DeliveryReportService service = at("2026-11-10T10:00:00Z");
+
+        DeliveryOutcomes report = service.deliveryOutcomes(LocalDate.parse("2026-11-01"),
+                LocalDate.parse("2026-11-02"));
+
+        assertThat(report.delivered()).isZero();
+        assertThat(report.failed()).isZero();
+        assertThat(report.successRate()).isNull();
+        assertThat(report.days()).hasSize(2);
+    }
+
+    @Test
+    void successRateHasFourPlacesRoundedHalfUp() {
+        assertThat(DeliveryReportService.successRate(2, 1)).isEqualTo(new BigDecimal("0.6667"));
+        assertThat(DeliveryReportService.successRate(1, 2)).isEqualTo(new BigDecimal("0.3333"));
+        assertThat(DeliveryReportService.successRate(5, 0)).isEqualTo(new BigDecimal("1.0000"));
+        assertThat(DeliveryReportService.successRate(0, 3)).isEqualTo(new BigDecimal("0.0000"));
+    }
+
+    @Test
+    void outcomesRejectInvalidRangesWithoutQuerying() {
+        DeliveryReportService service = at("2026-11-20T10:00:00Z");
+        LocalDate from = LocalDate.parse("2026-08-01");
+
+        assertThatThrownBy(() -> service.deliveryOutcomes(from, from.plusDays(92)))
+                .isInstanceOf(InvalidReportRangeException.class);
+        assertThatThrownBy(() -> service.deliveryOutcomes(from.plusDays(1), from))
+                .isInstanceOf(InvalidReportRangeException.class);
+        verifyNoInteractions(history);
+    }
+
+    @Test
+    void outcomesDefaultToTheLast30Days() {
+        DeliveryReportService service = at("2026-11-20T20:00:00Z");
+
+        DeliveryOutcomes report = service.deliveryOutcomes(null, null);
+
+        assertThat(report.from()).isEqualTo(LocalDate.parse("2026-10-23"));
+        assertThat(report.to()).isEqualTo(LocalDate.parse("2026-11-21"));
+    }
+
     private DeliveryReportService at(String now) {
-        return new DeliveryReportService(parcels, COLOMBO, Clock.fixed(Instant.parse(now), ZoneOffset.UTC));
+        return new DeliveryReportService(parcels, history, COLOMBO, Clock.fixed(Instant.parse(now), ZoneOffset.UTC));
     }
 }
