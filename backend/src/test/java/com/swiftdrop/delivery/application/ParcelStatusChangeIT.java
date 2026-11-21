@@ -175,7 +175,7 @@ class ParcelStatusChangeIT {
     @Test
     void deliveredNeedsCommittedProofAndFailedStoresItsReason() {
         change(ParcelStatus.PICKED_UP, null, null);
-        change(ParcelStatus.IN_TRANSIT, null, null);
+        change(ParcelStatus.HUB_ARRIVED, null, null);
         change(ParcelStatus.OUT_FOR_DELIVERY, null, null);
 
         assertThatThrownBy(() -> change(ParcelStatus.DELIVERED, null, null))

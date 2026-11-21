@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { ShieldAlert } from "lucide-react";
 
-export type BackendRole = "CUSTOMER" | "MERCHANT" | "COURIER" | "DISPATCHER_ADMIN";
+export type BackendRole = "CUSTOMER" | "MERCHANT" | "COURIER" | "DISPATCHER" | "ADMIN";
 
 export interface RoleGuardProps {
   requiredRole: BackendRole;

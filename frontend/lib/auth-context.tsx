@@ -10,7 +10,8 @@ export interface AuthContextValue {
   token: string | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  login: (token: string) => Promise<void>;
+  /** Stores the token, loads GET /api/v1/users/me, and returns that profile. Throws if the profile cannot be loaded. */
+  login: (token: string) => Promise<UserResponse>;
   logout: () => void;
   hasRole: (role: string) => boolean;
 }
@@ -29,17 +30,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setToken(null);
     setUser(null);
   }, []);
-
-  const loadCurrentUser = useCallback(async (authToken: string) => {
-    try {
-      const currentUser = await api.get<UserResponse>("/api/v1/users/me", { token: authToken });
-      setUser(currentUser);
-      setToken(authToken);
-    } catch {
-      // Token is invalid, expired, or user not found
-      clearAuth();
-    }
-  }, [clearAuth]);
 
   useEffect(() => {
     const unsubscribe = onUnauthorized(() => {
@@ -91,21 +81,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [clearAuth]);
 
-  const login = useCallback(
-    async (accessToken: string) => {
-      if (typeof window !== "undefined") {
-        window.sessionStorage.setItem(TOKEN_STORAGE_KEY, accessToken);
-      }
+  const login = useCallback(async (accessToken: string): Promise<UserResponse> => {
+    if (typeof window !== "undefined") {
+      window.sessionStorage.setItem(TOKEN_STORAGE_KEY, accessToken);
+    }
+    setIsLoading(true);
+    try {
+      const currentUser = await api.get<UserResponse>("/api/v1/users/me", { token: accessToken });
+      setUser(currentUser);
       setToken(accessToken);
-      setIsLoading(true);
-      try {
-        await loadCurrentUser(accessToken);
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    [loadCurrentUser]
-  );
+      return currentUser;
+    } catch (error) {
+      clearAuth();
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [clearAuth]);
 
   const logout = useCallback(() => {
     clearAuth();

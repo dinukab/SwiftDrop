@@ -1,8 +1,11 @@
 package com.swiftdrop.identity.application;
 
-public class EmailAlreadyRegisteredException extends RuntimeException {
+import com.swiftdrop.identity.api.EmailTakenException;
+
+/** Identity-internal duplicate-email signal; also an {@link EmailTakenException} for other modules. */
+public class EmailAlreadyRegisteredException extends EmailTakenException {
 
     EmailAlreadyRegisteredException() {
-        super("Email address is already registered");
+        super();
     }
 }

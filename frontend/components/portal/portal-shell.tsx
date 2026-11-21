@@ -4,27 +4,17 @@ import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { RoleGuard, type BackendRole } from "./role-guard";
+import type { PortalNavItem } from "./nav";
 
-export interface PortalNavItem {
-  href: string;
-  label: string;
-  badge?: string;
-  exact?: boolean;
-}
-
-export const DISPATCHER_ADMIN_NAV: PortalNavItem[] = [
-  { href: "/dispatch", label: "Dispatch Fleet", exact: true },
-  { href: "/admin", label: "Overview", exact: true },
-  { href: "/admin/users", label: "User Directory", exact: true },
-  { href: "/admin/pricing", label: "Pricing & Zones", exact: true },
-  { href: "/admin/reports", label: "Reports", exact: true },
-];
+export type { PortalNavItem } from "./nav";
 
 export interface PortalShellProps {
   portalName: string;
   role: BackendRole;
   workspaceBadge: string;
-  navItems: PortalNavItem[];
+  navItems?: PortalNavItem[];
+  /** Optional control shown beside the role badge, for example the notification bell. */
+  headerAction?: React.ReactNode;
   children: React.ReactNode;
 }
 
@@ -36,7 +26,8 @@ export function PortalShell({
   portalName,
   role,
   workspaceBadge,
-  navItems,
+  navItems = [],
+  headerAction,
   children,
 }: PortalShellProps) {
   const pathname = usePathname();
@@ -51,9 +42,12 @@ export function PortalShell({
               <span className="size-1.5 rounded-full bg-primary" aria-hidden="true" />
               {workspaceBadge}
             </div>
-            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-muted text-muted-foreground border border-border uppercase tracking-wider">
-              Role: {role}
-            </span>
+            <div className="flex items-center gap-2">
+              {headerAction}
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-muted text-muted-foreground border border-border uppercase tracking-wider">
+                Role: {role}
+              </span>
+            </div>
           </div>
 
           <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground">

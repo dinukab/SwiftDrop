@@ -2,6 +2,10 @@ package com.swiftdrop.identity.security;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.stream.Collectors;
 
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.JwsHeader;
@@ -32,11 +36,18 @@ public class AccessTokenIssuer {
                 .subject(user.getId().toString())
                 .issuedAt(now)
                 .expiresAt(now.plus(properties.accessTokenTtl()))
-                .claim(IdentityClaims.ROLES, user.getRoles().stream().map(Enum::name).sorted().toList())
+                .claim(IdentityClaims.ROLES, roles(user))
                 .build();
         JwsHeader header = JwsHeader.with(MacAlgorithm.HS256).build();
         String value = encoder.encode(JwtEncoderParameters.from(header, claims)).getTokenValue();
         return new AccessToken(value, properties.accessTokenTtl());
+    }
+
+    private static List<String> roles(User user) {
+        Set<String> roles = user.getRoles().stream()
+                .map(Enum::name)
+                .collect(Collectors.toCollection(TreeSet::new));
+        return List.copyOf(roles);
     }
 
     public record AccessToken(String value, Duration lifetime) {

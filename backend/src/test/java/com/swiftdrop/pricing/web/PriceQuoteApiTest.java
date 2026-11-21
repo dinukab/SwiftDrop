@@ -25,11 +25,13 @@ import com.swiftdrop.delivery.domain.DeliveryProofRepository;
 import com.swiftdrop.delivery.domain.OutboxEventRepository;
 import com.swiftdrop.delivery.domain.ParcelRepository;
 import com.swiftdrop.delivery.domain.ParcelStatusHistoryRepository;
+import com.swiftdrop.dispatch.domain.CourierProfileRepository;
 import com.swiftdrop.identity.domain.ExternalIdentityRepository;
 import com.swiftdrop.identity.domain.GoogleLoginCodeRepository;
 import com.swiftdrop.identity.domain.UserRepository;
 import com.swiftdrop.pricing.domain.PricingRule;
 import com.swiftdrop.pricing.domain.PricingRuleRepository;
+import com.swiftdrop.merchant.domain.MerchantRepository;
 import com.swiftdrop.pricing.domain.Zone;
 import com.swiftdrop.pricing.domain.ZoneRepository;
 import com.swiftdrop.test.security.TestPrincipal;
@@ -62,6 +64,10 @@ class PriceQuoteApiTest {
     private ZoneRepository zones;
     @MockitoBean
     private PricingRuleRepository pricingRules;
+
+    @MockitoBean
+    private MerchantRepository merchants;
+
     @MockitoBean
     private ParcelRepository parcels;
     @MockitoBean
@@ -70,9 +76,19 @@ class PriceQuoteApiTest {
     private DeliveryProofRepository deliveryProofs;
     @MockitoBean
     private OutboxEventRepository outboxEvents;
+    @MockitoBean
+    private CourierProfileRepository courierProfiles;
 
     @BeforeEach
     void setUp() {
+        org.mockito.Mockito.when(users.findById(org.mockito.ArgumentMatchers.any()))
+                .thenAnswer(inv -> {
+                com.swiftdrop.identity.domain.User stubUser = new com.swiftdrop.identity.domain.User(
+                        "stub@example.com", "hash", "Stub User",
+                        java.util.Set.of(com.swiftdrop.identity.domain.Role.CUSTOMER));
+                org.springframework.test.util.ReflectionTestUtils.setField(stubUser, "id", inv.getArgument(0));
+                return java.util.Optional.of(stubUser);
+            });
         givenZone(COLOMBO, "CMB", "Colombo");
         givenZone(KANDY, "KDY", "Kandy");
         PricingRule rule = new PricingRule(COLOMBO, KANDY, new BigDecimal("400.00"), new BigDecimal("100.00"),
@@ -86,11 +102,12 @@ class PriceQuoteApiTest {
     void customerGetsQuoteWithBreakdownAsStrings() throws Exception {
         quote(TestPrincipal.customer(), body(COLOMBO, KANDY, "\"MEDIUM\"", "2000"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.amount").value("650.00"))
+                // 2000 g = 1 extra kg × 100 → weight fee 100.00, medium surcharge 50.00, base 400.00
+                .andExpect(jsonPath("$.amount").value("550.00"))
                 .andExpect(jsonPath("$.currency").value("LKR"))
                 .andExpect(jsonPath("$.pricingRuleId").value(RULE_ID.toString()))
                 .andExpect(jsonPath("$.breakdown.baseFee").value("400.00"))
-                .andExpect(jsonPath("$.breakdown.weightFee").value("200.00"))
+                .andExpect(jsonPath("$.breakdown.weightFee").value("100.00"))
                 .andExpect(jsonPath("$.breakdown.sizeSurcharge").value("50.00"));
     }
 

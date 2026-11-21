@@ -117,7 +117,7 @@ class ParcelAuthorizationMatrixIT {
         UUID courierId = insertUser(Role.COURIER);
         assignedCourier = TestPrincipal.user(courierId, Role.COURIER);
         otherCourier = TestPrincipal.user(insertUser(Role.COURIER), Role.COURIER);
-        admin = TestPrincipal.user(insertUser(Role.DISPATCHER_ADMIN), Role.DISPATCHER_ADMIN);
+        admin = TestPrincipal.user(insertUser(Role.DISPATCHER), Role.DISPATCHER);
         merchant = TestPrincipal.user(insertUser(Role.MERCHANT), Role.MERCHANT);
         dualRole = TestPrincipal.user(insertUser(Role.COURIER, Role.CUSTOMER), Role.COURIER, Role.CUSTOMER);
 
@@ -126,7 +126,7 @@ class ParcelAuthorizationMatrixIT {
 
         delivered = booking.bookForCustomer(ownerId, booking());
         assignment.assignCourier(delivered.getId(), courierId, UUID.randomUUID());
-        for (ParcelStatus step : List.of(ParcelStatus.PICKED_UP, ParcelStatus.IN_TRANSIT, ParcelStatus.OUT_FOR_DELIVERY)) {
+        for (ParcelStatus step : List.of(ParcelStatus.PICKED_UP, ParcelStatus.HUB_ARRIVED, ParcelStatus.OUT_FOR_DELIVERY)) {
             statuses.changeStatus(delivered.getId(), new StatusChange(step, null, null), Actor.courier(courierId));
         }
         proofs.capture(delivered.getId(), Actor.courier(courierId), "Kumari Silva", JPEG);

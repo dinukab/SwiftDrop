@@ -21,6 +21,8 @@ import org.springframework.test.util.ReflectionTestUtils;
 import com.swiftdrop.delivery.api.CreatedParcel;
 import com.swiftdrop.delivery.api.DeliveryContact;
 import com.swiftdrop.delivery.api.NewMerchantParcel;
+import com.swiftdrop.delivery.api.ParcelConflictException;
+import com.swiftdrop.delivery.domain.OrderFingerprint;
 import com.swiftdrop.delivery.domain.Parcel;
 import com.swiftdrop.delivery.domain.ParcelAddress;
 import com.swiftdrop.delivery.domain.ParcelRepository;
@@ -79,6 +81,46 @@ class MerchantParcelCreationTest {
 
         assertThat(created.newlyCreated()).isFalse();
         assertThat(created.parcelId()).isEqualTo(winner.getId());
+    }
+
+    @Test
+    void aRepeatWithTheSameContentReturnsTheExistingParcel() {
+        Parcel existing = merchantParcel();
+        NewMerchantParcel original = order("ORD-1");
+        existing.recordOrderFingerprint(OrderFingerprint.of(original));
+        when(parcels.findByMerchantIdAndMerchantOrderReference(MERCHANT_ID, "ORD-1")).thenReturn(Optional.of(existing));
+
+        CreatedParcel created = creation.createMerchantParcel(original);
+
+        assertThat(created.newlyCreated()).isFalse();
+        assertThat(created.parcelId()).isEqualTo(existing.getId());
+    }
+
+    @Test
+    void aRepeatWithDifferentContentIsRefusedAndNothingIsReturned() {
+        Parcel existing = merchantParcel();
+        NewMerchantParcel original = order("ORD-1");
+        existing.recordOrderFingerprint(OrderFingerprint.of(original));
+        when(parcels.findByMerchantIdAndMerchantOrderReference(MERCHANT_ID, "ORD-1")).thenReturn(Optional.of(existing));
+        // Same reference, same addresses and size; only the description differs
+        NewMerchantParcel changed = new NewMerchantParcel(MERCHANT_ID, "ORD-1", original.pickup(), original.dropoff(),
+                ParcelSize.SMALL, 1000, "A different item");
+
+        assertThatThrownBy(() -> creation.createMerchantParcel(changed))
+                .isInstanceOf(ParcelConflictException.class)
+                .hasMessage("This order reference was already used for a different order");
+        verifyNoInteractions(booking);
+    }
+
+    @Test
+    void aParcelFromBeforeFingerprintsKeepsTheOldBehaviour() {
+        Parcel legacy = merchantParcel();
+        when(parcels.findByMerchantIdAndMerchantOrderReference(MERCHANT_ID, "ORD-1")).thenReturn(Optional.of(legacy));
+
+        CreatedParcel created = creation.createMerchantParcel(order("ORD-1"));
+
+        assertThat(created.parcelId()).isEqualTo(legacy.getId());
+        assertThat(created.newlyCreated()).isFalse();
     }
 
     @Test

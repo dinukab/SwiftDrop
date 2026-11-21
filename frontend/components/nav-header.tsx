@@ -37,15 +37,15 @@ export function NavHeader() {
                 Courier Tasks
               </Link>
             )}
-            {hasRole("DISPATCHER_ADMIN") && (
-              <>
-                <Link href="/dispatch" className="hover:text-sidebar-foreground transition-colors">
-                  Dispatch
-                </Link>
-                <Link href="/admin" className="hover:text-sidebar-foreground transition-colors">
-                  Admin
-                </Link>
-              </>
+            {hasRole("DISPATCHER") && (
+              <Link href="/dispatcher" className="hover:text-sidebar-foreground transition-colors">
+                Dispatch
+              </Link>
+            )}
+            {hasRole("ADMIN") && (
+              <Link href="/admin" className="hover:text-sidebar-foreground transition-colors">
+                Admin
+              </Link>
             )}
           </nav>
         </div>
