@@ -56,7 +56,7 @@ Buyer -> store checkout -> store creates a Shipment (booking)
 | 3 | Dispatcher queue, assignment, workload | ✅ Built and tested (dispatcher team, PR #23–#28) | Now hub-based: courier profile API, hub binding, legs, hub-to-hub transfers, assignment history ([ADR 0007](adr/0007-multi-leg-shipments-and-hub-handover.md), *Proposed*) |
 | 4 | Webhook pipeline (relay, consumer, sender) | 🟡 Built and tested, **off by default** | History and redelivery API built; merchant UI view, demo receiver and live run missing |
 | 5 | Store request signatures, duplicate-order check, rate limit | 🟡 Built and tested, **optional by default** | Store does not sign yet |
-| 6 | Ecommerce store changes | ✅ Code complete (uncommitted) | Hub statuses added 2026-11-21 (section 8b); store migration not yet applied; needs a live end-to-end run |
+| 6 | Ecommerce store changes | ✅ Built and run live | Hub statuses added 2026-11-21; full hub route verified end to end (section 8b) |
 | 7 | Connection runbook | 🟡 Written in section 5; needs the updates listed there | Not yet run end to end with the store |
 
 Legend: ✅ done and verified · 🟡 partly done · ⬜ not started.
@@ -369,8 +369,8 @@ backend can produce them. Both do now.
 ## 7. Next steps, in order
 
 1. ~~Store signing and status API~~ (done in code). Next: run it live and require signatures.
-2. ~~Courier profile admin API~~ (built by the dispatcher team). Next: apply the store's hub-status
-   migration (section 8b) and run the hub route end to end.
+2. ~~Courier profile admin API~~ (built by the dispatcher team). ~~Hub route end to end~~ (done, section 8b).
+   Next: repeat with signatures required, and a failure path.
 3. ~~Store zone-code mapping~~ (done in code). Next: run `npm run zones:sync` and schedule the cron call.
 4. ~~Webhook history and redelivery API~~ (built). Next: the merchant history view and the demo receiver (PROGRESS 5.7).
 5. ~~Assignment history~~ (built). Team review of ADR 0007 (multi-leg, *Proposed*).
@@ -415,7 +415,7 @@ shape agree between SwiftDrop and the store. Remaining concerns:
 
 ## 8b. Flow review (2026-11-21): after the dispatcher hub work
 
-Checked by reading code in both repositories; **no live run**.
+Checked by reading code in both repositories, then **run live end to end** (below).
 
 **Order details to the dispatcher: works.** A store order is a `CREATED` parcel. `GET /api/v1/unassigned-parcels`
 now lists only parcels whose pickup province equals the dispatcher's hub code. Hub codes (`LK-WP`, `LK-UP`,
@@ -439,14 +439,29 @@ it as `IGNORED`, and the status API parser skips such events, so later known eve
 apply. Checks: type-check and lint clean, 84 of 84 unit tests pass. SwiftDrop's merchant orders page also gained
 filters and badges for the hub statuses. No SwiftDrop backend change.
 
-**To do on a running system.**
-1. Apply the store migration (`npx prisma migrate deploy` with the store database running on port 5434).
-2. Webhook deliveries that already failed recover through polling (the status API returns the full sequenced
-   history); a merchant can also redeliver them (`POST /api/v1/merchants/me/webhook-deliveries/{id}/redeliveries`,
-   at most 3 times).
-3. End-to-end run: store order -> pickup-hub dispatcher assigns -> `PICKED_UP` -> `HUB_ARRIVED` -> (other
-   province: transfer and receipt via `LK-WP`) -> final-mile courier -> `OUT_FOR_DELIVERY` -> `DELIVERED`; check the
-   store's webhook log and `/account/orders` at each step.
+**Live end-to-end run (2026-11-21).** Store migration applied to the local `store` database. Backend run with
+relay and webhooks on (`SWIFTDROP_WEBHOOK_ALLOW_LOCAL=true`); store in live mode with a new merchant, API key with
+signing secret and webhook; dispatcher and courier at `LK-WP` (pickup) and `LK-UP` (destination). A store order to
+Monaragala (Uva) was planned as `PICKUP` (`LK-WP`), `INTER_HUB` (`LK-WP` to `LK-UP`), `FINAL_MILE` (`LK-UP`) and
+driven through the API:
+
+| Seq | Status | Actor | Webhook | Store |
+|---|---|---|---|---|
+| 1 | `CREATED` | store booking | 200 | `CREATED` |
+| 2 | `PICKED_UP` | pickup courier | 200 | `PICKED_UP` |
+| 3 | `HUB_ARRIVED` | pickup courier at `LK-WP` | 200 | `HUB_ARRIVED` |
+| 4 | `IN_TRANSIT` | `LK-WP` dispatcher transfer | 200 | `IN_TRANSIT` |
+| 5 | `HUB_ARRIVED` | `LK-UP` dispatcher receipt | 200 | `HUB_ARRIVED` |
+| 6 | `OUT_FOR_DELIVERY` | final-mile courier | 200 | `OUT_FOR_DELIVERY` |
+| 7 | `DELIVERED` | final-mile courier, with proof | 200 | `DELIVERED`, order closed |
+
+All seven webhooks succeeded on the first attempt; the store processed seven and rejected none, and its timeline
+has one row per sequence. Courier assignments produce no event, as designed. Not covered: signatures required
+(`SWIFTDROP_MERCHANT_API_REQUIRE_SIGNATURE=true`), failure paths, and a same-province route.
+
+**If deliveries failed before the store fix:** they recover through polling (the status API returns the full
+sequenced history); a merchant can also redeliver them
+(`POST /api/v1/merchants/me/webhook-deliveries/{id}/redeliveries`, at most 3 times).
 
 ---
 
