@@ -554,7 +554,7 @@ Owns the `pricing` module, the `delivery` report package, and the `(admin)/admin
 | 8.3 | Public price-quote endpoint | SD-203 | ✅ | | | |
 | 8.4 | Pricing administration API (zones and rules CRUD) | SD-211 | ⬜ | | | |
 | 8.5 | Pricing administration UI | SD-212 | ⬜ | | | |
-| 8.6 | Reports API: deliveries per day, success/failure rate | SD-314 | ⬜ | | | |
+| 8.6 | Reports API: deliveries per day, success/failure rate | SD-314 | 🟡 | `feature/reports` | | 2026-11-21 |
 | 8.7 | Reports UI with date range and chart | SD-315 | ⬜ | | | |
 
 **How to implement**
