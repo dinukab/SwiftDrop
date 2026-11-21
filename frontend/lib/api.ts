@@ -169,6 +169,20 @@ export interface DailyDeliveriesResponse {
   days: { date: string; count: number }[];
 }
 
+/**
+ * Parcels that reached DELIVERED or FAILED, counted on the day they finished (D-08).
+ * `successRate` is delivered / (delivered + failed) as a fraction 0–1, or null when nothing finished.
+ */
+export interface DeliveryOutcomesResponse {
+  from: string;
+  to: string;
+  timeZone: string;
+  delivered: number;
+  failed: number;
+  successRate: number | null;
+  days: { date: string; delivered: number; failed: number }[];
+}
+
 export interface BookingAddress {
   contactName: string;
   phone: string;

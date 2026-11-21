@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
-import { api, formatApiError, type DailyDeliveriesResponse } from "@/lib/api";
+import { api, formatApiError, type DailyDeliveriesResponse, type DeliveryOutcomesResponse } from "@/lib/api";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,6 +45,15 @@ function validateRange(range: Range): string | null {
   return null;
 }
 
+function formatRate(rate: number | null): string {
+  return rate === null ? "—" : `${(rate * 100).toFixed(1)}%`;
+}
+
+interface Reports {
+  daily: DailyDeliveriesResponse;
+  outcomes: DeliveryOutcomesResponse;
+}
+
 function formatDay(isoDate: string): string {
   return new Intl.DateTimeFormat("en-GB", {
     weekday: "short",
@@ -63,7 +72,7 @@ export default function AdminReportsPage() {
   const [form, setForm] = useState<Range>({ from: "", to: "" });
   const [formError, setFormError] = useState<string | null>(null);
 
-  const [daily, setDaily] = useState<DailyDeliveriesResponse | null>(null);
+  const [reports, setReports] = useState<Reports | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   // Bumping reloadKey re-runs the fetch below; only event handlers change it.
@@ -72,13 +81,16 @@ export default function AdminReportsPage() {
   useEffect(() => {
     if (!token) return;
     let cancelled = false;
+    // With no query both reports use the backend's default range, so they always cover the same days
     const params = query ? `?${new URLSearchParams({ from: query.from, to: query.to })}` : "";
-    api
-      .get<DailyDeliveriesResponse>(`/api/v1/reports/daily-deliveries${params}`, { token })
-      .then((report) => {
+    Promise.all([
+      api.get<DailyDeliveriesResponse>(`/api/v1/reports/daily-deliveries${params}`, { token }),
+      api.get<DeliveryOutcomesResponse>(`/api/v1/reports/delivery-outcomes${params}`, { token }),
+    ])
+      .then(([daily, outcomes]) => {
         if (cancelled) return;
-        setDaily(report);
-        setForm({ from: report.from, to: report.to });
+        setReports({ daily, outcomes });
+        setForm({ from: daily.from, to: daily.to });
       })
       .catch((err) => {
         if (!cancelled) setLoadError(formatApiError(err));
@@ -116,7 +128,10 @@ export default function AdminReportsPage() {
     load(range);
   }
 
+  const daily = reports?.daily ?? null;
+  const outcomes = reports?.outcomes ?? null;
   const maxCount = daily ? Math.max(0, ...daily.days.map((day) => day.count)) : 0;
+  const outcomesByDate = new Map(outcomes?.days.map((day) => [day.date, day]) ?? []);
 
   return (
     <div className="space-y-6">
@@ -125,8 +140,8 @@ export default function AdminReportsPage() {
           <div className="space-y-1">
             <CardTitle>Reports</CardTitle>
             <CardDescription>
-              Parcels created per day. Days are business days in {daily?.timeZone ?? BUSINESS_TIME_ZONE}; both dates
-              are included, up to {MAX_RANGE_DAYS} days.
+              Parcels created and delivery outcomes per day. Days are business days in{" "}
+              {daily?.timeZone ?? BUSINESS_TIME_ZONE}; both dates are included, up to {MAX_RANGE_DAYS} days.
             </CardDescription>
           </div>
           <Button variant="outline" size="sm" onClick={() => load(query)} disabled={loading}>
@@ -189,14 +204,16 @@ export default function AdminReportsPage() {
         <p className="flex items-center gap-2 text-sm text-muted-foreground">
           <Loader2 className="size-4 animate-spin" /> Loading report…
         </p>
-      ) : daily && (
+      ) : daily && outcomes && (
         <>
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <SummaryCard label="Parcels created" value={daily.total.toLocaleString()} />
-            <SummaryCard label="Days" value={daily.days.length.toLocaleString()} />
+            <SummaryCard label="Delivered" value={outcomes.delivered.toLocaleString()} />
+            <SummaryCard label="Failed" value={outcomes.failed.toLocaleString()} />
             <SummaryCard
-              label="Average per day"
-              value={(daily.days.length ? daily.total / daily.days.length : 0).toFixed(1)}
+              label="Success rate"
+              value={formatRate(outcomes.successRate)}
+              hint={outcomes.successRate === null ? "No deliveries finished in this range" : "Delivered ÷ (delivered + failed)"}
             />
           </div>
 
@@ -219,6 +236,10 @@ export default function AdminReportsPage() {
           <Card>
             <CardHeader>
               <CardTitle>Daily breakdown</CardTitle>
+              <CardDescription>
+                Created counts parcels by the day they were booked; delivered and failed count parcels by the day
+                they finished. A row can therefore mix different parcels. Cancelled parcels are not outcomes.
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <ScrollArea className="h-[420px] w-full rounded-lg border">
@@ -226,16 +247,27 @@ export default function AdminReportsPage() {
                   <thead className="sticky top-0 border-b bg-background text-left text-muted-foreground">
                     <tr>
                       <th className="py-2 pl-3 pr-4 font-medium">Date</th>
-                      <th className="py-2 pr-3 text-right font-medium">Parcels created</th>
+                      <th className="py-2 pr-4 text-right font-medium">Created</th>
+                      <th className="py-2 pr-4 text-right font-medium">Delivered</th>
+                      <th className="py-2 pr-3 text-right font-medium">Failed</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {daily.days.map((day) => (
-                      <tr key={day.date} className="border-b last:border-0">
-                        <td className="py-2 pl-3 pr-4">{formatDay(day.date)}</td>
-                        <td className="py-2 pr-3 text-right tabular-nums">{day.count.toLocaleString()}</td>
-                      </tr>
-                    ))}
+                    {daily.days.map((day) => {
+                      const outcome = outcomesByDate.get(day.date);
+                      return (
+                        <tr key={day.date} className="border-b last:border-0">
+                          <td className="py-2 pl-3 pr-4">{formatDay(day.date)}</td>
+                          <td className="py-2 pr-4 text-right tabular-nums">{day.count.toLocaleString()}</td>
+                          <td className="py-2 pr-4 text-right tabular-nums">
+                            {(outcome?.delivered ?? 0).toLocaleString()}
+                          </td>
+                          <td className="py-2 pr-3 text-right tabular-nums">
+                            {(outcome?.failed ?? 0).toLocaleString()}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </ScrollArea>
@@ -247,12 +279,13 @@ export default function AdminReportsPage() {
   );
 }
 
-function SummaryCard({ label, value }: { label: string; value: string }) {
+function SummaryCard({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <Card>
       <CardContent className="space-y-1 pt-6">
         <p className="text-sm text-muted-foreground">{label}</p>
         <p className="text-2xl font-semibold tabular-nums">{value}</p>
+        {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
       </CardContent>
     </Card>
   );
