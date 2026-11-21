@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 
 import com.swiftdrop.delivery.api.LegType;
 import com.swiftdrop.delivery.api.ParcelConflictException;
+import com.swiftdrop.delivery.api.ParcelStatus;
 import com.swiftdrop.delivery.domain.ShipmentLeg;
 import com.swiftdrop.delivery.domain.ShipmentLegRepository;
 
@@ -116,5 +117,51 @@ class LegProgressTest {
                 .isInstanceOf(ParcelConflictException.class);
         progress.finished(PARCEL, NOW.plusSeconds(60));
         assertThat(finalMile.getCompletedAt()).isEqualTo(NOW);
+    }
+
+    @Test
+    void thePickupCourierMayPickUpAndArriveButNotDeliver() {
+        pickup.assignCourier(COURIER, NOW);
+
+        progress.requireMoveAllowed(PARCEL, COURIER, ParcelStatus.CREATED, ParcelStatus.PICKED_UP);
+        progress.requireMoveAllowed(PARCEL, COURIER, ParcelStatus.PICKED_UP, ParcelStatus.HUB_ARRIVED);
+        progress.requireMoveAllowed(PARCEL, COURIER, ParcelStatus.PICKED_UP, ParcelStatus.FAILED);
+        assertThatThrownBy(() -> progress.requireMoveAllowed(PARCEL, COURIER, ParcelStatus.HUB_ARRIVED,
+                ParcelStatus.OUT_FOR_DELIVERY)).isInstanceOf(ParcelConflictException.class);
+    }
+
+    @Test
+    void thePickupCourierHoldsNoLegOnceTheParcelReachedTheHub() {
+        pickup.assignCourier(COURIER, NOW);
+        pickup.complete(NOW);
+
+        assertThatThrownBy(() -> progress.requireMoveAllowed(PARCEL, COURIER, ParcelStatus.HUB_ARRIVED,
+                ParcelStatus.OUT_FOR_DELIVERY))
+                .isInstanceOf(ParcelConflictException.class)
+                .hasMessage("The courier holds no open leg of this parcel");
+    }
+
+    @Test
+    void theFinalMileCourierMayDeliverOrFailButNotPickUpOrArrive() {
+        pickup.complete(NOW);
+        toColombo.complete(NOW);
+        toSouthern.complete(NOW);
+        finalMile.assignCourier(COURIER, NOW);
+
+        progress.requireMoveAllowed(PARCEL, COURIER, ParcelStatus.HUB_SORTED, ParcelStatus.OUT_FOR_DELIVERY);
+        progress.requireMoveAllowed(PARCEL, COURIER, ParcelStatus.OUT_FOR_DELIVERY, ParcelStatus.DELIVERED);
+        progress.requireMoveAllowed(PARCEL, COURIER, ParcelStatus.OUT_FOR_DELIVERY, ParcelStatus.FAILED);
+        assertThatThrownBy(() -> progress.requireMoveAllowed(PARCEL, COURIER, ParcelStatus.HUB_SORTED,
+                ParcelStatus.IN_TRANSIT)).isInstanceOf(ParcelConflictException.class);
+        assertThatThrownBy(() -> progress.requireMoveAllowed(PARCEL, COURIER, ParcelStatus.HUB_ARRIVED,
+                ParcelStatus.FAILED)).isInstanceOf(ParcelConflictException.class);
+    }
+
+    @Test
+    void aParcelWithoutLegsKeepsTheSingleCourierRules() {
+        UUID other = UUID.randomUUID();
+        when(repository.findByParcelIdOrderBySequenceAsc(other)).thenReturn(List.of());
+
+        progress.requireMoveAllowed(other, COURIER, ParcelStatus.HUB_SORTED, ParcelStatus.IN_TRANSIT);
     }
 }
