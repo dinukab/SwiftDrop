@@ -77,14 +77,7 @@ function Logo({ tone, onClick }: { tone: Tone; onClick?: () => void }) {
       aria-label="SwiftDrop home"
       className="group flex items-center gap-2.5 rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
     >
-      <span
-        className={cn(
-          "grid size-9 place-items-center rounded-[10px] shadow-md transition-transform duration-300 group-hover:-rotate-6",
-          dark ? "bg-brand text-navy shadow-brand/30" : "bg-primary text-primary-foreground shadow-primary/30"
-        )}
-      >
-        <Package className="size-5" strokeWidth={2.25} aria-hidden="true" />
-      </span>
+      
       <span className={cn("text-lg font-extrabold tracking-tight", dark ? "text-white" : "text-foreground")}>
         Swift<span className={dark ? "text-brand" : "text-primary"}>Drop</span>
       </span>

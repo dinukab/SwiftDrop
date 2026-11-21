@@ -1,10 +1,12 @@
 import Link from "next/link";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { SiteNavbar } from "@/components/landing/site-navbar";
 import { Hero } from "@/components/landing/hero/Hero";
+import { ServicesSection } from "@/components/landing/services/ServicesSection";
+import { HowItWorks } from "@/components/landing/how-it-works/HowItWorks";
+import { AudienceCta } from "@/components/landing/audience-cta/AudienceCta";
+import { Footer } from "@/components/landing/footer/Footer";
 import { inter, spaceGrotesk } from "@/components/landing/fonts";
 
 const PORTALS: Array<{
@@ -60,46 +62,10 @@ export default function Home() {
     <div className={`${spaceGrotesk.variable} ${inter.variable} flex flex-1 flex-col`}>
     <SiteNavbar tone="dark" />
     <Hero />
+    <ServicesSection />
+    <HowItWorks />
+    <AudienceCta />
     <main className="container mx-auto flex-1 px-4 py-12 md:py-16 space-y-12 max-w-6xl">
-      {/* Hero section */}
-      <section className="text-center space-y-4 max-w-3xl mx-auto">
-        <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-accent px-3 py-1 text-xs font-semibold text-primary">
-          <span className="size-1.5 rounded-full bg-primary" />
-          Logistics Operations Platform
-        </div>
-        <h1 className="text-4xl font-extrabold tracking-tight sm:text-5xl text-foreground">
-          Fast, Reliable Parcel Delivery & Logistics
-        </h1>
-        <p className="text-lg text-muted-foreground">
-          SwiftDrop connects senders, merchants, couriers, and dispatchers on a unified real-time delivery platform.
-        </p>
-
-        {/* Quick Track Input */}
-        <div className="pt-4 max-w-md mx-auto">
-          <form
-            action="/track"
-            method="GET"
-            className="flex flex-col sm:flex-row gap-2 p-1.5 rounded-xl bg-card border border-border shadow-xs"
-          >
-            <div className="flex-1">
-              <Label htmlFor="hero-track-code" className="sr-only">
-                Tracking Number
-              </Label>
-              <Input
-                id="hero-track-code"
-                name="code"
-                placeholder="Enter tracking number (e.g. SWD-12345678)"
-                aria-label="Tracking Number"
-                className="border-0 bg-transparent shadow-none focus-visible:ring-0 text-sm"
-              />
-            </div>
-            <Button type="submit" className="font-semibold shadow-xs">
-              Track
-            </Button>
-          </form>
-        </div>
-      </section>
-
       {/* Role Portals Grid */}
       <section className="space-y-6">
         <div className="text-center space-y-1">
@@ -178,6 +144,7 @@ export default function Home() {
         </div>
       </section>
     </main>
+    <Footer />
     </div>
   );
 }

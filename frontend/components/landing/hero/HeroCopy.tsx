@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion, useTransform, type MotionValue } from "framer-motion";
-import { HERO_COPY, TIMELINE, TRUST_ROW, WORD_ROTATION_MS } from "./data";
+import { HERO_COPY, TIMELINE, WORD_ROTATION_MS } from "./data";
 import { TrackingInput } from "./TrackingInput";
 
 function RotatingWord({ rotate }: { rotate: boolean }) {
@@ -56,17 +56,9 @@ export function HeroCopy({ progress, animate, rotateWords }: HeroCopyProps) {
       className="w-full max-w-xl will-change-transform lg:max-w-lg xl:max-w-xl"
       style={animate ? { y, opacity } : undefined}
     >
-      <p className="inline-flex items-center gap-2.5 rounded-full border border-white/14 bg-white/7 px-3.5 py-1.5 text-sm font-medium text-white/90">
-        <span className="relative flex size-2" aria-hidden="true">
-          <span className="absolute inline-flex size-full animate-ping rounded-full bg-status-live opacity-60 motion-reduce:animate-none" />
-          <span className="relative inline-flex size-2 rounded-full bg-status-live" />
-        </span>
-        {HERO_COPY.badge}
-      </p>
-
       <h1
         id="hero-heading"
-        className="mt-6 font-display text-5xl leading-[1.04] font-bold tracking-tight text-white lg:text-6xl xl:[@media(min-height:50rem)]:text-7xl"
+        className="font-display text-5xl leading-[1.04] font-bold tracking-tight text-white lg:text-6xl xl:[@media(min-height:50rem)]:text-7xl"
       >
         <span className="sr-only">{HERO_COPY.headingAccessible} </span>
         <span aria-hidden="true">
@@ -81,15 +73,6 @@ export function HeroCopy({ progress, animate, rotateWords }: HeroCopyProps) {
       <p className="mt-6 max-w-lg text-lg leading-relaxed text-ink-light">{HERO_COPY.subtitle}</p>
 
       <TrackingInput className="mt-8 max-w-lg" />
-
-      <ul className="mt-6 flex flex-wrap gap-x-5 gap-y-2.5 text-sm font-medium text-white/85">
-        {TRUST_ROW.map(({ icon: Icon, label }) => (
-          <li key={label} className="inline-flex items-center gap-2">
-            <Icon aria-hidden="true" className="size-4 text-status-live" />
-            {label}
-          </li>
-        ))}
-      </ul>
     </motion.div>
   );
 }

@@ -22,13 +22,8 @@ export const HERO_COPY = {
   scrollHint: "Scroll to follow the parcel",
 };
 
-export const WORD_ROTATION_MS = 2400;
 
-export const TRUST_ROW: { icon: LucideIcon; label: string }[] = [
-  { icon: ShieldCheck, label: "Insured parcels" },
-  { icon: UserCheck, label: "Background-checked couriers" },
-  { icon: KeyRound, label: "OTP-secured handover" },
-];
+export const WORD_ROTATION_MS = 2400;
 
 export const TRACKING_FORM = {
   label: "Tracking number",
@@ -67,7 +62,7 @@ export const JOURNEY = {
 export const TRUST_BAR: { icon: LucideIcon; title: string; text: string }[] = [
   { icon: ShieldCheck, title: "Insured parcels", text: "Every parcel covered from pickup to doorstep." },
   { icon: BadgeCheck, title: "Verified couriers", text: "Background-checked riders with ID on every run." },
-  { icon: MapPinned, title: "Live GPS tracking", text: "Follow your parcel on the map in real time." },
+  { icon: MapPinned, title: "Live tracking", text: "Follow your parcel in real time." },
   { icon: FileCheck2, title: "Proof of delivery", text: "Photo and OTP confirmation at every handover." },
 ];
 
