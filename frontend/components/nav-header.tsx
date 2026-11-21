@@ -1,11 +1,18 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { Button, buttonVariants } from "@/components/ui/button";
 
 export function NavHeader() {
   const { user, isAuthenticated, isLoading, logout, hasRole } = useAuth();
+  const pathname = usePathname();
+
+  // The landing page renders its own marketing navbar (components/landing/site-navbar.tsx).
+  if (pathname === "/") {
+    return null;
+  }
 
   return (
     <header className="border-b border-sidebar-border bg-sidebar text-sidebar-foreground sticky top-0 z-40">

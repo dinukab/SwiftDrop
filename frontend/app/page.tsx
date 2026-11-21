@@ -3,6 +3,9 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SiteNavbar } from "@/components/landing/site-navbar";
+import { Hero } from "@/components/landing/hero/Hero";
+import { inter, spaceGrotesk } from "@/components/landing/fonts";
 
 const PORTALS: Array<{
   title: string;
@@ -54,6 +57,9 @@ const PORTALS: Array<{
 
 export default function Home() {
   return (
+    <div className={`${spaceGrotesk.variable} ${inter.variable} flex flex-1 flex-col`}>
+    <SiteNavbar tone="dark" />
+    <Hero />
     <main className="container mx-auto flex-1 px-4 py-12 md:py-16 space-y-12 max-w-6xl">
       {/* Hero section */}
       <section className="text-center space-y-4 max-w-3xl mx-auto">
@@ -172,5 +178,6 @@ export default function Home() {
         </div>
       </section>
     </main>
+    </div>
   );
 }
