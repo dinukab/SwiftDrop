@@ -231,6 +231,10 @@ class MigrationConventionTest {
                         tuple(
                                 "202611211000",
                                 "notification create notifications",
-                                "notification/V202611211000__notification_create_notifications.sql"));
+                                "notification/V202611211000__notification_create_notifications.sql"),
+                        tuple(
+                                "202611211500",
+                                "notification create dead letter replays",
+                                "notification/V202611211500__notification_create_dead_letter_replays.sql"));
     }
 }
