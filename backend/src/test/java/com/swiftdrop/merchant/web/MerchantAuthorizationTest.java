@@ -47,6 +47,9 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
  * Authorization matrix for merchant registration and admin review (TST-2 / SD-401 / SD-402).
@@ -125,6 +128,21 @@ class MerchantAuthorizationTest {
         when(onboardingService.suspend(eq(MERCHANT_ID), any())).thenReturn(pending);
         when(merchantRepository.findById(MERCHANT_ID)).thenReturn(Optional.of(pending));
         when(merchantRepository.findAll(any(Pageable.class))).thenReturn(new PageImpl<>(List.of(pending)));
+    }
+
+    @Test
+    void merchantsOfDeletedAccountsAreHiddenFromTheAdminDirectory() throws Exception {
+        UUID deletedUserId = UUID.fromString("00000000-0000-0000-0000-0000000000d1");
+        Merchant gone = new Merchant(deletedUserId, "Closed Shop", "REG-GONE-1", "gone@example.com", "0770000009");
+        ReflectionTestUtils.setField(gone, "id", UUID.randomUUID());
+        Merchant pending = new Merchant(MERCHANT_USER_ID, "Test Business", "REG-TEST-2", "live@example.com", "0770000008");
+        when(onboardingService.list(anyInt(), anyInt(), any())).thenReturn(new PageImpl<>(List.of(pending, gone)));
+        when(users.findById(deletedUserId)).thenReturn(Optional.empty());
+
+        mvc.perform(get("/api/v1/merchants?page=0&size=20").with(TestPrincipal.admin().postProcessor()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(1))
+                .andExpect(jsonPath("$.items[0].businessName").value("Test Business"));
     }
 
     @TestFactory

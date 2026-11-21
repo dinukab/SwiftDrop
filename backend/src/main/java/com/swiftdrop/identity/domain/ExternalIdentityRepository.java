@@ -8,4 +8,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface ExternalIdentityRepository extends JpaRepository<ExternalIdentity, UUID> {
 
     Optional<ExternalIdentity> findByProviderAndSubject(IdentityProvider provider, String subject);
+
+    void deleteByUserId(UUID userId);
 }

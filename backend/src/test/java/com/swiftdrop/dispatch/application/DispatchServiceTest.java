@@ -180,13 +180,14 @@ class DispatchServiceTest {
         UUID none = UUID.fromString("00000000-0000-0000-0000-0000000000a3");
         when(profiles.findByActive(org.mockito.ArgumentMatchers.eq(true), any()))
                 .thenReturn(new PageImpl<>(List.of(
-                        profile(busy, VehicleType.VAN), profile(idle, VehicleType.CAR), profile(none, VehicleType.BIKE))));
+                        atUva(profile(busy, VehicleType.VAN)), atUva(profile(idle, VehicleType.CAR)),
+                        atUva(profile(none, VehicleType.BIKE)))));
         when(users.findUser(busy)).thenReturn(Optional.of(user(busy, "Busy Bill")));
         when(users.findUser(idle)).thenReturn(Optional.of(user(idle, "Idle Ida")));
         when(users.findUser(none)).thenReturn(Optional.of(user(none, "New Nimal")));
         when(parcelQueries.countActiveParcelsByCourier()).thenReturn(Map.of(busy, 3L, idle, 1L));
 
-        List<DispatchService.CourierWorkload> loads = service.workloads();
+        List<DispatchService.CourierWorkload> loads = service.workloads(DISPATCHER);
 
         assertThat(loads).extracting(DispatchService.CourierWorkload::name)
                 .containsExactly("New Nimal", "Idle Ida", "Busy Bill");
@@ -202,8 +203,8 @@ class DispatchServiceTest {
         UUID gone = UUID.fromString("00000000-0000-0000-0000-0000000000b4");
         when(profiles.findByActive(org.mockito.ArgumentMatchers.eq(true), any()))
                 .thenReturn(new PageImpl<>(List.of(
-                        profile(ok, VehicleType.BIKE), profile(disabled, VehicleType.BIKE),
-                        profile(customer, VehicleType.BIKE), profile(gone, VehicleType.BIKE))));
+                        atUva(profile(ok, VehicleType.BIKE)), atUva(profile(disabled, VehicleType.BIKE)),
+                        atUva(profile(customer, VehicleType.BIKE)), atUva(profile(gone, VehicleType.BIKE)))));
         when(users.findUser(ok)).thenReturn(Optional.of(user(ok, "Eligible Eli")));
         when(users.findUser(disabled)).thenReturn(Optional.of(
                 new UserSummary(disabled, "Disabled Dan", "dan@example.com", Set.of("COURIER"), false)));
@@ -212,7 +213,7 @@ class DispatchServiceTest {
         when(users.findUser(gone)).thenReturn(Optional.empty());
         when(parcelQueries.countActiveParcelsByCourier()).thenReturn(Map.of());
 
-        assertThat(service.workloads()).extracting(DispatchService.CourierWorkload::courierUserId)
+        assertThat(service.workloads(DISPATCHER)).extracting(DispatchService.CourierWorkload::courierUserId)
                 .containsExactly(ok);
     }
 
@@ -221,8 +222,45 @@ class DispatchServiceTest {
         when(profiles.findByActive(org.mockito.ArgumentMatchers.eq(true), any()))
                 .thenReturn(new PageImpl<>(List.of()));
 
-        assertThat(service.workloads()).isEmpty();
+        assertThat(service.workloads(DISPATCHER)).isEmpty();
         verify(profiles).findByActive(org.mockito.ArgumentMatchers.eq(true), any());
+    }
+
+    @Test
+    void theWorkloadListShowsOnlyCouriersOfTheDispatchersZone() {
+        UUID home = UUID.fromString("00000000-0000-0000-0000-0000000000c1");
+        UUID movedHere = UUID.fromString("00000000-0000-0000-0000-0000000000c2");
+        UUID otherZone = UUID.fromString("00000000-0000-0000-0000-0000000000c3");
+        UUID unlocated = UUID.fromString("00000000-0000-0000-0000-0000000000c4");
+        CourierProfile currentlyHere = profile(movedHere, VehicleType.CAR);
+        currentlyHere.assignHomeHub(UUID.randomUUID(), Instant.parse("2026-11-15T10:00:00Z"));
+        currentlyHere.moveToHub(uva.getId(), Instant.parse("2026-11-16T10:00:00Z"));
+        CourierProfile elsewhere = profile(otherZone, VehicleType.VAN);
+        elsewhere.assignHomeHub(UUID.randomUUID(), Instant.parse("2026-11-15T10:00:00Z"));
+        when(profiles.findByActive(org.mockito.ArgumentMatchers.eq(true), any()))
+                .thenReturn(new PageImpl<>(List.of(
+                        atUva(profile(home, VehicleType.BIKE)), currentlyHere, elsewhere,
+                        profile(unlocated, VehicleType.BIKE))));
+        when(users.findUser(home)).thenReturn(Optional.of(user(home, "Home Hari")));
+        when(users.findUser(movedHere)).thenReturn(Optional.of(user(movedHere, "Visiting Vic")));
+        when(parcelQueries.countActiveParcelsByCourier()).thenReturn(Map.of());
+
+        assertThat(service.workloads(DISPATCHER)).extracting(DispatchService.CourierWorkload::courierUserId)
+                .containsExactlyInAnyOrder(home, movedHere);
+    }
+
+    @Test
+    void aDispatcherWithoutAHubSeesNoCourierList() {
+        when(hubService.hubForDispatcher(DISPATCHER)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.workloads(DISPATCHER))
+                .isInstanceOf(DispatcherHubNotAssignedException.class);
+    }
+
+    /** Places the courier at the dispatcher's hub, the way an admin does when creating the profile. */
+    private CourierProfile atUva(CourierProfile profile) {
+        profile.assignHomeHub(uva.getId(), Instant.parse("2026-11-15T10:00:00Z"));
+        return profile;
     }
 
     private static CourierProfile profile(UUID userId, VehicleType vehicle) {

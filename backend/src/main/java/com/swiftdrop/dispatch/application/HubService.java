@@ -78,7 +78,7 @@ public class HubService {
         Map<UUID, Hub> result = new LinkedHashMap<>();
         for (DispatcherHub binding : bindings.findAll()) {
             Hub hub = hubsById.get(binding.getHubId());
-            if (hub != null && hub.isActive()) {
+            if (hub != null && hub.isActive() && users.findUser(binding.getUserId()).isPresent()) {
                 result.put(binding.getUserId(), hub);
             }
         }

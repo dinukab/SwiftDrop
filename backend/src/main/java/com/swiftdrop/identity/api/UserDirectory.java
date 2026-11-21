@@ -13,7 +13,7 @@ public interface UserDirectory {
      * Looks up an existing user by their unique identifier.
      *
      * @param id the user ID
-     * @return the user summary, or empty if no user exists with this ID
+     * @return the user summary, or empty if no user exists with this ID or the account was deleted
      */
     Optional<UserSummary> findUser(UUID id);
 

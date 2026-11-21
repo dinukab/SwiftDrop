@@ -185,7 +185,19 @@ class HubServiceTest {
                 new DispatcherHub(DISPATCHER, uva.getId(), NOW),
                 new DispatcherHub(other, closed.getId(), NOW),
                 new DispatcherHub(UUID.randomUUID(), UUID.randomUUID(), NOW)));
+        when(users.findUser(DISPATCHER)).thenReturn(Optional.of(
+                new com.swiftdrop.identity.api.UserSummary(DISPATCHER, "Nimal Perera", "nimal@example.test",
+                        java.util.Set.of("DISPATCHER"), true)));
 
         assertThat(service.listDispatcherHubs()).containsOnlyKeys(DISPATCHER).containsEntry(DISPATCHER, uva);
+    }
+
+    @Test
+    void aDeletedDispatcherIsNotListed() {
+        when(hubs.findAll()).thenReturn(List.of(uva));
+        when(bindings.findAll()).thenReturn(List.of(new DispatcherHub(DISPATCHER, uva.getId(), NOW)));
+        when(users.findUser(DISPATCHER)).thenReturn(Optional.empty());
+
+        assertThat(service.listDispatcherHubs()).isEmpty();
     }
 }

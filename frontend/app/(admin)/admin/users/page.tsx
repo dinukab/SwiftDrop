@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useAuth } from "@/lib/auth-context";
 import {
   api,
@@ -19,6 +19,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { UserDetailsDialog } from "@/components/admin/user-details-dialog";
 import {
   Plus,
   RefreshCw,
@@ -664,6 +665,10 @@ export default function AdminUsersPage() {
   const [isStatusSubmitting, setIsStatusSubmitting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
+  // User details dialog, opened by clicking a user's name in the list
+  const [detailUser, setDetailUser] = useState<UserResponse | null>(null);
+  const closeUserDetails = useCallback(() => setDetailUser(null), [setDetailUser]);
+
   function handleOpenStatusModal(
     targetUser: UserResponse,
     newEnabled: boolean,
@@ -1086,7 +1091,14 @@ export default function AdminUsersPage() {
                             </div>
                             <div className="min-w-0">
                               <div className="flex items-center gap-2 font-medium text-foreground">
-                                <span className="truncate">{item.fullName}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => setDetailUser(item)}
+                                  aria-haspopup="dialog"
+                                  className="truncate rounded text-left hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                >
+                                  {item.fullName}
+                                </button>
                                 {isSelf && (
                                   <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-primary text-primary-foreground">
                                     You
@@ -1236,6 +1248,24 @@ export default function AdminUsersPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* User details, opened from a name in the user list */}
+      {detailUser && (
+        <UserDetailsDialog
+          key={detailUser.id}
+          user={detailUser}
+          onClose={closeUserDetails}
+          isSelf={detailUser.id === currentAdminId}
+          onDeleted={(deleted) => {
+            setDetailUser(null);
+            setNotification({
+              type: "success",
+              message: `${deleted.fullName} was deleted. The account is disabled and no longer appears in the user list.`,
+            });
+            handleRefresh();
+          }}
+        />
+      )}
 
       {/* Reject Merchant Application Modal */}
       <AccessibleModal
