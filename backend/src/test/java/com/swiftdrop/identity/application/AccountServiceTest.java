@@ -20,8 +20,10 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.factory.PasswordEncoderFactories;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.web.server.ResponseStatusException;
 
 import com.swiftdrop.identity.api.UserSummary;
+import com.swiftdrop.identity.domain.ExternalIdentityRepository;
 import com.swiftdrop.identity.domain.Role;
 import com.swiftdrop.identity.domain.User;
 import com.swiftdrop.identity.domain.UserRepository;
@@ -30,14 +32,16 @@ class AccountServiceTest {
 
     private final PasswordEncoder encoder = PasswordEncoderFactories.createDelegatingPasswordEncoder();
     private UserRepository users;
+    private ExternalIdentityRepository identities;
     private AccountService service;
 
     @BeforeEach
     void setUp() {
         users = mock(UserRepository.class);
+        identities = mock(ExternalIdentityRepository.class);
                 when(users.findByEmailIgnoringCase(any())).thenCallRealMethod();
         when(users.saveAndFlush(any())).thenAnswer(call -> withId(call.getArgument(0)));
-        service = new AccountService(users, encoder);
+        service = new AccountService(users, encoder, identities);
     }
 
     @Test
@@ -165,6 +169,15 @@ class AccountServiceTest {
     }
 
     @Test
+    void findUserHidesDeletedAccountsFromOtherModules() {
+        User deleted = withId(new User("gone@example.com", "hash", "Gone Gerry", Set.of(Role.COURIER)));
+        deleted.markDeleted(java.time.Instant.now());
+        when(users.findById(deleted.getId())).thenReturn(Optional.of(deleted));
+
+        assertThat(service.findUser(deleted.getId())).isEmpty();
+    }
+
+    @Test
     void findUserReturnsEmptyWhenUserNotFound() {
         UUID id = UUID.randomUUID();
         when(users.findById(id)).thenReturn(Optional.empty());
@@ -206,12 +219,68 @@ class AccountServiceTest {
     void findAllUsersReturnsAllUsersFromRepository() {
         User alice = existing("h1");
         User bob = withId(new User("bob@example.com", "h2", "Bob", Set.of(Role.COURIER)));
-        when(users.findAll()).thenReturn(List.of(alice, bob));
+        when(users.findByDeletedAtIsNull()).thenReturn(List.of(alice, bob));
 
         List<User> result = service.findAllUsers();
 
         assertThat(result).containsExactly(alice, bob);
-        verify(users).findAll();
+        verify(users).findByDeletedAtIsNull();
+    }
+
+    @Test
+    void deleteUserAnonymisesDisablesAndRemovesExternalSignInLinks() {
+        UUID adminId = UUID.randomUUID();
+        User target = withId(new User("leaving@example.com", "hash", "Leaving Lee", Set.of(Role.COURIER)));
+        UUID targetId = target.getId();
+        when(users.findById(targetId)).thenReturn(Optional.of(target));
+
+        service.deleteUser(targetId, adminId);
+
+        assertThat(target.isDeleted()).isTrue();
+        assertThat(target.isEnabled()).isFalse();
+        assertThat(target.getFullName()).isEqualTo("Deleted user");
+        assertThat(target.getEmail()).isEqualTo("deleted-" + targetId + "@deleted.invalid");
+        assertThat(target.getPasswordHash()).isNull();
+        verify(identities).deleteByUserId(targetId);
+        verify(users).saveAndFlush(target);
+    }
+
+    @Test
+    void anAdministratorCannotDeleteTheirOwnAccount() {
+        UUID adminId = UUID.randomUUID();
+
+        assertThatThrownBy(() -> service.deleteUser(adminId, adminId))
+                .isInstanceOf(SelfDeletionException.class);
+        verify(users, never()).findById(any());
+        verify(identities, never()).deleteByUserId(any());
+    }
+
+    @Test
+    void deletingAnUnknownOrAlreadyDeletedUserIsNotFound() {
+        UUID unknown = UUID.randomUUID();
+        when(users.findById(unknown)).thenReturn(Optional.empty());
+        assertThatThrownBy(() -> service.deleteUser(unknown, UUID.randomUUID()))
+                .isInstanceOf(ResponseStatusException.class);
+
+        User alreadyDeleted = withId(new User("gone@example.com", "hash", "Gone", Set.of(Role.CUSTOMER)));
+        alreadyDeleted.markDeleted(java.time.Instant.now());
+        UUID goneId = alreadyDeleted.getId();
+        when(users.findById(goneId)).thenReturn(Optional.of(alreadyDeleted));
+        assertThatThrownBy(() -> service.deleteUser(goneId, UUID.randomUUID()))
+                .isInstanceOf(ResponseStatusException.class);
+        verify(identities, never()).deleteByUserId(goneId);
+    }
+
+    @Test
+    void aDeletedAccountCannotBeReEnabled() {
+        User deleted = withId(new User("gone@example.com", "hash", "Gone", Set.of(Role.CUSTOMER)));
+        deleted.markDeleted(java.time.Instant.now());
+        UUID deletedId = deleted.getId();
+        when(users.findById(deletedId)).thenReturn(Optional.of(deleted));
+
+        assertThatThrownBy(() -> service.updateUserStatus(deletedId, true, UUID.randomUUID()))
+                .isInstanceOf(ResponseStatusException.class);
+        assertThat(deleted.isEnabled()).isFalse();
     }
 
     @Test
@@ -296,12 +365,12 @@ class AccountServiceTest {
     @Test
     void findUsersPaginatesAndFiltersByRole() {
         org.springframework.data.domain.Page<User> pageMock = new org.springframework.data.domain.PageImpl<>(List.of(existing("h1")));
-        when(users.findAll(any(org.springframework.data.domain.Pageable.class))).thenReturn(pageMock);
+        when(users.findByDeletedAtIsNull(any(org.springframework.data.domain.Pageable.class))).thenReturn(pageMock);
         when(users.findByRole(any(Role.class), any(org.springframework.data.domain.Pageable.class))).thenReturn(pageMock);
 
         org.springframework.data.domain.Page<User> allPage = service.findUsers(0, 20, null);
         assertThat(allPage.getContent()).hasSize(1);
-        verify(users).findAll(any(org.springframework.data.domain.Pageable.class));
+        verify(users).findByDeletedAtIsNull(any(org.springframework.data.domain.Pageable.class));
 
         org.springframework.data.domain.Page<User> courierPage = service.findUsers(0, 20, Role.COURIER);
         assertThat(courierPage.getContent()).hasSize(1);

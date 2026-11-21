@@ -21,6 +21,8 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
+import com.swiftdrop.identity.api.UserDirectory;
+
 import com.swiftdrop.merchant.application.MerchantOnboardingService;
 import com.swiftdrop.merchant.domain.Merchant;
 import com.swiftdrop.merchant.domain.MerchantStatus;
@@ -44,9 +46,11 @@ import com.swiftdrop.shared.web.PageResponse;
 class MerchantController {
 
     private final MerchantOnboardingService onboarding;
+    private final UserDirectory users;
 
-    MerchantController(MerchantOnboardingService onboarding) {
+    MerchantController(MerchantOnboardingService onboarding, UserDirectory users) {
         this.onboarding = onboarding;
+        this.users = users;
     }
 
     /** Public merchant registration. Creates MERCHANT user + PENDING merchant atomically. */
@@ -81,7 +85,9 @@ class MerchantController {
         int pageNum = page != null ? Math.max(0, page) : PageLimit.DEFAULT_PAGE_NUMBER;
         int pageSize = size != null ? PageLimit.clampSize(size) : PageLimit.DEFAULT_PAGE_SIZE;
         Page<Merchant> merchantPage = onboarding.list(pageNum, pageSize, statusFilter);
+        // Merchants of deleted accounts are hidden. The total still counts them, so a page can hold fewer items.
         List<MerchantResponse> items = merchantPage.getContent().stream()
+                .filter(merchant -> users.findUser(merchant.getUserId()).isPresent())
                 .map(MerchantResponse::from)
                 .toList();
         return PageResponse.of(items, merchantPage.getNumber(), pageSize, merchantPage.getTotalElements());
