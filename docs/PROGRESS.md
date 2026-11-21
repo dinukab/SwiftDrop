@@ -584,8 +584,8 @@ Owns the `notification` module, the outbox relay and `shared.messaging`.
 | 9.1 | RabbitMQ topology (exchange, queues, dead-letter) and broker check | SD-501 | 🟡 | `feature/messaging-and-webhook` | | |
 | 9.2 | Outbox relay: publish `parcel_outbox_events` in order (one instance; off by default) | SD-502 | 🟡 | `merchantandecommerce` | | 2026-11-15 |
 | 9.3 | Shared ordered-consumer support (duplicates, gaps) | SD-503 | ⬜ | | | |
-| 9.4 | Notification consumer and mock SMS/email store | SD-504 | ⬜ | | | |
-| 9.5 | Notifications inbox API, page and unread bell | SD-506 | ⬜ | | | |
+| 9.4 | Notification consumer and mock SMS/email store | SD-504 | 🟡 | `feature/notifications` | | 2026-11-21 |
+| 9.5 | Notifications inbox API, page and unread bell | SD-506 | 🟡 | `feature/notifications` | | 2026-11-21 |
 | 9.6 | Dead-letter replay (audited, admin only) | SD-507 | ⬜ | | | |
 | 9.7 | Event-flow integration test (TST-1) | SD-701 | ⬜ | | | |
 
