@@ -41,8 +41,8 @@ const plannedAreas = [
   {
     icon: BarChart3,
     title: "Operational Reports",
-    description: "Daily delivery volumes, outcome breakdowns, and courier performance analytics.",
-    endpoints: ["GET /api/v1/reports/daily-deliveries (planned)"],
+    description: "Parcels created per day and delivery outcomes with the success rate, for a chosen date range.",
+    endpoints: ["GET /api/v1/reports/daily-deliveries", "GET /api/v1/reports/delivery-outcomes"],
   },
 ];
 
