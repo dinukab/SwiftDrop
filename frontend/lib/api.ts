@@ -160,6 +160,15 @@ export interface PricingRuleRequest {
   active: boolean;
 }
 
+// Admin reports (ADM-4, D-08). Dates are "YYYY-MM-DD" business days in `timeZone`; both ends inclusive.
+export interface DailyDeliveriesResponse {
+  from: string;
+  to: string;
+  timeZone: string;
+  total: number;
+  days: { date: string; count: number }[];
+}
+
 export interface BookingAddress {
   contactName: string;
   phone: string;
