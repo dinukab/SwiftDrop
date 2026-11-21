@@ -223,6 +223,10 @@ class MigrationConventionTest {
                         tuple(
                                 "202611191000",
                                 "delivery add leg transfers",
-                                "delivery/V202611191000__delivery_add_leg_transfers.sql"));
+                                "delivery/V202611191000__delivery_add_leg_transfers.sql"),
+                        tuple(
+                                "202611211000",
+                                "notification create notifications",
+                                "notification/V202611211000__notification_create_notifications.sql"));
     }
 }
