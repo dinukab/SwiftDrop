@@ -61,7 +61,7 @@ class MerchantExceptionHandler {
     /** The order's pickup is in another province than the registered pickup address. */
     @ExceptionHandler(PickupZoneMismatchException.class)
     ProblemDetail pickupZoneMismatch(PickupZoneMismatchException e) {
-        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.UNPROCESSABLE_ENTITY, e.getMessage());
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.UNPROCESSABLE_CONTENT, e.getMessage());
         problem.setProperty("invalidFields", List.of("pickup.zoneId"));
         return problem;
     }

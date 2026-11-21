@@ -65,7 +65,7 @@ class MerchantApiController {
         CreatedParcel created = orderService.placeOrder(
                 merchantId,
                 request.merchantOrderReference(),
-                request.pickup().toDeliveryContact(),
+                request.pickup() == null ? null : request.pickup().toDeliveryContact(),
                 request.dropoff().toDeliveryContact(),
                 request.size(),
                 request.weightGrams(),

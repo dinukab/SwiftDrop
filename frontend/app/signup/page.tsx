@@ -9,6 +9,14 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Eye, EyeOff } from "lucide-react";
+import {
+  EMPTY_PICKUP_ADDRESS,
+  PickupAddressFields,
+  toPickupAddressRequest,
+  useZones,
+  validatePickupAddress,
+  type PickupAddressForm,
+} from "@/components/merchant/pickup-address-fields";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_PASSWORD_BYTES = 72;
@@ -39,6 +47,8 @@ function SignupForm() {
   const [businessName, setBusinessName] = useState("");
   const [contactPhone, setContactPhone] = useState("");
   const [registrationNumber, setRegistrationNumber] = useState("");
+  const [pickupAddress, setPickupAddress] = useState<PickupAddressForm>(EMPTY_PICKUP_ADDRESS);
+  const { zones, zonesError } = useZones();
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isConflict, setIsConflict] = useState(false);
@@ -104,6 +114,11 @@ function SignupForm() {
         setErrorMessage("Email address must be at most 254 characters.");
         return;
       }
+      const addressProblem = validatePickupAddress(pickupAddress);
+      if (addressProblem) {
+        setErrorMessage(addressProblem);
+        return;
+      }
     }
 
     if (!password) {
@@ -146,6 +161,7 @@ function SignupForm() {
           businessName: trimmedBusinessName,
           registrationNumber: trimmedRegistrationNumber,
           contactPhone: trimmedPhone,
+          pickupAddress: toPickupAddressRequest(pickupAddress),
         });
         setSubmittedAs("merchant");
         return;
@@ -337,6 +353,20 @@ function SignupForm() {
                     className="bg-background text-sm"
                   />
                 </div>
+                <fieldset className="space-y-3 rounded-lg border border-border p-3">
+                  <legend className="px-1 text-sm font-medium">Pickup / warehouse address</legend>
+                  <p className="text-[11px] text-muted-foreground">
+                    Where SwiftDrop couriers collect your parcels. You can change it later in the merchant portal.
+                  </p>
+                  <PickupAddressFields
+                    idPrefix="signup-pickup"
+                    value={pickupAddress}
+                    onChange={setPickupAddress}
+                    zones={zones}
+                    zonesError={zonesError}
+                    disabled={isLoading}
+                  />
+                </fieldset>
               </>
             )}
 
