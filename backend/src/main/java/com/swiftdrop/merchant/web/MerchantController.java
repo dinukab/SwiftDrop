@@ -14,6 +14,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -33,6 +34,7 @@ import com.swiftdrop.shared.web.PageResponse;
  * <ul>
  *   <li>{@code POST /api/v1/merchants} — public registration (PENDING)</li>
  *   <li>{@code GET /api/v1/merchants/me} — own profile (MERCHANT)</li>
+ *   <li>{@code PUT /api/v1/merchants/me/pickup-address} — set or replace own pickup address (MERCHANT)</li>
  *   <li>{@code GET /api/v1/merchants} — admin directory</li>
  *   <li>{@code POST /api/v1/merchants/{id}/approval} — admin approve</li>
  *   <li>{@code POST /api/v1/merchants/{id}/rejection} — admin reject</li>
@@ -59,7 +61,20 @@ class MerchantController {
                 request.password(),
                 request.businessName(),
                 request.registrationNumber(),
-                request.contactPhone()));
+                request.contactPhone(),
+                request.pickupAddress().toDomain()));
+    }
+
+    /**
+     * Sets or replaces the merchant's own pickup (warehouse) address, in any status, so a merchant registered before
+     * the address was required can add it and a pending merchant can correct it.
+     */
+    @PutMapping("/me/pickup-address")
+    @PreAuthorize("hasRole('MERCHANT')")
+    MerchantResponse changePickupAddress(@AuthenticationPrincipal Jwt jwt,
+            @Valid @RequestBody MerchantPickupAddressRequest request) {
+        UUID userId = UUID.fromString(jwt.getSubject());
+        return MerchantResponse.from(onboarding.changePickupAddress(userId, request.toDomain()));
     }
 
     /** Authenticated merchant's own profile and approval status. */

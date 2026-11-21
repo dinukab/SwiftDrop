@@ -14,9 +14,12 @@ import com.swiftdrop.delivery.api.ParcelConflictException;
 import com.swiftdrop.delivery.api.ParcelNotFoundException;
 import com.swiftdrop.identity.api.PasswordRejectedException;
 import com.swiftdrop.merchant.application.ApiKeyLimitExceededException;
+import com.swiftdrop.merchant.application.InvalidPickupZoneException;
 import com.swiftdrop.merchant.application.MerchantConflictException;
 import com.swiftdrop.merchant.application.MerchantNotApprovedException;
 import com.swiftdrop.merchant.application.MerchantNotFoundException;
+import com.swiftdrop.merchant.application.PickupAddressRequiredException;
+import com.swiftdrop.merchant.application.PickupZoneMismatchException;
 import com.swiftdrop.merchant.application.RegistrationNumberAlreadyRegisteredException;
 import com.swiftdrop.merchant.application.WebhookDeliveryNotRedeliverableException;
 
@@ -45,6 +48,30 @@ class MerchantExceptionHandler {
     @ExceptionHandler(MerchantConflictException.class)
     ProblemDetail conflict(MerchantConflictException e) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, e.getMessage());
+    }
+
+    /** The zone in the pickup address does not exist; names the field only. */
+    @ExceptionHandler(InvalidPickupZoneException.class)
+    ProblemDetail invalidPickupZone(InvalidPickupZoneException e) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, e.getMessage());
+        problem.setProperty("invalidFields", List.of("pickupAddress.zoneId"));
+        return problem;
+    }
+
+    /** The order's pickup is in another province than the registered pickup address. */
+    @ExceptionHandler(PickupZoneMismatchException.class)
+    ProblemDetail pickupZoneMismatch(PickupZoneMismatchException e) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.UNPROCESSABLE_ENTITY, e.getMessage());
+        problem.setProperty("invalidFields", List.of("pickup.zoneId"));
+        return problem;
+    }
+
+    /** No pickup sent and none registered. */
+    @ExceptionHandler(PickupAddressRequiredException.class)
+    ProblemDetail pickupRequired(PickupAddressRequiredException e) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, e.getMessage());
+        problem.setProperty("invalidFields", List.of("pickup"));
+        return problem;
     }
 
     @ExceptionHandler(MerchantNotApprovedException.class)
