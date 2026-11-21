@@ -1,6 +1,6 @@
 # Connecting the ecommerce site to SwiftDrop (merchant integration)
 
-Status: **In progress**, last updated 2026-11-15. Branch `merchantandecommerce` (SwiftDrop) and
+Status: **In progress**, last updated 2026-11-21 (flow review after the dispatcher hub work, section 8b). Branch `merchantandecommerce` (SwiftDrop) and
 branch `dev3` (ecommerce store). The work is committed and pushed on those branches (SwiftDrop
 latest: `33c1dbb`); merging to `DEV`/`main` is the team's decision.
 
@@ -53,10 +53,10 @@ Buyer -> store checkout -> store creates a Shipment (booking)
 |---|---|---|---|
 | 1 | Pause / cancel lifecycle (delivery) | ✅ Built and tested | Courier rules untouched; migration `V202611151000` |
 | 2 | Merchant actions and store status API | ✅ Built and tested | Portal page done; store API `GET /merchant-api/orders/{ref}` |
-| 3 | Dispatcher queue, assignment, workload | 🟡 Built and tested | Courier **admin** API and assignment history missing |
+| 3 | Dispatcher queue, assignment, workload | ✅ Built and tested (dispatcher team, PR #23–#28) | Now hub-based: courier profile API, hub binding, legs, hub-to-hub transfers, assignment history ([ADR 0007](adr/0007-multi-leg-shipments-and-hub-handover.md), *Proposed*) |
 | 4 | Webhook pipeline (relay, consumer, sender) | 🟡 Built and tested, **off by default** | History and redelivery API built; merchant UI view, demo receiver and live run missing |
 | 5 | Store request signatures, duplicate-order check, rate limit | 🟡 Built and tested, **optional by default** | Store does not sign yet |
-| 6 | Ecommerce store changes | ✅ Code complete (uncommitted) | Needs a live end-to-end run and `npm run build` |
+| 6 | Ecommerce store changes | ✅ Code complete (uncommitted) | Hub statuses added 2026-11-21 (section 8b); store migration not yet applied; needs a live end-to-end run |
 | 7 | Connection runbook | 🟡 Written in section 5; needs the updates listed there | Not yet run end to end with the store |
 
 Legend: ✅ done and verified · 🟡 partly done · ⬜ not started.
@@ -142,12 +142,10 @@ Legend: ✅ done and verified · 🟡 partly done · ⬜ not started.
   merchant user refused as courier, unknown parcel, assignment, the merchant can still hold an
   assigned order, an inactive courier refused).
 
-**Still to do**
-- **Courier profile admin API** (PROGRESS 7.1). There is no endpoint to create or edit a courier
-  profile, so in practice no courier can be assigned yet. The end-to-end run inserted a profile by SQL.
-  This is the most important gap for real use.
-- Courier management tab on the dispatcher screen (PROGRESS 7.5, part 4).
-- Assignment history per parcel (PROGRESS 7.4; depends on delivery work).
+**Update 2026-11-21.** The dispatcher and courier teams have since built the courier profile admin API
+(`/api/v1/couriers`, ADMIN), hubs and dispatcher-to-hub binding, multi-leg routes, hub-to-hub transfers and
+assignment history. The queue and assignment are now scoped to the dispatcher's hub. See section 8b for what
+this means for the store.
 
 ### Phase 4. Webhook pipeline, SwiftDrop to the store 🟡 (off by default)
 
@@ -296,7 +294,7 @@ See section 5. The steps still need these corrections, which are in the new code
   signing secrets and to store webhook secrets. Without them, keys have no secret.
 - Enable the relay and the webhook sender explicitly (`SWIFTDROP_MESSAGING_RELAY_ENABLED=true`,
   `SWIFTDROP_WEBHOOKS_ENABLED=true`). RabbitMQ credentials must then be set for the backend.
-- Courier profiles cannot be created through the app yet (see Phase 3).
+- Dispatchers must be bound to a hub and couriers need a profile with a home hub (see runbook step 8).
 
 ---
 
@@ -331,8 +329,8 @@ yours; never commit them.
    - `SWIFTDROP_MESSAGING_RELAY_ENABLED=true`, `SWIFTDROP_WEBHOOKS_ENABLED=true`
    - `SWIFTDROP_WEBHOOK_ALLOW_LOCAL=true` (development only; lets the store on `localhost` receive webhooks)
    - Then `.\mvnw.cmd spring-boot:run` from `backend/`. Migrations run at startup.
-3. **Merchant account.** Sign up the store as a merchant (`POST /api/v1/merchants/register`), then an
-   admin approves it (`PATCH /api/v1/admin/merchants/{id}/status` with `{"action":"APPROVE"}`).
+3. **Merchant account.** Sign up the store as a merchant (`POST /api/v1/merchants`, or the merchant tab
+   on `/signup`), then an admin approves it (`POST /api/v1/merchants/{id}/approval`, or Admin → Users).
 4. **Key and webhook.** The merchant logs in and creates an API key (`POST /api/v1/merchants/me/api-keys`).
    The response contains the key and the signing secret, **both shown once**. Register the webhook
    (`POST /api/v1/merchants/me/webhooks`) with URL `http://localhost:3100/api/webhooks/swiftdrop`
@@ -345,8 +343,12 @@ yours; never commit them.
    `SWIFTDROP_MERCHANT_PASSWORD` for the zone sync. `SWIFTDROP_SIGNING_SECRET` (the key's signing secret). Then `npm run zones:sync`, `npm run dev` (port 3100) and `npm run cron:local`.
 7. **Signatures.** Leave `SWIFTDROP_MERCHANT_API_REQUIRE_SIGNATURE=false` until the store signs its
    requests (done in the store code). Then set it to `true` and create new keys for the store.
-8. **Dispatch.** An admin creates dispatcher and courier accounts (staff endpoint). Courier profiles
-   are needed for assignment and cannot be created in the app yet (Phase 3 gap).
+8. **Dispatch.** An admin creates dispatcher and courier accounts (staff endpoint), binds the dispatcher
+   to a hub (`PUT /api/v1/dispatchers/{userId}/hub` with `{"hubCode":"LK-WP"}`), and creates a courier
+   profile (`POST /api/v1/couriers` with `userId`, `phone`, `vehicleType`, `hubCode`). The store's orders
+   appear only for the dispatcher of the hub whose code equals the province code of `STORE_PICKUP_ZONE_ID`,
+   and only couriers based at that hub (or with no hub) can be assigned. A delivery to another province also
+   needs dispatchers at the Main Hub (`LK-WP`) and the destination hub for the transfers and the final leg.
 9. **Check.** Place an order on the store, then check the merchant portal and the dispatcher screen.
 
 ---
@@ -367,10 +369,11 @@ backend can produce them. Both do now.
 ## 7. Next steps, in order
 
 1. ~~Store signing and status API~~ (done in code). Next: run it live and require signatures.
-2. **Courier profile admin API** (PROGRESS 7.1). Unblocks real dispatch.
+2. ~~Courier profile admin API~~ (built by the dispatcher team). Next: apply the store's hub-status
+   migration (section 8b) and run the hub route end to end.
 3. ~~Store zone-code mapping~~ (done in code). Next: run `npm run zones:sync` and schedule the cron call.
 4. ~~Webhook history and redelivery API~~ (built). Next: the merchant history view and the demo receiver (PROGRESS 5.7).
-5. **Courier management tab and assignment history** (PROGRESS 7.4, 7.5).
+5. ~~Assignment history~~ (built). Team review of ADR 0007 (multi-leg, *Proposed*).
 6. **Team review** of ADR 0006 section 1A, then acceptance or changes.
 7. **Full end-to-end run** with the runbook above, and the store's test suite.
 
@@ -410,13 +413,51 @@ shape agree between SwiftDrop and the store. Remaining concerns:
 
 ---
 
+## 8b. Flow review (2026-11-21): after the dispatcher hub work
+
+Checked by reading code in both repositories; **no live run**.
+
+**Order details to the dispatcher: works.** A store order is a `CREATED` parcel. `GET /api/v1/unassigned-parcels`
+now lists only parcels whose pickup province equals the dispatcher's hub code. Hub codes (`LK-WP`, `LK-UP`,
+`LK-SGP`, ...) are the zone codes the store syncs, so the order appears for the pickup hub's dispatcher.
+Assignment plans the legs (same province: pickup and final mile; otherwise through the Colombo Main Hub).
+
+**Tracking details back to the store: was broken, fixed in the store.** The courier lifecycle no longer has
+`PICKED_UP -> IN_TRANSIT`; every parcel goes `PICKED_UP -> HUB_ARRIVED`, and hub-to-hub transfers by dispatchers
+add `IN_TRANSIT -> HUB_ARRIVED`. All of these are recorded with the outbox, so webhooks and the status API carry
+them. The store knew only eight statuses and validated them strictly, so:
+- its webhook endpoint answered `400` to the first hub event (and every later one), which SwiftDrop treats as a
+  final failure (no retry);
+- its poller could not read `GET /api/v1/merchant-api/orders/{ref}` once the history had a hub event;
+- the buyer's order stayed at "Picked up" and never closed.
+
+**Fix (store, `dev3`, uncommitted, 2026-11-21).** `HUB_ARRIVED` and `HUB_SORTED` added to the Prisma enum
+(migration `20261121100000_delivery_hub_statuses`, additive), the status list and labels; the buyer timeline
+shows hub steps as "On the way"; badges "At a SwiftDrop hub" / "In transit"; the mock simulator follows the hub
+route. For the future, the store no longer rejects a status it does not know: the webhook answers `200` and logs
+it as `IGNORED`, and the status API parser skips such events, so later known events (ordered by sequence) still
+apply. Checks: type-check and lint clean, 84 of 84 unit tests pass. SwiftDrop's merchant orders page also gained
+filters and badges for the hub statuses. No SwiftDrop backend change.
+
+**To do on a running system.**
+1. Apply the store migration (`npx prisma migrate deploy` with the store database running on port 5434).
+2. Webhook deliveries that already failed recover through polling (the status API returns the full sequenced
+   history); a merchant can also redeliver them (`POST /api/v1/merchants/me/webhook-deliveries/{id}/redeliveries`,
+   at most 3 times).
+3. End-to-end run: store order -> pickup-hub dispatcher assigns -> `PICKED_UP` -> `HUB_ARRIVED` -> (other
+   province: transfer and receipt via `LK-WP`) -> final-mile courier -> `OUT_FOR_DELIVERY` -> `DELIVERED`; check the
+   store's webhook log and `/account/orders` at each step.
+
+---
+
 ## 9. Risks and limits
 
 - **Relay and sender are single-instance.** Several instances would break event order and need more
   testing before use.
 - **Signatures are replayable within 5 minutes** (no nonce yet). Orders are idempotent, so a replay
   cannot create a second parcel.
-- **Courier profiles** cannot be created in the app; dispatch cannot assign real couriers until they can.
+- **New SwiftDrop statuses break strict consumers.** The store now skips statuses it does not know
+  (section 8b), but any other merchant integration that validates statuses strictly would reject them.
 - **ADR 0006 section 1A is still "Proposed"**; the team has not yet reviewed it.
 - **Database changes are one-way** where noted in section 4 (status constraints, outbox backfill).
 - **Webhooks and signing depend on keys** (`SWIFTDROP_WEBHOOK_KEYS`). Losing a key makes the secrets
