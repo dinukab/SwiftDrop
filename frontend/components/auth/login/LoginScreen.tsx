@@ -18,6 +18,7 @@ import {
   type AccountType,
 } from "../AccountTabs";
 import { AuthSplitLayout } from "../AuthSplitLayout";
+import { GoogleLogo } from "../GoogleLogo";
 import { LOGIN_VIEWS } from "./data";
 
 const STAFF_PORTAL_PATHS = ["/admin", "/dispatcher", "/courier"];
@@ -184,7 +185,7 @@ export function LoginScreen() {
           <Button
             type="button"
             variant="outline"
-            className="h-11 w-full rounded-xl font-medium"
+            className="h-11 w-full gap-3 rounded-xl font-medium"
             onClick={() => {
               if (typeof window !== "undefined") {
                 const targetPath = sanitizeInternalRedirect(redirectParam, "");
@@ -198,6 +199,7 @@ export function LoginScreen() {
               window.location.assign(target);
             }}
           >
+            <GoogleLogo className="size-5" />
             Sign in with Google
           </Button>
         </div>

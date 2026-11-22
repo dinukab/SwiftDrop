@@ -32,7 +32,7 @@ export function NavHeader() {
               Track Parcel
             </Link>
             {hasRole("CUSTOMER") && (
-              <Link href="/customer" className="hover:text-sidebar-foreground transition-colors">
+              <Link href="/customer/history" className="hover:text-sidebar-foreground transition-colors">
                 My Deliveries
               </Link>
             )}

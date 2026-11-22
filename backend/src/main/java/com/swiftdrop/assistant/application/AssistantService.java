@@ -2,6 +2,8 @@ package com.swiftdrop.assistant.application;
 
 import java.util.Map;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import tools.jackson.databind.JsonNode;
@@ -18,7 +20,12 @@ import tools.jackson.databind.node.ObjectNode;
 @Service
 public class AssistantService {
 
+    private static final Logger log = LoggerFactory.getLogger(AssistantService.class);
+
     private static final int MAX_TOOL_ROUNDS = 5;
+    static final String NOT_CONFIGURED_REPLY = "The AI assistant is not configured yet. Please try again later.";
+    static final String UNAVAILABLE_REPLY =
+            "The assistant is busy right now. Please try again in a moment.";
 
     private final GeminiClient gemini;
     private final AssistantTools tools;
@@ -31,9 +38,19 @@ public class AssistantService {
 
     public String chat(String message) {
         if (!gemini.isConfigured()) {
-            return "The AI assistant is not configured yet. Please try again later.";
+            return NOT_CONFIGURED_REPLY;
         }
+        try {
+            return converse(message);
+        } catch (GeminiClient.AssistantUnavailableException e) {
+            // Overload (503) and rate limits (429) are routine on the free tier. The message is
+            // safe to log: it holds a status or exception class, never the key or the URL.
+            log.warn("Assistant unavailable: {}", e.getMessage());
+            return UNAVAILABLE_REPLY;
+        }
+    }
 
+    private String converse(String message) {
         ArrayNode contents = mapper.createArrayNode();
         contents.add(userContent(message));
         ArrayNode toolDeclarations = toolDeclarations();
@@ -102,7 +119,7 @@ public class AssistantService {
         track.put("name", "get_parcel_status");
         track.put("description",
                 "Get the current status and location of a parcel by its tracking number "
-                        + "(for example SWD-XXXX). Use when the customer asks where their parcel is.");
+                        + "(for example SD7K3M9Q2XWB). Use when the customer asks where their parcel is.");
         ObjectNode trackParams = track.putObject("parameters");
         trackParams.put("type", "OBJECT");
         ObjectNode trackProps = trackParams.putObject("properties");

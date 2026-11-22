@@ -15,7 +15,6 @@ export const DISPATCHER_NAV: PortalNavItem[] = [
 ];
 
 export const ADMIN_NAV: PortalNavItem[] = [
-  { href: "/admin", label: "Overview", exact: true },
   { href: "/admin/users", label: "User Directory", exact: true },
   { href: "/admin/zones", label: "Delivery Zones", exact: true },
   { href: "/admin/pricing", label: "Pricing Rules", exact: true },
