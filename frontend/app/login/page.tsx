@@ -10,6 +10,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SiteNavbar } from "@/components/landing/site-navbar";
+
+const STAFF_PORTAL_PATHS = ["/admin", "/dispatcher", "/courier"];
 
 function LoginForm() {
   const router = useRouter();
@@ -20,16 +23,22 @@ function LoginForm() {
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [accountType, setAccountType] = useState<"customer" | "staff">("customer");
 
   const registered = searchParams.get("registered") === "true";
   const expired = searchParams.get("expired") === "true";
   const redirectParam = searchParams.get("redirect");
 
+  // A sign-in that returns to a staff portal (from the staff page or a portal's sign-in
+  // redirect) is a staff sign-in. This only changes what the form offers; roles still come
+  // from the backend after sign-in.
+  const isStaffSignIn = STAFF_PORTAL_PATHS.some((path) =>
+    sanitizeInternalRedirect(redirectParam, "").startsWith(path)
+  );
+
   // Google button is enabled only when explicitly configured via environment flag (AC-2),
   // and only for customers: Google sign-in creates or finds customer accounts, never staff.
   const isGoogleLoginEnabled = process.env.NEXT_PUBLIC_ENABLE_GOOGLE_LOGIN === "true";
-  const showGoogleLogin = isGoogleLoginEnabled && accountType === "customer";
+  const showGoogleLogin = isGoogleLoginEnabled && !isStaffSignIn;
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -82,29 +91,6 @@ function LoginForm() {
 
       <form onSubmit={handleSubmit} noValidate>
         <CardContent className="space-y-4">
-          <div
-            role="group"
-            aria-label="Account type"
-            className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1 text-sm font-medium"
-          >
-            {(["customer", "staff"] as const).map((type) => (
-              <button
-                key={type}
-                type="button"
-                aria-pressed={accountType === type}
-                disabled={isLoading}
-                onClick={() => setAccountType(type)}
-                className={`rounded-md px-3 py-1.5 transition ${
-                  accountType === type
-                    ? "bg-background text-foreground shadow-xs"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {type === "customer" ? "Customer" : "Staff"}
-              </button>
-            ))}
-          </div>
-
           {registered && (
             <div
               role="status"
@@ -203,7 +189,9 @@ function LoginForm() {
         </CardContent>
 
         <CardFooter className="flex flex-col gap-2 pt-2 border-t border-border/60 text-center text-xs text-muted-foreground">
-          {accountType === "customer" ? (
+          {isStaffSignIn ? (
+            <p>Staff accounts are created by an administrator.</p>
+          ) : (
             <p>
               Don&apos;t have an account?{" "}
               <Link
@@ -213,8 +201,6 @@ function LoginForm() {
                 Sign up
               </Link>
             </p>
-          ) : (
-            <p>Staff accounts are created by an administrator.</p>
           )}
         </CardFooter>
       </form>
@@ -224,10 +210,13 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <main className="container mx-auto flex-1 flex items-center justify-center px-4 py-12 min-h-[calc(100vh-3.5rem)]">
-      <Suspense fallback={<div className="h-96 w-full max-w-md animate-pulse rounded-xl bg-card border border-border" />}>
-        <LoginForm />
-      </Suspense>
-    </main>
+    <>
+      <SiteNavbar />
+      <main className="container mx-auto flex-1 flex items-center justify-center px-4 py-12 min-h-[calc(100vh-4rem)]">
+        <Suspense fallback={<div className="h-96 w-full max-w-md animate-pulse rounded-xl bg-card border border-border" />}>
+          <LoginForm />
+        </Suspense>
+      </main>
+    </>
   );
 }

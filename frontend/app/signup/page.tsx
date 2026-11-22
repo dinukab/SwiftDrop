@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Eye, EyeOff } from "lucide-react";
+import { SiteNavbar } from "@/components/landing/site-navbar";
 import {
   EMPTY_PICKUP_ADDRESS,
   PickupAddressFields,
@@ -183,7 +184,7 @@ function SignupForm() {
 
   if (submittedAs) {
     return (
-      <main className="container mx-auto flex-1 flex items-center justify-center px-4 py-12 min-h-[calc(100vh-3.5rem)]">
+      <main className="container mx-auto flex-1 flex items-center justify-center px-4 py-12 min-h-[calc(100vh-4rem)]">
         <Card className="w-full max-w-md rounded-xl bg-card border-border shadow-xs">
           <CardHeader className="space-y-1 text-center">
             <div className="inline-flex items-center justify-center gap-1.5 mx-auto mb-2 text-xs font-semibold uppercase tracking-wider text-primary">
@@ -215,7 +216,7 @@ function SignupForm() {
   }
 
   return (
-    <main className="container mx-auto flex-1 flex items-center justify-center px-4 py-12 min-h-[calc(100vh-3.5rem)]">
+    <main className="container mx-auto flex-1 flex items-center justify-center px-4 py-12 min-h-[calc(100vh-4rem)]">
       <Card className="w-full max-w-md rounded-xl bg-card border-border shadow-xs">
         <CardHeader className="space-y-1 text-center">
           <div className="inline-flex items-center justify-center gap-1.5 mx-auto mb-2 text-xs font-semibold uppercase tracking-wider text-primary">
@@ -473,14 +474,17 @@ function SignupForm() {
 
 export default function SignupPage() {
   return (
-    <Suspense
-      fallback={
-        <main className="container mx-auto flex min-h-[50vh] items-center justify-center px-4 py-12">
-          <p className="text-sm text-muted-foreground">Loading registration...</p>
-        </main>
-      }
-    >
-      <SignupForm />
-    </Suspense>
+    <>
+      <SiteNavbar />
+      <Suspense
+        fallback={
+          <main className="container mx-auto flex min-h-[50vh] items-center justify-center px-4 py-12">
+            <p className="text-sm text-muted-foreground">Loading registration...</p>
+          </main>
+        }
+      >
+        <SignupForm />
+      </Suspense>
+    </>
   );
 }
