@@ -30,22 +30,32 @@ export default function MerchantWebhooksPage() {
   // Deleting
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const fetchEndpoints = async () => {
+  // Bumped to load the list again (Refresh, and after an endpoint is added or deleted)
+  const [reloadKey, setReloadKey] = useState(0);
+  const fetchEndpoints = () => {
     setLoading(true);
     setError(null);
-    try {
-      const data = await api.get<WebhookItem[]>("/api/v1/merchants/me/webhooks");
-      setEndpoints(data);
-    } catch (err) {
-      setError(formatApiError(err));
-    } finally {
-      setLoading(false);
-    }
+    setReloadKey((key) => key + 1);
   };
 
+  // State is only set inside the promise callbacks, after the fetch
   useEffect(() => {
-    fetchEndpoints();
-  }, []);
+    let current = true;
+    api
+      .get<WebhookItem[]>("/api/v1/merchants/me/webhooks")
+      .then((data) => {
+        if (current) setEndpoints(data);
+      })
+      .catch((err: unknown) => {
+        if (current) setError(formatApiError(err));
+      })
+      .finally(() => {
+        if (current) setLoading(false);
+      });
+    return () => {
+      current = false;
+    };
+  }, [reloadKey]);
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
