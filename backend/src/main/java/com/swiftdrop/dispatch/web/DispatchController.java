@@ -167,10 +167,10 @@ class DispatchController {
         return size != null ? PageLimit.clampSize(size) : PageLimit.DEFAULT_PAGE_SIZE;
     }
 
-    /** Every active courier with their active parcel count, least busy first. */
+    /** Active couriers based at the caller's hub, with their active parcel count, least busy first. */
     @GetMapping("/api/v1/courier-workloads")
-    List<CourierWorkloadResponse> workloads() {
-        return dispatch.workloads().stream()
+    List<CourierWorkloadResponse> workloads(@AuthenticationPrincipal Jwt jwt) {
+        return dispatch.workloads(Callers.userId(jwt)).stream()
                 .map(w -> new CourierWorkloadResponse(w.courierUserId(), w.name(), w.vehicleType(), w.activeParcels()))
                 .toList();
     }

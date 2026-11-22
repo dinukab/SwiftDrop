@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -135,6 +136,20 @@ class CourierProfileApiTest {
     @TestFactory
     Stream<DynamicTest> courierProfileAuthorizationMatrix() {
         return AuthorizationMatrixExecutor.toDynamicTests(mvc, matrixRows());
+    }
+
+    @Test
+    void theCourierListHidesProfilesOfDeletedAccounts() throws Exception {
+        UUID deletedUserId = UUID.fromString("00000000-0000-0000-0000-0000000000d2");
+        CourierProfile gone = new CourierProfile(deletedUserId, "+94779999999", VehicleType.VAN, NOW);
+        ReflectionTestUtils.setField(gone, "id", UUID.randomUUID());
+        when(profileService.listProfiles(anyInt(), anyInt(), any())).thenReturn(new PageImpl<>(List.of(profile, gone)));
+        when(users.findById(deletedUserId)).thenReturn(Optional.empty());
+
+        mvc.perform(get("/api/v1/couriers").with(TestPrincipal.admin(ADMIN_ID).postProcessor()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(1))
+                .andExpect(jsonPath("$.items[0].fullName").value("Kasun Perera"));
     }
 
     @Test

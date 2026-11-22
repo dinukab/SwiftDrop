@@ -1,5 +1,6 @@
 package com.swiftdrop.identity.domain;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -20,7 +21,12 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 
     boolean existsByRoles(Role role);
 
-    @Query(value = "SELECT DISTINCT u FROM User u JOIN u.roles r WHERE r = :role",
-           countQuery = "SELECT count(DISTINCT u) FROM User u JOIN u.roles r WHERE r = :role")
+    @Query(value = "SELECT DISTINCT u FROM User u JOIN u.roles r WHERE r = :role AND u.deletedAt IS NULL",
+           countQuery = "SELECT count(DISTINCT u) FROM User u JOIN u.roles r WHERE r = :role AND u.deletedAt IS NULL")
     Page<User> findByRole(@Param("role") Role role, Pageable pageable);
+
+    /** Users that have not been deleted, for the admin directory. */
+    Page<User> findByDeletedAtIsNull(Pageable pageable);
+
+    List<User> findByDeletedAtIsNull();
 }

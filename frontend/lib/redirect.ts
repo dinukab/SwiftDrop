@@ -54,7 +54,7 @@ export function getDashboardPathForRoles(roles: string[] | null | undefined): st
     return "/dispatcher";
   }
   if (normalized.has("ADMIN")) {
-    return "/admin";
+    return "/admin/users";
   }
   if (normalized.has("COURIER")) {
     return "/courier";
@@ -62,7 +62,7 @@ export function getDashboardPathForRoles(roles: string[] | null | undefined): st
   if (normalized.has("MERCHANT")) {
     return "/merchant";
   }
-  return "/customer";
+  return "/customer/new";
 }
 
 /**

@@ -160,6 +160,29 @@ export interface PricingRuleRequest {
   active: boolean;
 }
 
+// Admin reports (ADM-4, D-08). Dates are "YYYY-MM-DD" business days in `timeZone`; both ends inclusive.
+export interface DailyDeliveriesResponse {
+  from: string;
+  to: string;
+  timeZone: string;
+  total: number;
+  days: { date: string; count: number }[];
+}
+
+/**
+ * Parcels that reached DELIVERED or FAILED, counted on the day they finished (D-08).
+ * `successRate` is delivered / (delivered + failed) as a fraction 0–1, or null when nothing finished.
+ */
+export interface DeliveryOutcomesResponse {
+  from: string;
+  to: string;
+  timeZone: string;
+  delivered: number;
+  failed: number;
+  successRate: number | null;
+  days: { date: string; delivered: number; failed: number }[];
+}
+
 export interface BookingAddress {
   contactName: string;
   phone: string;
@@ -219,6 +242,24 @@ export interface ParcelHistoryItem {
   fee: { amount: string; currency: string };
   createdAt: string;
   updatedAt: string;
+}
+
+/** Delivery receipt (GET /api/v1/parcels/{id}/receipt, CUS-5). */
+export interface DeliveryReceipt {
+  parcelId: string;
+  trackingNumber: string;
+  status: ParcelStatus;
+  createdAt: string;
+  pickup: AddressResponse;
+  dropoff: AddressResponse;
+  size: ParcelSize;
+  weightGrams: number;
+  description: string | null;
+  fee: { amount: string; currency: string };
+  deliveredAt: string | null;
+  recipientName: string | null;
+  failedAt: string | null;
+  failureReason: FailureReason | null;
 }
 
 // Proof of Delivery API types
@@ -318,16 +359,31 @@ export async function getProofPhoto(parcelId: string, token: string): Promise<Bl
 
 export type MerchantStatus = "PENDING_APPROVAL" | "APPROVED" | "REJECTED" | "SUSPENDED";
 
+/** The merchant's one pickup (warehouse) address: where couriers collect its parcels. */
+export interface MerchantPickupAddress {
+  contactName: string;
+  phone: string;
+  line1: string;
+  line2: string | null;
+  city: string;
+  postalCode: string | null;
+  zoneId: string;
+}
+
 export interface MerchantResponse {
   id: string;
   userId: string;
   businessName: string;
+  registrationNumber?: string;
+  contactEmail?: string;
   contactPhone: string | null;
   status: MerchantStatus;
   rejectionReason: string | null;
   createdAt: string;
   reviewedAt: string | null;
   reviewedBy: string | null;
+  /** Null for merchants registered before the address was required. */
+  pickupAddress: MerchantPickupAddress | null;
 }
 
 export interface RegisterMerchantRequest {

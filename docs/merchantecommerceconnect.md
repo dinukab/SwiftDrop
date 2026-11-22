@@ -1,6 +1,6 @@
 # Connecting the ecommerce site to SwiftDrop (merchant integration)
 
-Status: **In progress**, last updated 2026-11-15. Branch `merchantandecommerce` (SwiftDrop) and
+Status: **In progress**, last updated 2026-11-22 (hub statuses, section 8b; merchant pickup address, section 8c). Branch `merchantandecommerce` (SwiftDrop) and
 branch `dev3` (ecommerce store). The work is committed and pushed on those branches (SwiftDrop
 latest: `33c1dbb`); merging to `DEV`/`main` is the team's decision.
 
@@ -53,10 +53,10 @@ Buyer -> store checkout -> store creates a Shipment (booking)
 |---|---|---|---|
 | 1 | Pause / cancel lifecycle (delivery) | ✅ Built and tested | Courier rules untouched; migration `V202611151000` |
 | 2 | Merchant actions and store status API | ✅ Built and tested | Portal page done; store API `GET /merchant-api/orders/{ref}` |
-| 3 | Dispatcher queue, assignment, workload | 🟡 Built and tested | Courier **admin** API and assignment history missing |
+| 3 | Dispatcher queue, assignment, workload | ✅ Built and tested (dispatcher team, PR #23–#28) | Now hub-based: courier profile API, hub binding, legs, hub-to-hub transfers, assignment history ([ADR 0007](adr/0007-multi-leg-shipments-and-hub-handover.md), *Proposed*) |
 | 4 | Webhook pipeline (relay, consumer, sender) | 🟡 Built and tested, **off by default** | History and redelivery API built; merchant UI view, demo receiver and live run missing |
 | 5 | Store request signatures, duplicate-order check, rate limit | 🟡 Built and tested, **optional by default** | Store does not sign yet |
-| 6 | Ecommerce store changes | ✅ Code complete (uncommitted) | Needs a live end-to-end run and `npm run build` |
+| 6 | Ecommerce store changes | ✅ Built and run live | Hub statuses added 2026-11-21; full hub route verified end to end (section 8b) |
 | 7 | Connection runbook | 🟡 Written in section 5; needs the updates listed there | Not yet run end to end with the store |
 
 Legend: ✅ done and verified · 🟡 partly done · ⬜ not started.
@@ -142,12 +142,10 @@ Legend: ✅ done and verified · 🟡 partly done · ⬜ not started.
   merchant user refused as courier, unknown parcel, assignment, the merchant can still hold an
   assigned order, an inactive courier refused).
 
-**Still to do**
-- **Courier profile admin API** (PROGRESS 7.1). There is no endpoint to create or edit a courier
-  profile, so in practice no courier can be assigned yet. The end-to-end run inserted a profile by SQL.
-  This is the most important gap for real use.
-- Courier management tab on the dispatcher screen (PROGRESS 7.5, part 4).
-- Assignment history per parcel (PROGRESS 7.4; depends on delivery work).
+**Update 2026-11-21.** The dispatcher and courier teams have since built the courier profile admin API
+(`/api/v1/couriers`, ADMIN), hubs and dispatcher-to-hub binding, multi-leg routes, hub-to-hub transfers and
+assignment history. The queue and assignment are now scoped to the dispatcher's hub. See section 8b for what
+this means for the store.
 
 ### Phase 4. Webhook pipeline, SwiftDrop to the store 🟡 (off by default)
 
@@ -296,7 +294,7 @@ See section 5. The steps still need these corrections, which are in the new code
   signing secrets and to store webhook secrets. Without them, keys have no secret.
 - Enable the relay and the webhook sender explicitly (`SWIFTDROP_MESSAGING_RELAY_ENABLED=true`,
   `SWIFTDROP_WEBHOOKS_ENABLED=true`). RabbitMQ credentials must then be set for the backend.
-- Courier profiles cannot be created through the app yet (see Phase 3).
+- Dispatchers must be bound to a hub and couriers need a profile with a home hub (see runbook step 8).
 
 ---
 
@@ -331,22 +329,37 @@ yours; never commit them.
    - `SWIFTDROP_MESSAGING_RELAY_ENABLED=true`, `SWIFTDROP_WEBHOOKS_ENABLED=true`
    - `SWIFTDROP_WEBHOOK_ALLOW_LOCAL=true` (development only; lets the store on `localhost` receive webhooks)
    - Then `.\mvnw.cmd spring-boot:run` from `backend/`. Migrations run at startup.
-3. **Merchant account.** Sign up the store as a merchant (`POST /api/v1/merchants/register`), then an
-   admin approves it (`PATCH /api/v1/admin/merchants/{id}/status` with `{"action":"APPROVE"}`).
+3. **Merchant account.** Sign up the store as a merchant (`POST /api/v1/merchants`, or the merchant tab
+   on `/signup`). Sign-up **requires the warehouse (pickup) address**, including its province: this is where the
+   courier collects the parcels (section 8c). Then an admin approves it (`POST /api/v1/merchants/{id}/approval`,
+   or Admin → Users, where the queue shows the address). A merchant registered earlier adds its address in the
+   merchant portal (card "Pickup address") or with `PUT /api/v1/merchants/me/pickup-address`.
 4. **Key and webhook.** The merchant logs in and creates an API key (`POST /api/v1/merchants/me/api-keys`).
    The response contains the key and the signing secret, **both shown once**. Register the webhook
    (`POST /api/v1/merchants/me/webhooks`) with URL `http://localhost:3100/api/webhooks/swiftdrop`
    (development) or an HTTPS URL, and a secret of 16+ characters; the store uses the same secret to check
    webhook signatures.
-5. **Pickup zone.** `GET /api/v1/zones` (logged in) lists the seeded zones; note the store's pickup zone id.
+5. **Zones.** `GET /api/v1/zones` is public and lists the nine provinces (id, code, name). `npm run zones:sync`
+   maps the store's districts to them. The pickup zone is no longer needed in the store when the merchant has a
+   registered address (step 6).
 6. **Store environment** (`.env` of the store; never commit it): `SWIFTDROP_MODE=live`,
    `SWIFTDROP_API_URL=http://localhost:8080`, `SWIFTDROP_API_KEY`, `SWIFTDROP_WEBHOOK_SECRET`,
-   `STORE_PICKUP_*`, `STORE_PICKUP_ZONE_ID`, `CRON_SECRET`, and `SWIFTDROP_MERCHANT_EMAIL` /
-   `SWIFTDROP_MERCHANT_PASSWORD` for the zone sync. `SWIFTDROP_SIGNING_SECRET` (the key's signing secret). Then `npm run zones:sync`, `npm run dev` (port 3100) and `npm run cron:local`.
+   `CRON_SECRET`, and `SWIFTDROP_MERCHANT_EMAIL` /
+   `SWIFTDROP_MERCHANT_PASSWORD` for the zone sync. `SWIFTDROP_SIGNING_SECRET` (the key's signing secret). The
+   `STORE_PICKUP_*` settings (name, phone, line 1, city and `STORE_PICKUP_ZONE_ID`; line 2 and postal code are
+   optional) are **optional as a group**: leave all unset and the store sends no `pickup`, so SwiftDrop uses the
+   registered address (recommended); set them and SwiftDrop checks that the zone is the registered province. Setting only
+   some of them stops the store at startup and names the missing ones. Then `npm run zones:sync`, `npm run dev` (port 3100) and
+   `npm run cron:local`.
 7. **Signatures.** Leave `SWIFTDROP_MERCHANT_API_REQUIRE_SIGNATURE=false` until the store signs its
    requests (done in the store code). Then set it to `true` and create new keys for the store.
-8. **Dispatch.** An admin creates dispatcher and courier accounts (staff endpoint). Courier profiles
-   are needed for assignment and cannot be created in the app yet (Phase 3 gap).
+8. **Dispatch.** An admin creates dispatcher and courier accounts (staff endpoint), binds the dispatcher
+   to a hub (`PUT /api/v1/dispatchers/{userId}/hub` with `{"hubCode":"LK-WP"}`), and creates a courier
+   profile (`POST /api/v1/couriers` with `userId`, `phone`, `vehicleType`, `hubCode`). The store's orders
+   appear only for the dispatcher of the hub whose code equals the province code of the pickup zone (the
+   merchant's registered province, or `STORE_PICKUP_ZONE_ID` when set),
+   and only couriers based at that hub (or with no hub) can be assigned. A delivery to another province also
+   needs dispatchers at the Main Hub (`LK-WP`) and the destination hub for the transfers and the final leg.
 9. **Check.** Place an order on the store, then check the merchant portal and the dispatcher screen.
 
 ---
@@ -367,10 +380,11 @@ backend can produce them. Both do now.
 ## 7. Next steps, in order
 
 1. ~~Store signing and status API~~ (done in code). Next: run it live and require signatures.
-2. **Courier profile admin API** (PROGRESS 7.1). Unblocks real dispatch.
+2. ~~Courier profile admin API~~ (built by the dispatcher team). ~~Hub route end to end~~ (done, section 8b).
+   Next: repeat with signatures required, and a failure path.
 3. ~~Store zone-code mapping~~ (done in code). Next: run `npm run zones:sync` and schedule the cron call.
 4. ~~Webhook history and redelivery API~~ (built). Next: the merchant history view and the demo receiver (PROGRESS 5.7).
-5. **Courier management tab and assignment history** (PROGRESS 7.4, 7.5).
+5. ~~Assignment history~~ (built). Team review of ADR 0007 (multi-leg, *Proposed*).
 6. **Team review** of ADR 0006 section 1A, then acceptance or changes.
 7. **Full end-to-end run** with the runbook above, and the store's test suite.
 
@@ -410,13 +424,102 @@ shape agree between SwiftDrop and the store. Remaining concerns:
 
 ---
 
+## 8b. Flow review (2026-11-21): after the dispatcher hub work
+
+Checked by reading code in both repositories, then **run live end to end** (below).
+
+**Order details to the dispatcher: works.** A store order is a `CREATED` parcel. `GET /api/v1/unassigned-parcels`
+now lists only parcels whose pickup province equals the dispatcher's hub code. Hub codes (`LK-WP`, `LK-UP`,
+`LK-SGP`, ...) are the zone codes the store syncs, so the order appears for the pickup hub's dispatcher.
+Assignment plans the legs (same province: pickup and final mile; otherwise through the Colombo Main Hub).
+
+**Tracking details back to the store: was broken, fixed in the store.** The courier lifecycle no longer has
+`PICKED_UP -> IN_TRANSIT`; every parcel goes `PICKED_UP -> HUB_ARRIVED`, and hub-to-hub transfers by dispatchers
+add `IN_TRANSIT -> HUB_ARRIVED`. All of these are recorded with the outbox, so webhooks and the status API carry
+them. The store knew only eight statuses and validated them strictly, so:
+- its webhook endpoint answered `400` to the first hub event (and every later one), which SwiftDrop treats as a
+  final failure (no retry);
+- its poller could not read `GET /api/v1/merchant-api/orders/{ref}` once the history had a hub event;
+- the buyer's order stayed at "Picked up" and never closed.
+
+**Fix (store, `dev3`, uncommitted, 2026-11-21).** `HUB_ARRIVED` and `HUB_SORTED` added to the Prisma enum
+(migration `20261121100000_delivery_hub_statuses`, additive), the status list and labels; the buyer timeline
+shows hub steps as "On the way"; badges "At a SwiftDrop hub" / "In transit"; the mock simulator follows the hub
+route. For the future, the store no longer rejects a status it does not know: the webhook answers `200` and logs
+it as `IGNORED`, and the status API parser skips such events, so later known events (ordered by sequence) still
+apply. Checks: type-check and lint clean, 84 of 84 unit tests pass. SwiftDrop's merchant orders page also gained
+filters and badges for the hub statuses. No SwiftDrop backend change.
+
+**Live end-to-end run (2026-11-21).** Store migration applied to the local `store` database. Backend run with
+relay and webhooks on (`SWIFTDROP_WEBHOOK_ALLOW_LOCAL=true`); store in live mode with a new merchant, API key with
+signing secret and webhook; dispatcher and courier at `LK-WP` (pickup) and `LK-UP` (destination). A store order to
+Monaragala (Uva) was planned as `PICKUP` (`LK-WP`), `INTER_HUB` (`LK-WP` to `LK-UP`), `FINAL_MILE` (`LK-UP`) and
+driven through the API:
+
+| Seq | Status | Actor | Webhook | Store |
+|---|---|---|---|---|
+| 1 | `CREATED` | store booking | 200 | `CREATED` |
+| 2 | `PICKED_UP` | pickup courier | 200 | `PICKED_UP` |
+| 3 | `HUB_ARRIVED` | pickup courier at `LK-WP` | 200 | `HUB_ARRIVED` |
+| 4 | `IN_TRANSIT` | `LK-WP` dispatcher transfer | 200 | `IN_TRANSIT` |
+| 5 | `HUB_ARRIVED` | `LK-UP` dispatcher receipt | 200 | `HUB_ARRIVED` |
+| 6 | `OUT_FOR_DELIVERY` | final-mile courier | 200 | `OUT_FOR_DELIVERY` |
+| 7 | `DELIVERED` | final-mile courier, with proof | 200 | `DELIVERED`, order closed |
+
+All seven webhooks succeeded on the first attempt; the store processed seven and rejected none, and its timeline
+has one row per sequence. Courier assignments produce no event, as designed. Not covered: signatures required
+(`SWIFTDROP_MERCHANT_API_REQUIRE_SIGNATURE=true`), failure paths, and a same-province route.
+
+**If deliveries failed before the store fix:** they recover through polling (the status API returns the full
+sequenced history); a merchant can also redeliver them
+(`POST /api/v1/merchants/me/webhook-deliveries/{id}/redeliveries`, at most 3 times).
+
+---
+
+## 8c. Merchant pickup address (2026-11-22)
+
+**Problem.** SwiftDrop did not know where a merchant's goods are. The pickup address arrived only inside each API order, copied
+by the store from its own settings, and was trusted blindly: a wrong zone would send the order to another hub's dispatcher and the
+courier to the wrong place, and an admin approved a merchant without seeing where it operates.
+
+**Change** (details in [merchant-module.md](merchant-module.md) section 4.2):
+- A merchant registers **one pickup address with a province** at sign-up (required) and can edit it in the portal; the admin
+  approval queue shows it. `GET /api/v1/zones` is public so sign-up can list the provinces.
+- API orders may **omit `pickup`** (the registered address is used) or send one in the **same province** (accepted as sent);
+  a pickup in another province is refused (`422`). Merchants without an address keep working unchecked until they add one.
+- The store makes `STORE_PICKUP_*` optional as a group and omits `pickup` when they are unset.
+
+**Checked live (backend with the change, store on `main`, 2026-11-22):**
+
+| Check | Result |
+|---|---|
+| Sign-up without address / with an unknown province | `400`; no login account left behind for the unknown province |
+| Sign-up with a Galle (Southern Province) address | `201`; the admin list shows it; approval `200` |
+| API order without `pickup` | `201`; parcel pickup = the registered warehouse |
+| API order with a Colombo pickup (merchant registered in Galle) | `422`, `invalidFields: ["pickup.zoneId"]`, no parcel |
+| API order with another Galle pickup | `201`, accepted as sent |
+| Browser: sign-up form, admin queue, portal card (edit, save, reload) | all as designed |
+| Store order, `STORE_PICKUP_*` set (Galle) | booked; SwiftDrop kept the store's pickup (province matches the registered one) |
+| Store order, `STORE_PICKUP_*` unset | booked; the parcel's pickup was the registered address (a marker in line 2 of the registered
+  address showed it) |
+
+Both orders went to the Southern hub dispatcher's queue; the courier of an assigned parcel sees the pickup address.
+
+**Limits.** The address is not validated beyond format and province (no map, no geocoding). One address per merchant; several
+warehouses would need a locations table. Existing merchants have no address until they add one, so their orders are not checked
+yet; making it mandatory for them would be a separate decision. The store's checkout label "pickup district" still comes from
+`STORE_PICKUP_DISTRICT` (display only).
+
+---
+
 ## 9. Risks and limits
 
 - **Relay and sender are single-instance.** Several instances would break event order and need more
   testing before use.
 - **Signatures are replayable within 5 minutes** (no nonce yet). Orders are idempotent, so a replay
   cannot create a second parcel.
-- **Courier profiles** cannot be created in the app; dispatch cannot assign real couriers until they can.
+- **New SwiftDrop statuses break strict consumers.** The store now skips statuses it does not know
+  (section 8b), but any other merchant integration that validates statuses strictly would reject them.
 - **ADR 0006 section 1A is still "Proposed"**; the team has not yet reviewed it.
 - **Database changes are one-way** where noted in section 4 (status constraints, outbox backfill).
 - **Webhooks and signing depend on keys** (`SWIFTDROP_WEBHOOK_KEYS`). Losing a key makes the secrets

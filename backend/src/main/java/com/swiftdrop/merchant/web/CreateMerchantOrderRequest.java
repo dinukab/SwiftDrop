@@ -10,7 +10,8 @@ import jakarta.validation.constraints.Size;
 
 public record CreateMerchantOrderRequest(
         @NotBlank @Size(max = 100) String merchantOrderReference,
-        @NotNull @Valid MerchantOrderAddress pickup,
+        /** Optional once the merchant has a registered pickup address (then omit it, or keep the same province). */
+        @Valid MerchantOrderAddress pickup,
         @NotNull @Valid MerchantOrderAddress dropoff,
         @NotBlank @Pattern(regexp = "^(SMALL|MEDIUM|LARGE)$", message = "Size must be SMALL, MEDIUM, or LARGE")
         String size,

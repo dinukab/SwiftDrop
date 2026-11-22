@@ -71,6 +71,21 @@ public interface ParcelRepository extends JpaRepository<Parcel, UUID> {
     List<Object[]> countActiveByCourier(@Param("terminal") Collection<ParcelStatus> terminal);
 
     /**
+     * Parcels created per business day (ADM-4, D-08), as rows of {@code [day "YYYY-MM-DD", count]},
+     * oldest first. {@code start} is inclusive and {@code end} exclusive; days without parcels are
+     * missing. Native SQL because JPQL cannot group by a date in another time zone.
+     */
+    @Query(value = """
+            SELECT to_char(created_at AT TIME ZONE :zone, 'YYYY-MM-DD') AS day, COUNT(*) AS total
+            FROM parcels
+            WHERE created_at >= :start AND created_at < :end
+            GROUP BY day
+            ORDER BY day
+            """, nativeQuery = true)
+    List<Object[]> countCreatedPerDay(@Param("zone") String zone, @Param("start") Instant start,
+            @Param("end") Instant end);
+
+    /**
      * Loads a parcel and locks its row ({@code SELECT ... FOR UPDATE}) until the transaction ends, so
      * concurrent changes of one parcel run one after the other and get consecutive sequence numbers
      * (ADR 0004 §4.1). Must be called inside a transaction.

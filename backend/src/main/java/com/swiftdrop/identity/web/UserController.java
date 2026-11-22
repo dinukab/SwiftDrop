@@ -12,6 +12,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -101,6 +102,17 @@ class UserController {
     ) {
         UUID currentAdminId = UUID.fromString(jwt.getSubject());
         return UserResponse.from(accounts.updateUserStatus(id, request.enabled(), currentAdminId));
+    }
+
+    /**
+     * Soft-deletes a user account (anonymised and disabled, kept for history). Restricted to administrators.
+     * An administrator cannot delete their own account.
+     */
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    void deleteUser(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
+        accounts.deleteUser(id, UUID.fromString(jwt.getSubject()));
     }
 
     /** The authenticated user's own account. Rejected if the account is disabled. */

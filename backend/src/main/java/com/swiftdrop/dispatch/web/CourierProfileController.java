@@ -55,7 +55,11 @@ class CourierProfileController {
         int pageNum = page != null ? page : PageLimit.DEFAULT_PAGE_NUMBER;
         int pageSize = size != null ? size : PageLimit.DEFAULT_PAGE_SIZE;
         Page<CourierProfile> result = profiles.listProfiles(pageNum, pageSize, active);
-        List<CourierProfileResponse> items = result.getContent().stream().map(this::toResponse).toList();
+        // Profiles of deleted accounts are hidden. The total still counts them, so a page can hold fewer items.
+        List<CourierProfileResponse> items = result.getContent().stream()
+                .filter(profile -> users.findUser(profile.getUserId()).isPresent())
+                .map(this::toResponse)
+                .toList();
         return PageResponse.of(items, result.getNumber(), result.getSize(), result.getTotalElements());
     }
 

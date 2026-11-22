@@ -554,8 +554,8 @@ Owns the `pricing` module, the `delivery` report package, and the `(admin)/admin
 | 8.3 | Public price-quote endpoint | SD-203 | ✅ | | | |
 | 8.4 | Pricing administration API (zones and rules CRUD) | SD-211 | ⬜ | | | |
 | 8.5 | Pricing administration UI | SD-212 | ⬜ | | | |
-| 8.6 | Reports API: deliveries per day, success/failure rate | SD-314 | ⬜ | | | |
-| 8.7 | Reports UI with date range and chart | SD-315 | ⬜ | | | |
+| 8.6 | Reports API: deliveries per day, success/failure rate | SD-314 | 🟡 | `feature/reports` | | 2026-11-21 |
+| 8.7 | Reports UI with date range and chart | SD-315 | 🟡 | `feature/reports` | | 2026-11-21 |
 
 **How to implement**
 
@@ -586,7 +586,7 @@ Owns the `notification` module, the outbox relay and `shared.messaging`.
 | 9.3 | Shared ordered-consumer support (duplicates, gaps) | SD-503 | ⬜ | | | |
 | 9.4 | Notification consumer and mock SMS/email store | SD-504 | 🟡 | `feature/notifications` | | 2026-11-21 |
 | 9.5 | Notifications inbox API, page and unread bell | SD-506 | 🟡 | `feature/notifications` | | 2026-11-21 |
-| 9.6 | Dead-letter replay (audited, admin only) | SD-507 | ⬜ | | | |
+| 9.6 | Dead-letter replay (audited, admin only; API, page and broker tests built, browser check pending) | SD-507 | 🟡 | `feature/dead-letter-replay` | | 2026-11-22 |
 | 9.7 | Event-flow integration test (TST-1) | SD-701 | ⬜ | | | |
 
 **How to implement**
