@@ -221,6 +221,24 @@ export interface ParcelHistoryItem {
   updatedAt: string;
 }
 
+/** Delivery receipt (GET /api/v1/parcels/{id}/receipt, CUS-5). */
+export interface DeliveryReceipt {
+  parcelId: string;
+  trackingNumber: string;
+  status: ParcelStatus;
+  createdAt: string;
+  pickup: AddressResponse;
+  dropoff: AddressResponse;
+  size: ParcelSize;
+  weightGrams: number;
+  description: string | null;
+  fee: { amount: string; currency: string };
+  deliveredAt: string | null;
+  recipientName: string | null;
+  failedAt: string | null;
+  failureReason: FailureReason | null;
+}
+
 // Proof of Delivery API types
 export interface ProofResponse {
   parcelId: string;
