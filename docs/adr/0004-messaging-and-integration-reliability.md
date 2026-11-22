@@ -297,8 +297,10 @@ These are different counters and must not be confused:
 - Meanwhile a dead-lettered event does not block its parcel forever: the next event of that parcel
   becomes pending, and reconciliation applies the missing event from history (section 4.3). If the
   same failure occurs there, the parcel becomes stuck and is alerted on.
-- The replay mechanism (an admin function in the backend, or the management UI, whose message moving
-  needs the shovel plugins that the local setup does not enable) is open.
+- The replay mechanism is an **admin function in the backend** (decided 2026-11-22, implemented for the notification
+  queue; see `docs/modules/notification.md` section 8): the management UI's message moving would need the shovel
+  plugins that the local setup does not enable. The message stays in the dead-letter queue until its republication is
+  confirmed and its audit row is saved. A request replays a message that fails again only once.
 
 ### 7. Merchant webhooks
 
@@ -659,8 +661,8 @@ uses Spring's `@Scheduled`.
 
 ### Open implementation questions
 
-- How dead-lettered messages are replayed: an admin function in the backend, or enabling the shovel
-  plugins for the management UI (an infrastructure change).
+- ~~How dead-lettered messages are replayed~~ Resolved 2026-11-22: an admin function in the backend (section 6).
+  Still open: the same function for the merchant queue.
 - Whether queue settings move from arguments to RabbitMQ policies.
 - How a stuck parcel or an unpublishable outbox row is repaired: an audited admin operation or a
   reviewed migration.

@@ -32,6 +32,7 @@ Failures never affect the delivery: the notification is made after the status ch
 | Rules | `application/NotificationPolicy` (who and which statuses), `NotificationService` (record, inbox, read), `NotificationNotFoundException` |
 | Consumer | `infrastructure/messaging/ParcelStatusNotificationConsumer`; `NotificationMessagingConfiguration` binds the queue to `swiftdrop.events` only when the consumer is on |
 | API | `web/NotificationController`, `NotificationResponse`, `NotificationExceptionHandler`, `Callers` |
+| Dead-letter replay | migration `V202611211500__notification_create_dead_letter_replays.sql`; `domain/DeadLetterReplay`, `DeadLetterReplayRepository`; `application/DeadLetterReplayService`, `DeadLetterQueue` (port), `DeadLetter`; `infrastructure/messaging/RabbitDeadLetterQueue`; `web/DeadLetterController` and responses; frontend `lib/dead-letters.ts`, `app/(admin)/admin/dead-letters/page.tsx` (section 8) |
 | Frontend | `lib/notifications.ts`, `components/notifications/notification-bell.tsx`, `app/(customer)/customer/notifications/page.tsx`, bell via `PortalShell` `headerAction`, nav item "Notifications" |
 
 The module uses only `delivery.api` (the event) and `shared`; `NotificationMessagingConfiguration` already imported
@@ -71,17 +72,53 @@ the queue is not bound, so nothing piles up.
 ## 7. Tests
 
 - Unit: `NotificationPolicyTest`, `NotificationServiceTest`, `ParcelStatusNotificationConsumerTest`; the migration lists
-  in `MigrationConventionTest` and `DatabaseMigrationIT` (32 migrations).
+  in `MigrationConventionTest` and `DatabaseMigrationIT` (34 migrations).
 - PostgreSQL: `NotificationInboxIT` (inbox, unread count, reading, per-user isolation, roles, one message per event).
 - End to end: `NotificationFlowIT` (PostgreSQL and RabbitMQ: courier status changes reach the inbox through the relay;
   hub arrival and merchant parcels leave nothing).
 - Frontend: `tsc`, eslint and `next build` pass; there is no frontend test framework and the pages were not checked in a
   browser.
 
-## 8. Not done
+## 8. Dead-letter replay (PROGRESS 9.6, admin only)
+
+A message the consumer cannot process ends in `notification.parcel-status-changed.dlq`. An administrator can inspect
+it and move it back to the source queue (ADR 0004 section 6, the replay mechanism is an admin function in the backend,
+not the shovel plugin).
+
+| Endpoint (role `ADMIN`) | Meaning |
+|---|---|
+| `GET /api/v1/admin/dead-letters` | queue name, depth and the 20 oldest messages: event ID, status, broker reason, death count, time. **Never the body** (it names a parcel and its owner) |
+| `POST /api/v1/admin/dead-letters/replay` `{limit}` | moves the oldest 1 to 50 back; answers `{replayed, eventIds, stopReason}`. A replay that stops early still answers 200 with a `stopReason` (`NOT_CONFIRMED`, `NOT_ROUTED`, `AUDIT_FAILED`, `BROKER_UNAVAILABLE`) |
+| `GET /api/v1/admin/dead-letters/replays?page&size` | the audit trail, newest first |
+
+Other roles get 403, anonymous callers 401, a bad limit or body 400, and an unavailable broker 503 (no broker text).
+The replaying user is always the caller from the token. The page is `/admin/dead-letters` (nav item "Dead Letters").
+
+**How a replay is made safe** (`RabbitDeadLetterQueue`):
+
+1. The message is read from the DLQ with manual acknowledgement; it stays there until step 4.
+2. It is republished to the source queue through the default exchange (routing key = queue name, so it reaches that
+   queue only) with the original body, publisher confirms and the mandatory flag.
+3. The audit row (`notification_dead_letter_replays`: queue, event ID, broker reason, who, when; no body) is saved.
+4. Only then is the DLQ message acknowledged. If step 2 or 3 fails, it is put back (`basicNack` with requeue) and the
+   replay stops. The worst case is a duplicate delivery, which the consumer ignores (`event_id` is unique).
+5. A message that fails again returns to the back of the DLQ. A request remembers what it replayed and stops when a
+   message comes back, so one poison message is replayed and audited once per request.
+
+Looking at the queue (`GET`) reads messages and puts them back; the reported depth is never lower than the number of
+messages listed, because the broker counts only ready messages.
+
+Tests: `DeadLetterReplayServiceTest`, `RabbitDeadLetterQueueTest`, `DeadLetterApiTest` (roles, validation, no body in
+responses, 503 without broker text); on PostgreSQL and RabbitMQ `DeadLetterReplayBrokerIT` (intact delivery, limit and
+order, looking removes nothing, unreadable message, missing source queue, audit failure) and `DeadLetterReplayFlowIT`
+(real dead-letter headers, exactly one notification, duplicate replay ignored).
+
+## 9. Not done
 
 - **9.3** a shared ordered-consumer helper with gap reconciliation (not needed for independent messages).
-- **9.6** admin dead-letter replay.
+- Replay of the merchant consumer's dead-letter queue (the same port can serve it; it lives in the merchant module).
+- Discarding a dead letter, and replaying one chosen message instead of the oldest N.
+- The replay page was not checked in a browser.
 - Notifications for couriers, dispatchers or the recipients of merchant parcels (needs contact data and consent rules).
 - Real email or SMS delivery (would need its own delivery records and retries, like webhooks).
 - Live refresh of the bell: it polls every 30 seconds.
