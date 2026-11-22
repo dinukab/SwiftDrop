@@ -48,6 +48,31 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/* Landing page fonts; the variables are set by components/landing/fonts.ts on the landing page only. */
+@theme inline {
+  --font-display: var(--font-space-grotesk), ui-sans-serif, system-ui, sans-serif;
+  --font-body: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Landing brand palette. Text on brand orange is always navy, never white. */
+@theme {
+  --color-navy: #0a1630;
+  --color-navy-800: #13234a;
+  --color-brand: #ff6a13;
+  --color-brand-text: #c2410c;
+  --color-brand-tint: #fff1e8;
+  --color-surface: #f5f7fb;
+  --color-line: #e4e8f0;
+  --color-ink-muted: #4a5672;
+  --color-ink-light: #a9b4cc;
+  --color-status-delivered: #15803d;
+  --color-status-transit: #1d4ed8;
+  --color-status-delayed: #b45309;
+  --color-status-failed: #b91c1c;
+  /* Delivered green lifted for icons and dots on navy, where #15803d is too dark to read. */
+  --color-status-live: #4ade80;
+}
+
 :root {
   --background: #f7f7f6;
   --foreground: #191817;
@@ -126,5 +151,12 @@
   }
   html {
     @apply font-sans;
+    /* Keeps in-page anchor targets clear of the 4rem sticky header. */
+    scroll-padding-top: 5rem;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    html {
+      scroll-behavior: smooth;
+    }
   }
 }

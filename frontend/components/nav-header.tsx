@@ -1,11 +1,20 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { Button, buttonVariants } from "@/components/ui/button";
 
+const MARKETING_NAV_PATHS = ["/", "/staff", "/login", "/signup", "/track"];
+
 export function NavHeader() {
   const { user, isAuthenticated, isLoading, logout, hasRole } = useAuth();
+  const pathname = usePathname();
+
+  // These pages render the marketing navbar (components/landing/site-navbar.tsx) instead.
+  if (MARKETING_NAV_PATHS.includes(pathname)) {
+    return null;
+  }
 
   return (
     <header className="border-b border-sidebar-border bg-sidebar text-sidebar-foreground sticky top-0 z-40">
@@ -23,7 +32,7 @@ export function NavHeader() {
               Track Parcel
             </Link>
             {hasRole("CUSTOMER") && (
-              <Link href="/customer" className="hover:text-sidebar-foreground transition-colors">
+              <Link href="/customer/history" className="hover:text-sidebar-foreground transition-colors">
                 My Deliveries
               </Link>
             )}
