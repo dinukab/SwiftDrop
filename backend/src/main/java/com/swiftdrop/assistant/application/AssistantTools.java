@@ -14,8 +14,8 @@ import com.swiftdrop.delivery.api.ParcelQueries;
 import com.swiftdrop.delivery.api.PublicTrackingView;
 import com.swiftdrop.pricing.api.FeeCalculator;
 import com.swiftdrop.pricing.api.ParcelSize;
-import com.swiftdrop.pricing.domain.Zone;
-import com.swiftdrop.pricing.domain.ZoneRepository;
+import com.swiftdrop.pricing.api.ZoneDirectory;
+import com.swiftdrop.pricing.api.ZoneSummary;
 
 /**
  * Executes the function calls Gemini may request. Each tool returns a plain map that is sent
@@ -27,9 +27,9 @@ class AssistantTools {
 
     private final ParcelQueries parcels;
     private final FeeCalculator feeCalculator;
-    private final ZoneRepository zones;
+    private final ZoneDirectory zones;
 
-    AssistantTools(ParcelQueries parcels, FeeCalculator feeCalculator, ZoneRepository zones) {
+    AssistantTools(ParcelQueries parcels, FeeCalculator feeCalculator, ZoneDirectory zones) {
         this.parcels = parcels;
         this.feeCalculator = feeCalculator;
         this.zones = zones;
@@ -37,7 +37,7 @@ class AssistantTools {
 
     /** Active zone names for embedding in the price-quote tool description. */
     List<String> zoneNames() {
-        return zones.findByActiveTrue().stream().map(Zone::getName).sorted().toList();
+        return zones.findActiveZones().stream().map(ZoneSummary::name).sorted().toList();
     }
 
     Map<String, Object> execute(String name, JsonNode args) {
@@ -89,15 +89,15 @@ class AssistantTools {
             return Map.of("error", "size must be one of SMALL, MEDIUM, LARGE");
         }
 
-        Optional<Zone> pickup = resolveZone(args.path("pickupZone").asText(""));
-        Optional<Zone> dropoff = resolveZone(args.path("dropoffZone").asText(""));
+        Optional<ZoneSummary> pickup = resolveZone(args.path("pickupZone").asText(""));
+        Optional<ZoneSummary> dropoff = resolveZone(args.path("dropoffZone").asText(""));
         if (pickup.isEmpty() || dropoff.isEmpty()) {
             return Map.of(
                     "error", "Could not resolve one or both zones",
                     "availableZones", zoneNames());
         }
 
-        var quote = feeCalculator.calculateFee(pickup.get().getId(), dropoff.get().getId(), size, weightGrams);
+        var quote = feeCalculator.calculateFee(pickup.get().id(), dropoff.get().id(), size, weightGrams);
         Map<String, Object> breakdown = new LinkedHashMap<>();
         breakdown.put("baseFee", quote.baseFee().toPlainString());
         breakdown.put("weightFee", quote.weightFee().toPlainString());
@@ -108,24 +108,24 @@ class AssistantTools {
         result.put("currency", quote.currency());
         result.put("weightGrams", weightGrams);
         result.put("size", size.name());
-        result.put("pickupZone", pickup.get().getName());
-        result.put("dropoffZone", dropoff.get().getName());
+        result.put("pickupZone", pickup.get().name());
+        result.put("dropoffZone", dropoff.get().name());
         result.put("breakdown", breakdown);
         return result;
     }
 
     /** Exact name match first, then case-insensitive substring match against active zones. */
-    private Optional<Zone> resolveZone(String name) {
+    private Optional<ZoneSummary> resolveZone(String name) {
         String query = Objects.toString(name, "").trim();
         if (query.isEmpty()) {
             return Optional.empty();
         }
-        List<Zone> active = zones.findByActiveTrue();
+        List<ZoneSummary> active = zones.findActiveZones();
         return active.stream()
-                .filter(z -> z.getName().equalsIgnoreCase(query))
+                .filter(z -> z.name().equalsIgnoreCase(query))
                 .findFirst()
                 .or(() -> active.stream()
-                        .filter(z -> z.getName().toLowerCase(Locale.ROOT).contains(query.toLowerCase(Locale.ROOT)))
+                        .filter(z -> z.name().toLowerCase(Locale.ROOT).contains(query.toLowerCase(Locale.ROOT)))
                         .findFirst());
     }
 }

@@ -34,7 +34,8 @@ class ModuleBoundaryTest {
             "dispatch", Set.of("identity", "delivery"),
             "merchant", Set.of("identity", "delivery"),
             "notification", Set.of("identity", "delivery"),
-            "tracking", Set.of("delivery"));
+            "tracking", Set.of("delivery"),
+            "assistant", Set.of("delivery", "pricing"));
 
     private static final String CONFIG = "config";
     private static final String SHARED = "shared";

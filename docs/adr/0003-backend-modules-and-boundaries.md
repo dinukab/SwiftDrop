@@ -43,6 +43,7 @@ mechanism; those are the team's choices below.
 | `merchant` | Registration and approval, API credentials, order intake, dashboard queries, webhook delivery records and retry handling | merchants, API credentials, webhook endpoints, webhook delivery records | the parcel lifecycle, copies of parcel history, user passwords |
 | `notification` | Notifications triggered by status events | notification messages | business decisions, status changes |
 | `tracking` | Live SSE connections; sends the current state from `delivery` on connect, then pushes changes | nothing persistent | persisted history, status changes |
+| `assistant` | The AI delivery assistant (bonus): answers questions with the Gemini API, using the public tracking view and fee quotes | nothing persistent | parcel data, pricing rules, personal data beyond the public tracking view |
 
 The main delivery aggregate and entity is named `Parcel`, matching the brief's ER list (DES-2); it
 belongs to the `delivery` module, which keeps its name.
@@ -67,11 +68,12 @@ dispatch     → identity, delivery
 merchant     → identity, delivery
 notification → identity, delivery
 tracking     → delivery
+assistant    → delivery, pricing
 ```
 
 Every other dependency between modules is forbidden. The graph is acyclic, no module depends on
-`notification` or `tracking`, and `delivery` never calls `dispatch`, `merchant`, `notification` or
-`tracking`.
+`notification`, `tracking` or `assistant`, and `delivery` never calls `dispatch`, `merchant`,
+`notification`, `tracking` or `assistant`.
 
 ### 3. Packages and public contracts
 

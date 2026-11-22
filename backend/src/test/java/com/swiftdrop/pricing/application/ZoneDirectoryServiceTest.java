@@ -15,6 +15,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import com.swiftdrop.pricing.api.ZoneSummary;
 import com.swiftdrop.pricing.domain.Zone;
 import com.swiftdrop.pricing.domain.ZoneRepository;
 
@@ -66,6 +67,24 @@ class ZoneDirectoryServiceTest {
                 .containsEntry(southern.getId(), "LK-SP")
                 .doesNotContainKey(missing)
                 .hasSize(2);
+    }
+
+    @Test
+    void listsTheActiveZonesAsSummaries() {
+        Zone uva = zone("LK-UP", "Uva Province");
+        Zone southern = zone("LK-SP", "Southern Province");
+        when(zones.findByActiveTrue()).thenReturn(List.of(uva, southern));
+
+        assertThat(service.findActiveZones()).containsExactly(
+                new ZoneSummary(uva.getId(), "LK-UP", "Uva Province"),
+                new ZoneSummary(southern.getId(), "LK-SP", "Southern Province"));
+    }
+
+    @Test
+    void noActiveZonesGivesAnEmptyList() {
+        when(zones.findByActiveTrue()).thenReturn(List.of());
+
+        assertThat(service.findActiveZones()).isEmpty();
     }
 
     @Test

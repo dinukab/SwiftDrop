@@ -2,6 +2,7 @@ package com.swiftdrop.pricing.application;
 
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -10,6 +11,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.swiftdrop.pricing.api.ZoneDirectory;
+import com.swiftdrop.pricing.api.ZoneSummary;
 import com.swiftdrop.pricing.domain.Zone;
 import com.swiftdrop.pricing.domain.ZoneRepository;
 
@@ -42,5 +44,12 @@ class ZoneDirectoryService implements ZoneDirectory {
             codes.put(zone.getId(), zone.getCode());
         }
         return Map.copyOf(codes);
+    }
+
+    @Override
+    public List<ZoneSummary> findActiveZones() {
+        return zones.findByActiveTrue().stream()
+                .map(zone -> new ZoneSummary(zone.getId(), zone.getCode(), zone.getName()))
+                .toList();
     }
 }
