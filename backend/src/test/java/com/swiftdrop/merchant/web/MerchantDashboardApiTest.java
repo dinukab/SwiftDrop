@@ -2,6 +2,7 @@ package com.swiftdrop.merchant.web;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -96,6 +97,7 @@ class MerchantDashboardApiTest {
         UUID merchantId = UUID.randomUUID();
         Merchant merchant = new Merchant(userId, "Shop", "REG-1", "s@s.com", "123");
         ReflectionTestUtils.setField(merchant, "id", merchantId);
+        merchant.approve(UUID.randomUUID());
 
         when(merchants.findByUserId(userId)).thenReturn(Optional.of(merchant));
 
@@ -130,6 +132,7 @@ class MerchantDashboardApiTest {
         UUID merchantId = UUID.randomUUID();
         Merchant merchant = new Merchant(userId, "Shop", "REG-1", "s@s.com", "123");
         ReflectionTestUtils.setField(merchant, "id", merchantId);
+        merchant.approve(UUID.randomUUID());
 
         when(merchants.findByUserId(userId)).thenReturn(Optional.of(merchant));
 
@@ -147,6 +150,35 @@ class MerchantDashboardApiTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.trackingNumber").value("SD9988776655"))
                 .andExpect(jsonPath("$.status").value("DELIVERED"));
+    }
+
+    @Test
+    void listOrdersForbiddenForPendingMerchant() throws Exception {
+        UUID userId = UUID.randomUUID();
+        Merchant merchant = new Merchant(userId, "Shop", "REG-1", "s@s.com", "123");
+        ReflectionTestUtils.setField(merchant, "id", UUID.randomUUID());
+
+        when(merchants.findByUserId(userId)).thenReturn(Optional.of(merchant));
+
+        mvc.perform(get("/api/v1/merchants/me/orders")
+                        .with(TestPrincipal.merchant(userId).postProcessor()))
+                .andExpect(status().isForbidden());
+        verifyNoInteractions(parcelQueries);
+    }
+
+    @Test
+    void getOrderByReferenceForbiddenForRejectedMerchant() throws Exception {
+        UUID userId = UUID.randomUUID();
+        Merchant merchant = new Merchant(userId, "Shop", "REG-1", "s@s.com", "123");
+        ReflectionTestUtils.setField(merchant, "id", UUID.randomUUID());
+        merchant.reject(UUID.randomUUID(), "Incomplete documents");
+
+        when(merchants.findByUserId(userId)).thenReturn(Optional.of(merchant));
+
+        mvc.perform(get("/api/v1/merchants/me/orders/REF-TARGET")
+                        .with(TestPrincipal.merchant(userId).postProcessor()))
+                .andExpect(status().isForbidden());
+        verifyNoInteractions(parcelQueries);
     }
 }
 

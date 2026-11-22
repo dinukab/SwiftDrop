@@ -27,6 +27,10 @@ public record Actor(UUID userId, ActorRole role) {
         return new Actor(Objects.requireNonNull(userId, "userId"), ActorRole.COURIER);
     }
 
+    public static Actor dispatcher(UUID userId) {
+        return new Actor(Objects.requireNonNull(userId, "userId"), ActorRole.DISPATCHER);
+    }
+
     public static Actor merchantApi() {
         return new Actor(null, ActorRole.MERCHANT);
     }

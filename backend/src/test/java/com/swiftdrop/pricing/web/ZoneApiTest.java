@@ -94,8 +94,21 @@ class ZoneApiTest {
     }
 
     @Test
-    void anonymousCallerIsRejected() throws Exception {
-        mvc.perform(get("/api/v1/zones")).andExpect(status().isUnauthorized());
+    void anonymousCallerGetsActiveZones() throws Exception {
+        // Public so merchant sign-up can offer the provinces before the merchant has an account
+        when(zones.findByActiveTrue()).thenReturn(List.of(zone("LK-SP", "Southern Province")));
+
+        mvc.perform(get("/api/v1/zones"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].code").value("LK-SP"))
+                .andExpect(jsonPath("$[0].length()").value(3));
+    }
+
+    @Test
+    void adminZoneEndpointsStayProtected() throws Exception {
+        mvc.perform(get("/api/v1/admin/zones")).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/v1/admin/zones").with(TestPrincipal.customer().postProcessor()))
+                .andExpect(status().isForbidden());
     }
 
     private static Zone zone(String code, String name) {

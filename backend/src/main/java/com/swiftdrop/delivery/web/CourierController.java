@@ -6,6 +6,8 @@ import java.util.UUID;
 
 import jakarta.validation.Valid;
 
+import org.springframework.beans.factory.ObjectFactory;
+
 import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -21,8 +23,10 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.swiftdrop.delivery.application.Actor;
+import com.swiftdrop.delivery.application.CourierHubService;
 import com.swiftdrop.delivery.application.CourierParcelService;
 import com.swiftdrop.delivery.application.DeliveryProofService;
+import com.swiftdrop.delivery.application.FinalMileService;
 import com.swiftdrop.delivery.application.ParcelReadService;
 import com.swiftdrop.delivery.application.ParcelStatusService;
 
@@ -36,13 +40,18 @@ class CourierController {
 
     private final CourierParcelService courierParcels;
     private final ParcelStatusService statuses;
+    private final ObjectFactory<CourierHubService> hubs;
+    private final ObjectFactory<FinalMileService> finalMile;
     private final DeliveryProofService proofs;
     private final ParcelReadService reads;
 
-    CourierController(CourierParcelService courierParcels, ParcelStatusService statuses, DeliveryProofService proofs,
-            ParcelReadService reads) {
+    CourierController(CourierParcelService courierParcels, ParcelStatusService statuses,
+            ObjectFactory<CourierHubService> hubs, ObjectFactory<FinalMileService> finalMile,
+            DeliveryProofService proofs, ParcelReadService reads) {
         this.courierParcels = courierParcels;
         this.statuses = statuses;
+        this.hubs = hubs;
+        this.finalMile = finalMile;
         this.proofs = proofs;
         this.reads = reads;
     }
@@ -57,6 +66,28 @@ class CourierController {
     ParcelDetailResponse changeStatus(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id,
             @Valid @RequestBody StatusChangeRequest request) {
         statuses.changeStatus(id, request.toChange(), Actor.courier(Callers.userId(jwt)));
+        return ParcelDetailResponse.from(reads.detail(id, Callers.viewer(jwt)));
+    }
+
+    /** Confirm arrival at a hub with a parcel. */
+    @PostMapping("/api/v1/parcels/{id}/hub-arrival")
+    ParcelDetailResponse confirmHubArrival(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id,
+            @Valid @RequestBody HubArrivalRequest request) {
+        hubs.getObject().confirmHubArrival(id, request.hubId(), Callers.userId(jwt));
+        return ParcelDetailResponse.from(reads.detail(id, Callers.viewer(jwt)));
+    }
+
+    /** Final-mile courier picks up parcel from destination hub for delivery. */
+    @PostMapping("/api/v1/parcels/{id}/pickup-for-delivery")
+    ParcelDetailResponse pickupFromHub(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id) {
+        finalMile.getObject().pickupFromHub(id, Callers.userId(jwt));
+        return ParcelDetailResponse.from(reads.detail(id, Callers.viewer(jwt)));
+    }
+
+    /** Complete final-mile delivery to customer (requires proof already captured). */
+    @PostMapping("/api/v1/parcels/{id}/complete-delivery")
+    ParcelDetailResponse completeDelivery(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id) {
+        finalMile.getObject().completeDelivery(id, Callers.userId(jwt));
         return ParcelDetailResponse.from(reads.detail(id, Callers.viewer(jwt)));
     }
 

@@ -106,7 +106,7 @@ class CourierFlowIT {
         assertThat(today).hasSize(1);
         assertThat(today.get(0).get("nextStatuses").get(0).asString()).isEqualTo("PICKED_UP");
 
-        for (String step : new String[] {"PICKED_UP", "IN_TRANSIT", "OUT_FOR_DELIVERY"}) {
+        for (String step : new String[] {"PICKED_UP", "HUB_ARRIVED", "OUT_FOR_DELIVERY"}) {
             assertThat(changeStatus(courierA, parcelId, "{\"toStatus\":\"" + step + "\"}").getStatusCode())
                     .isEqualTo(HttpStatus.OK);
         }
@@ -161,6 +161,43 @@ class CourierFlowIT {
                 .isEqualTo("CREATED");
     }
 
+    /**
+     * Cross-province route through the hub statuses, on real PostgreSQL: the CHECK constraints must accept
+     * HUB_ARRIVED and HUB_SORTED in parcels and in the history (migration V202611171300).
+     */
+    @Test
+    void parcelCanTravelThroughHubStatusesAndEachStepIsRecorded() {
+        String parcelId = body(post(customer, "/api/v1/parcels", bookingJson()), HttpStatus.CREATED).get("id").asString();
+        assignment.assignCourier(UUID.fromString(parcelId), courierAId, UUID.randomUUID());
+        String hubId = jdbc.queryForObject("SELECT id::text FROM hubs WHERE code = 'LK-UP'", String.class);
+
+        assertThat(changeStatus(courierA, parcelId, "{\"toStatus\":\"PICKED_UP\"}").getStatusCode())
+                .isEqualTo(HttpStatus.OK);
+        // The hub-arrival endpoint sets HUB_ARRIVED
+        JsonNode arrived = body(post(courierA, "/api/v1/parcels/" + parcelId + "/hub-arrival",
+                "{\"hubId\":\"" + hubId + "\"}"), HttpStatus.OK);
+        assertThat(arrived.get("status").asString()).isEqualTo("HUB_ARRIVED");
+
+        for (String step : new String[] {"HUB_SORTED", "IN_TRANSIT", "HUB_ARRIVED", "HUB_SORTED"}) {
+            assertThat(changeStatus(courierA, parcelId, "{\"toStatus\":\"" + step + "\"}").getStatusCode())
+                    .as(step).isEqualTo(HttpStatus.OK);
+        }
+        // Final mile: pickup from the hub, proof, then delivery
+        assertThat(post(courierA, "/api/v1/parcels/" + parcelId + "/pickup-for-delivery", "{}").getStatusCode())
+                .isEqualTo(HttpStatus.OK);
+        body(uploadProof(courierA, parcelId, "Kumari Silva", JPEG), HttpStatus.OK);
+        assertThat(post(courierA, "/api/v1/parcels/" + parcelId + "/complete-delivery", "{}").getStatusCode())
+                .isEqualTo(HttpStatus.OK);
+
+        assertThat(jdbc.queryForObject("SELECT status FROM parcels WHERE id = ?::uuid", String.class, parcelId))
+                .isEqualTo("DELIVERED");
+        assertThat(jdbc.queryForList(
+                "SELECT to_status FROM parcel_status_history WHERE parcel_id = ?::uuid ORDER BY sequence",
+                String.class, parcelId))
+                .containsExactly("CREATED", "PICKED_UP", "HUB_ARRIVED", "HUB_SORTED", "IN_TRANSIT", "HUB_ARRIVED",
+                        "HUB_SORTED", "OUT_FOR_DELIVERY", "DELIVERED");
+    }
+
     @Test
     void failedDeliveryNeedsAReasonAndTheReceiptShowsIt() {
         String parcelId = body(post(customer, "/api/v1/parcels", bookingJson()), HttpStatus.CREATED).get("id").asString();
@@ -186,7 +223,7 @@ class CourierFlowIT {
         assignment.assignCourier(UUID.fromString(parcelId), courierAId, UUID.randomUUID());
         assertThat(uploadProof(courierA, parcelId, "Kumari", JPEG).getStatusCode())
                 .as("proof before out for delivery").isEqualTo(HttpStatus.CONFLICT);
-        for (String step : new String[] {"PICKED_UP", "IN_TRANSIT", "OUT_FOR_DELIVERY"}) {
+        for (String step : new String[] {"PICKED_UP", "HUB_ARRIVED", "OUT_FOR_DELIVERY"}) {
             changeStatus(courierA, parcelId, "{\"toStatus\":\"" + step + "\"}");
         }
 

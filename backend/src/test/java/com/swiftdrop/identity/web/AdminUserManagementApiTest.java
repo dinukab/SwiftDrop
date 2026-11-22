@@ -137,7 +137,7 @@ class AdminUserManagementApiTest {
     // 1. List Users
     @Test
     void listUsersUnpagedReturnsArrayForBackwardsCompatibility() throws Exception {
-        when(users.findAll()).thenReturn(List.of(adminUser, targetUser));
+        when(users.findByDeletedAtIsNull()).thenReturn(List.of(adminUser, targetUser));
 
         mvc.perform(get("/api/v1/users").with(TestPrincipal.admin(ADMIN_ID).postProcessor()))
                 .andExpect(status().isOk())
@@ -151,7 +151,7 @@ class AdminUserManagementApiTest {
 
     @Test
     void listUsersPagedReturnsPageResponseShape() throws Exception {
-        when(users.findAll(any(Pageable.class)))
+        when(users.findByDeletedAtIsNull(any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(adminUser, targetUser), org.springframework.data.domain.PageRequest.of(0, 20), 2));
 
         mvc.perform(get("/api/v1/users?page=0&size=20").with(TestPrincipal.admin(ADMIN_ID).postProcessor()))
@@ -274,6 +274,49 @@ class AdminUserManagementApiTest {
                                 }
                                 """))
                 .andExpect(status().isConflict());
+    }
+
+    // 2b. User Soft Delete
+    @Test
+    void adminDeletesAUserWhichIsAnonymisedAndDisabled() throws Exception {
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .delete("/api/v1/users/" + TARGET_USER_ID)
+                        .with(TestPrincipal.admin(ADMIN_ID).postProcessor()))
+                .andExpect(status().isNoContent());
+
+        assertThat(targetUser.isDeleted()).isTrue();
+        assertThat(targetUser.isEnabled()).isFalse();
+        assertThat(targetUser.getEmail()).doesNotContain("target@swiftdrop.com");
+        verify(identities).deleteByUserId(TARGET_USER_ID);
+    }
+
+    @Test
+    void adminCannotDeleteThemself() throws Exception {
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .delete("/api/v1/users/" + ADMIN_ID)
+                        .with(TestPrincipal.admin(ADMIN_ID).postProcessor()))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.detail").value("An administrator cannot delete their own account"));
+
+        assertThat(adminUser.isDeleted()).isFalse();
+    }
+
+    @Test
+    void deletingAUserIsAdminOnlyAndUnknownUsersAreNotFound() throws Exception {
+        String url = "/api/v1/users/" + TARGET_USER_ID;
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete(url)
+                        .with(TestPrincipal.customer().postProcessor()))
+                .andExpect(status().isForbidden());
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete(url))
+                .andExpect(status().isUnauthorized());
+        assertThat(targetUser.isDeleted()).isFalse();
+
+        UUID unknownId = UUID.randomUUID();
+        when(users.findById(unknownId)).thenReturn(Optional.empty());
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .delete("/api/v1/users/" + unknownId)
+                        .with(TestPrincipal.admin(ADMIN_ID).postProcessor()))
+                .andExpect(status().isNotFound());
     }
 
     // 3. User Enable / Disable

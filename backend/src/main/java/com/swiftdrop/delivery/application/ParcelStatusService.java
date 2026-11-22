@@ -5,6 +5,7 @@ import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
 
+import org.springframework.beans.factory.ObjectFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,18 +28,21 @@ public class ParcelStatusService {
     private final ParcelRepository parcels;
     private final DeliveryProofRepository proofs;
     private final ParcelEventRecorder recorder;
+    private final ObjectFactory<LegProgress> legs;
     private final Clock clock;
 
     @Autowired
-    public ParcelStatusService(ParcelRepository parcels, DeliveryProofRepository proofs, ParcelEventRecorder recorder) {
-        this(parcels, proofs, recorder, Clock.systemUTC());
+    public ParcelStatusService(ParcelRepository parcels, DeliveryProofRepository proofs, ParcelEventRecorder recorder,
+            ObjectFactory<LegProgress> legs) {
+        this(parcels, proofs, recorder, legs, Clock.systemUTC());
     }
 
     ParcelStatusService(ParcelRepository parcels, DeliveryProofRepository proofs, ParcelEventRecorder recorder,
-            Clock clock) {
+            ObjectFactory<LegProgress> legs, Clock clock) {
         this.parcels = parcels;
         this.proofs = proofs;
         this.recorder = recorder;
+        this.legs = legs;
         this.clock = clock;
     }
 
@@ -53,6 +57,16 @@ public class ParcelStatusService {
      */
     @Transactional
     public ParcelStatusChanged changeStatus(UUID parcelId, StatusChange change, Actor courier) {
+        return changeStatus(parcelId, change, courier, null);
+    }
+
+    /**
+     * Like {@link #changeStatus(UUID, StatusChange, Actor)}, for a courier who confirms arrival at {@code hubId}. For
+     * a parcel with legs (ADR 0007) {@code HUB_ARRIVED} needs that hub, which must be the destination of the leg in
+     * progress; the leg then ends. Delivery or failure ends the final leg. A parcel without legs ignores the hub.
+     */
+    @Transactional
+    public ParcelStatusChanged changeStatus(UUID parcelId, StatusChange change, Actor courier, UUID arrivedAtHubId) {
         Objects.requireNonNull(change, "change");
         if (courier.role() != ActorRole.COURIER) {
             throw new IllegalArgumentException("Only couriers change a parcel's status");
@@ -64,6 +78,13 @@ public class ParcelStatusService {
         Instant now = clock.instant();
 
         parcel.changeStatus(change.toStatus(), courier.userId(), change.failureReason(), proofCaptured, now);
+        // After the parcel accepted the move, so a stranger still gets the plain 404 of ADR 0006 section 7
+        legs.getObject().requireMoveAllowed(parcelId, courier.userId(), previous, change.toStatus());
+        if (change.toStatus() == ParcelStatus.HUB_ARRIVED) {
+            legs.getObject().arrivedAtHub(parcelId, arrivedAtHubId, now);
+        } else if (change.toStatus() == ParcelStatus.DELIVERED || change.toStatus() == ParcelStatus.FAILED) {
+            legs.getObject().finished(parcelId, now);
+        }
         return recorder.record(parcel, previous, courier, change.note(), change.failureReason(), now);
     }
 }
