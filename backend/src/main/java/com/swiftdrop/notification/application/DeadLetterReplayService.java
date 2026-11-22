@@ -49,9 +49,15 @@ public class DeadLetterReplayService {
         this.clock = Objects.requireNonNull(clock, "clock");
     }
 
-    /** The queue depth and the oldest messages (without bodies). */
+    /**
+     * The queue depth and the oldest messages (without bodies). The broker counts only messages that are ready, so a
+     * message that another look is holding for a moment is missed; the depth is therefore never lower than the number
+     * of messages listed.
+     */
     public Overview overview() {
-        return new Overview(deadLetters.sourceQueue(), deadLetters.depth(), deadLetters.peek(PREVIEW_LIMIT));
+        long depth = deadLetters.depth();
+        List<DeadLetter> oldest = deadLetters.peek(PREVIEW_LIMIT);
+        return new Overview(deadLetters.sourceQueue(), Math.max(depth, oldest.size()), oldest);
     }
 
     /**

@@ -6,8 +6,10 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Date;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -99,8 +101,11 @@ class RabbitDeadLetterQueue implements DeadLetterQueue {
         List<DeadLetter> replayed = new ArrayList<>();
         String stopReason = null;
         try {
+            // A message that fails again returns to the back of the dead-letter queue. Remember what this request
+            // replayed so it is never picked up a second time by the same request.
+            Set<String> seen = new HashSet<>();
             for (int i = 0; i < max && stopReason == null; i++) {
-                Step step = rabbit.invoke(operations -> replayOne(operations, beforeAcknowledge));
+                Step step = rabbit.invoke(operations -> replayOne(operations, beforeAcknowledge, seen));
                 if (step.letter() == null) {
                     break; // the dead-letter queue is empty
                 }
@@ -116,12 +121,20 @@ class RabbitDeadLetterQueue implements DeadLetterQueue {
         return new Result(List.copyOf(replayed), stopReason);
     }
 
-    private Step replayOne(RabbitOperations operations, Consumer<DeadLetter> beforeAcknowledge) {
+    private Step replayOne(RabbitOperations operations, Consumer<DeadLetter> beforeAcknowledge, Set<String> seen) {
         GetResponse response = operations.execute(channel -> channel.basicGet(DEAD_LETTER_QUEUE, false));
         if (response == null) {
             return new Step(null, null);
         }
         long tag = response.getEnvelope().getDeliveryTag();
+        if (!seen.add(identity(response))) {
+            // It was replayed by this request and came back: leave it for the next request
+            operations.execute(channel -> {
+                channel.basicNack(tag, false, true);
+                return null;
+            });
+            return new Step(null, null);
+        }
         DeadLetter letter = summarize(response.getBody(), response.getProps());
 
         String failure = republish(operations, response);
@@ -146,6 +159,12 @@ class RabbitDeadLetterQueue implements DeadLetterQueue {
         return new Step(letter, null);
     }
 
+    /** The message ID, or for a message without one a fingerprint of its body. */
+    private static String identity(GetResponse response) {
+        String messageId = response.getProps() == null ? null : response.getProps().getMessageId();
+        return messageId != null ? "id:" + messageId : "body:" + UUID.nameUUIDFromBytes(response.getBody());
+    }
+
     /** Publishes the original body to the source queue; returns {@code null} once the broker confirmed it. */
     private String republish(RabbitOperations operations, GetResponse response) {
         AMQP.BasicProperties props = response.getProps();
@@ -155,7 +174,9 @@ class RabbitDeadLetterQueue implements DeadLetterQueue {
         properties.setMessageId(props.getMessageId());
         properties.setType(props.getType());
         Message message = MessageBuilder.withBody(response.getBody()).andProperties(properties).build();
-        CorrelationData correlation = new CorrelationData(props.getMessageId());
+        // A malformed dead letter may carry no message ID; the confirm still needs a correlation ID
+        CorrelationData correlation = new CorrelationData(
+                props.getMessageId() != null ? props.getMessageId() : UUID.randomUUID().toString());
         try {
             // Default exchange: the routing key is the queue name, so it reaches the source queue only
             operations.send("", SOURCE_QUEUE, message, correlation);

@@ -147,6 +147,20 @@ class DeadLetterReplayServiceTest {
     }
 
     @Test
+    void theDepthIsNeverLowerThanTheNumberOfMessagesListed() {
+        DeadLetterQueue broker = mock(DeadLetterQueue.class);
+        when(broker.sourceQueue()).thenReturn(QUEUE);
+        when(broker.depth()).thenReturn(0L); // another look is holding them for a moment
+        when(broker.peek(DeadLetterReplayService.PREVIEW_LIMIT))
+                .thenReturn(List.of(letter(EVENT_1, "rejected"), letter(EVENT_2, "rejected")));
+
+        DeadLetterReplayService.Overview overview =
+                new DeadLetterReplayService(broker, repository, Clock.fixed(NOW, ZoneOffset.UTC)).overview();
+
+        assertThat(overview.depth()).isEqualTo(2);
+    }
+
+    @Test
     void theHistoryIsPagedNewestFirst() {
         DeadLetterReplay row = new DeadLetterReplay(QUEUE, EVENT_1, "rejected", ADMIN, NOW);
         when(repository.findAllByOrderByReplayedAtDescIdDesc(any(Pageable.class)))
