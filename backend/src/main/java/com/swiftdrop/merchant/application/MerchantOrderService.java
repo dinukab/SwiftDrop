@@ -10,6 +10,9 @@ import com.swiftdrop.delivery.api.CreatedParcel;
 import com.swiftdrop.delivery.api.DeliveryContact;
 import com.swiftdrop.delivery.api.NewMerchantParcel;
 import com.swiftdrop.delivery.api.ParcelCreation;
+import com.swiftdrop.merchant.domain.Merchant;
+import com.swiftdrop.merchant.domain.MerchantPickupAddress;
+import com.swiftdrop.merchant.domain.MerchantRepository;
 
 /**
  * Handles automated order placement for merchants via secured API (MER-2).
@@ -22,11 +25,28 @@ import com.swiftdrop.delivery.api.ParcelCreation;
 public class MerchantOrderService {
 
     private final ParcelCreation parcelCreation;
+    private final MerchantRepository merchants;
 
-    public MerchantOrderService(ParcelCreation parcelCreation) {
+    public MerchantOrderService(ParcelCreation parcelCreation, MerchantRepository merchants) {
         this.parcelCreation = parcelCreation;
+        this.merchants = merchants;
     }
 
+    /**
+     * Places an API order. The pickup is resolved against the merchant's registered pickup address:
+     * <ul>
+     *   <li>registered address, no {@code pickup} sent: the registered address is used;</li>
+     *   <li>registered address, {@code pickup} sent: its zone must be the registered zone (the text may differ, for
+     *       example another gate of the same warehouse);</li>
+     *   <li>no registered address (merchants registered before it was required): {@code pickup} is required and taken
+     *       as sent, as before.</li>
+     * </ul>
+     * Not transactional itself: {@link ParcelCreation} writes in its own transaction.
+     *
+     * @param pickup the pickup sent with the order, or {@code null} to use the registered address
+     * @throws PickupZoneMismatchException if the pickup is in another province than the registered address
+     * @throws PickupAddressRequiredException if no pickup is sent and none is registered
+     */
     public CreatedParcel placeOrder(
             UUID merchantId,
             String merchantOrderReference,
@@ -38,14 +58,16 @@ public class MerchantOrderService {
     ) {
         Objects.requireNonNull(merchantId, "merchantId");
         Objects.requireNonNull(merchantOrderReference, "merchantOrderReference");
-        Objects.requireNonNull(pickup, "pickup");
         Objects.requireNonNull(dropoff, "dropoff");
         Objects.requireNonNull(sizeName, "sizeName");
+        // The API key filter only authenticates keys of existing merchants
+        Merchant merchant = merchants.findById(merchantId)
+                .orElseThrow(() -> new MerchantNotFoundException("Merchant not found"));
 
         NewMerchantParcel order = createOrder(
                 merchantId,
                 merchantOrderReference.trim(),
-                pickup,
+                resolvePickup(merchant, pickup),
                 dropoff,
                 sizeName.trim().toUpperCase(),
                 weightGrams,
@@ -53,6 +75,24 @@ public class MerchantOrderService {
         );
 
         return parcelCreation.createMerchantParcel(order);
+    }
+
+    private static DeliveryContact resolvePickup(Merchant merchant, DeliveryContact sent) {
+        MerchantPickupAddress registered = merchant.getPickupAddress();
+        if (registered == null) {
+            if (sent == null) {
+                throw new PickupAddressRequiredException();
+            }
+            return sent;
+        }
+        if (sent == null) {
+            return new DeliveryContact(registered.getContactName(), registered.getPhone(), registered.getLine1(),
+                    registered.getLine2(), registered.getCity(), registered.getZoneId(), registered.getPostalCode());
+        }
+        if (!registered.getZoneId().equals(sent.zoneId())) {
+            throw new PickupZoneMismatchException();
+        }
+        return sent;
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})

@@ -69,6 +69,9 @@ class MerchantAuthorizationTest {
     private static final UUID COURIER_ID = UUID.fromString("dddddddd-dddd-dddd-dddd-dddddddddddd");
     private static final UUID MERCHANT_USER_ID = UUID.fromString("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee");
     private static final UUID MERCHANT_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");
+    private static final String VALID_ADDRESS = """
+            {"contactName": "Ada Warehouse", "phone": "+94912234567", "line1": "12 Warehouse Rd",
+             "city": "Galle", "postalCode": "80000", "zoneId": "22222222-2222-2222-2222-222222222222"}""";
 
     @Autowired
     private MockMvc mvc;
@@ -116,8 +119,9 @@ class MerchantAuthorizationTest {
         Merchant pending = new Merchant(MERCHANT_USER_ID, "Test Business", "REG-TEST-1", "merchant@example.com", "0770000000");
         ReflectionTestUtils.setField(pending, "id", MERCHANT_ID);
 
-        when(onboardingService.register(anyString(), anyString(), anyString(), anyString(), anyString(), any()))
+        when(onboardingService.register(anyString(), anyString(), anyString(), anyString(), anyString(), any(), any()))
                 .thenReturn(pending);
+        when(onboardingService.changePickupAddress(eq(MERCHANT_USER_ID), any())).thenReturn(pending);
         when(onboardingService.requireOwnMerchant(MERCHANT_USER_ID)).thenReturn(pending);
         when(onboardingService.list(anyInt(), anyInt(), isNull()))
                 .thenReturn(new PageImpl<>(List.of(pending)));
@@ -163,9 +167,21 @@ class MerchantAuthorizationTest {
                   "registrationNumber": "REG-ADA-1",
                   "contactEmail": "ada@shop.example",
                   "contactPhone": "0770000000",
+                  "password": "correct-horse",
+                  "pickupAddress": %s
+                }
+                """.formatted(VALID_ADDRESS);
+        String registerWithoutAddress = """
+                {
+                  "fullName": "Ada Merchant",
+                  "businessName": "Ada's Shop",
+                  "registrationNumber": "REG-ADA-1",
+                  "contactEmail": "ada@shop.example",
+                  "contactPhone": "0770000000",
                   "password": "correct-horse"
                 }
                 """;
+        String badPhoneAddress = VALID_ADDRESS.replace("+94912234567", "0912234567");
         String validRejectBody = "{\"reason\": \"Incomplete documentation\"}";
 
         return List.of(
@@ -185,6 +201,63 @@ class MerchantAuthorizationTest {
                         HttpStatus.BAD_REQUEST,
                         req -> req.contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"fullName\":\"\",\"email\":\"bad\",\"password\":\"x\",\"businessName\":\"\"}")
+                ),
+                AuthorizationMatrixRow.row(
+                        "POST /api/v1/merchants: Missing pickup address returns 400 Bad Request",
+                        HttpMethod.POST,
+                        "/api/v1/merchants",
+                        TestPrincipal.anonymous(),
+                        HttpStatus.BAD_REQUEST,
+                        req -> req.contentType(MediaType.APPLICATION_JSON).content(registerWithoutAddress)
+                ),
+
+                AuthorizationMatrixRow.row(
+                        "PUT /merchants/me/pickup-address: Anonymous returns 401 Unauthorized",
+                        HttpMethod.PUT,
+                        "/api/v1/merchants/me/pickup-address",
+                        TestPrincipal.anonymous(),
+                        HttpStatus.UNAUTHORIZED,
+                        req -> req.contentType(MediaType.APPLICATION_JSON).content(VALID_ADDRESS)
+                ),
+                AuthorizationMatrixRow.row(
+                        "PUT /merchants/me/pickup-address: CUSTOMER returns 403 Forbidden",
+                        HttpMethod.PUT,
+                        "/api/v1/merchants/me/pickup-address",
+                        TestPrincipal.customer(CUSTOMER_ID),
+                        HttpStatus.FORBIDDEN,
+                        req -> req.contentType(MediaType.APPLICATION_JSON).content(VALID_ADDRESS)
+                ),
+                AuthorizationMatrixRow.row(
+                        "PUT /merchants/me/pickup-address: COURIER returns 403 Forbidden",
+                        HttpMethod.PUT,
+                        "/api/v1/merchants/me/pickup-address",
+                        TestPrincipal.courier(COURIER_ID),
+                        HttpStatus.FORBIDDEN,
+                        req -> req.contentType(MediaType.APPLICATION_JSON).content(VALID_ADDRESS)
+                ),
+                AuthorizationMatrixRow.row(
+                        "PUT /merchants/me/pickup-address: ADMIN returns 403 Forbidden",
+                        HttpMethod.PUT,
+                        "/api/v1/merchants/me/pickup-address",
+                        TestPrincipal.admin(ADMIN_ID),
+                        HttpStatus.FORBIDDEN,
+                        req -> req.contentType(MediaType.APPLICATION_JSON).content(VALID_ADDRESS)
+                ),
+                AuthorizationMatrixRow.row(
+                        "PUT /merchants/me/pickup-address: MERCHANT returns 200 OK",
+                        HttpMethod.PUT,
+                        "/api/v1/merchants/me/pickup-address",
+                        TestPrincipal.merchant(MERCHANT_USER_ID),
+                        HttpStatus.OK,
+                        req -> req.contentType(MediaType.APPLICATION_JSON).content(VALID_ADDRESS)
+                ),
+                AuthorizationMatrixRow.row(
+                        "PUT /merchants/me/pickup-address: MERCHANT with a malformed phone returns 400",
+                        HttpMethod.PUT,
+                        "/api/v1/merchants/me/pickup-address",
+                        TestPrincipal.merchant(MERCHANT_USER_ID),
+                        HttpStatus.BAD_REQUEST,
+                        req -> req.contentType(MediaType.APPLICATION_JSON).content(badPhoneAddress)
                 ),
 
                 AuthorizationMatrixRow.row(
@@ -324,6 +397,23 @@ class MerchantAuthorizationTest {
                         req -> { }
                 )
         );
+    }
+
+    @Test
+    void unknownPickupZoneIsAFieldErrorAndLeaksNothing() throws Exception {
+        when(onboardingService.changePickupAddress(eq(MERCHANT_USER_ID), any()))
+                .thenThrow(new com.swiftdrop.merchant.application.InvalidPickupZoneException());
+
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .put("/api/v1/merchants/me/pickup-address")
+                        .with(TestPrincipal.merchant(MERCHANT_USER_ID).postProcessor())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(VALID_ADDRESS))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isBadRequest())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                        .jsonPath("$.invalidFields[0]").value("pickupAddress.zoneId"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                        .content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("Warehouse"))));
     }
 
     private static User withId(User user, UUID id) {
