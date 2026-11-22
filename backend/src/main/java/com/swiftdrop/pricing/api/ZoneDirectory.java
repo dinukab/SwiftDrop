@@ -1,6 +1,7 @@
 package com.swiftdrop.pricing.api;
 
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -20,4 +21,7 @@ public interface ZoneDirectory {
      * a {@code null} or empty collection gives an empty map.
      */
     Map<UUID, String> findCodes(Collection<UUID> zoneIds);
+
+    /** The zones that are currently active, for modules that let a person name a zone. */
+    List<ZoneSummary> findActiveZones();
 }

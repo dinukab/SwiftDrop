@@ -229,8 +229,20 @@ class MigrationConventionTest {
                                 "delivery add leg transfers",
                                 "delivery/V202611191000__delivery_add_leg_transfers.sql"),
                         tuple(
+                                "202611211000",
+                                "notification create notifications",
+                                "notification/V202611211000__notification_create_notifications.sql"),
+                        tuple(
+                                "202611211100",
+                                "identity add user soft delete",
+                                "identity/V202611211100__identity_add_user_soft_delete.sql"),
+                        tuple(
                                 "202611211200",
                                 "merchant add pickup address",
-                                "merchant/V202611211200__merchant_add_pickup_address.sql"));
+                                "merchant/V202611211200__merchant_add_pickup_address.sql"),
+                        tuple(
+                                "202611211500",
+                                "notification create dead letter replays",
+                                "notification/V202611211500__notification_create_dead_letter_replays.sql"));
     }
 }

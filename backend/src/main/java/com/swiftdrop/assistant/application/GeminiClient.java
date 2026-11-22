@@ -1,5 +1,6 @@
 package com.swiftdrop.assistant.application;
 
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
@@ -15,6 +16,7 @@ import tools.jackson.databind.node.ObjectNode;
  * interprets {@code functionCall} parts and loops until Gemini answers in text.
  */
 @Component
+@EnableConfigurationProperties(GeminiProperties.class)
 class GeminiClient {
 
     private static final String BASE_URL = "https://generativelanguage.googleapis.com";
