@@ -72,7 +72,7 @@ export function AssignCourierDialog({
         </div>
 
         {couriers.length === 0 ? (
-          <p className="text-sm text-muted-foreground">There are no active couriers to assign.</p>
+          <p className="text-sm text-muted-foreground">No active couriers are based at your hub, so there is nobody to assign.</p>
         ) : (
           <fieldset className="space-y-2">
             <legend className="sr-only">Courier</legend>

@@ -16,6 +16,7 @@ import org.springframework.boot.DefaultApplicationArguments;
 import org.springframework.security.crypto.factory.PasswordEncoderFactories;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
+import com.swiftdrop.identity.domain.ExternalIdentityRepository;
 import com.swiftdrop.identity.domain.Role;
 import com.swiftdrop.identity.domain.UserRepository;
 
@@ -107,7 +108,7 @@ class BootstrapAdminServiceTest {
     void rejectsPasswordExceeding72Bytes() {
         String longPassword = "p".repeat(73);
         BootstrapAdminProperties properties = new BootstrapAdminProperties("admin@swiftdrop.com", longPassword);
-        AccountService realAccounts = new AccountService(users, encoder);
+        AccountService realAccounts = new AccountService(users, encoder, mock(ExternalIdentityRepository.class));
         when(users.existsByRoles(Role.ADMIN)).thenReturn(false);
 
         BootstrapAdminService service = new BootstrapAdminService(users, realAccounts, properties);

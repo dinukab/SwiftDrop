@@ -342,9 +342,13 @@ class DispatchApiTest {
     void theWorkloadListsCouriersLeastBusyFirst() throws Exception {
         UUID busy = UUID.fromString("00000000-0000-0000-0000-0000000000a1");
         UUID idle = UUID.fromString("00000000-0000-0000-0000-0000000000a2");
-        when(profiles.findByActive(eq(true), any())).thenReturn(new PageImpl<>(List.of(
-                new CourierProfile(busy, "+94771111111", VehicleType.VAN, Instant.now()),
-                new CourierProfile(idle, "+94772222222", VehicleType.CAR, Instant.now()))));
+        Hub uva = hub("LK-UP");
+        when(hubService.hubForDispatcher(DISPATCHER)).thenReturn(Optional.of(uva));
+        CourierProfile busyProfile = new CourierProfile(busy, "+94771111111", VehicleType.VAN, Instant.now());
+        CourierProfile idleProfile = new CourierProfile(idle, "+94772222222", VehicleType.CAR, Instant.now());
+        busyProfile.assignHomeHub(uva.getId(), Instant.now());
+        idleProfile.assignHomeHub(uva.getId(), Instant.now());
+        when(profiles.findByActive(eq(true), any())).thenReturn(new PageImpl<>(List.of(busyProfile, idleProfile)));
         identityUser(busy, "Busy Bill", true, Role.COURIER);
         identityUser(idle, "Idle Ida", true, Role.COURIER);
         when(parcelQueries.countActiveParcelsByCourier()).thenReturn(Map.of(busy, 3L));
@@ -356,6 +360,26 @@ class DispatchApiTest {
                 .andExpect(jsonPath("$[1].name").value("Busy Bill"))
                 .andExpect(jsonPath("$[1].activeParcels").value(3))
                 .andExpect(jsonPath("$[0].phone").doesNotExist());
+    }
+
+    @Test
+    void theWorkloadLeavesOutCouriersFromOtherZones() throws Exception {
+        UUID local = UUID.fromString("00000000-0000-0000-0000-0000000000a5");
+        UUID remote = UUID.fromString("00000000-0000-0000-0000-0000000000a6");
+        Hub uva = hub("LK-UP");
+        when(hubService.hubForDispatcher(DISPATCHER)).thenReturn(Optional.of(uva));
+        CourierProfile localProfile = new CourierProfile(local, "+94773333333", VehicleType.BIKE, Instant.now());
+        CourierProfile remoteProfile = new CourierProfile(remote, "+94774444444", VehicleType.BIKE, Instant.now());
+        localProfile.assignHomeHub(uva.getId(), Instant.now());
+        remoteProfile.assignHomeHub(UUID.randomUUID(), Instant.now());
+        when(profiles.findByActive(eq(true), any())).thenReturn(new PageImpl<>(List.of(localProfile, remoteProfile)));
+        identityUser(local, "Local Lasan", true, Role.COURIER);
+        identityUser(remote, "Remote Rani", true, Role.COURIER);
+
+        mvc.perform(get("/api/v1/courier-workloads").with(TestPrincipal.dispatcher(DISPATCHER).postProcessor()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].name").value("Local Lasan"));
     }
 
     @Test

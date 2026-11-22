@@ -13,6 +13,8 @@ export interface PortalShellProps {
   role: BackendRole;
   workspaceBadge: string;
   navItems?: PortalNavItem[];
+  /** Optional control shown beside the role badge, for example the notification bell. */
+  headerAction?: React.ReactNode;
   children: React.ReactNode;
 }
 
@@ -25,6 +27,7 @@ export function PortalShell({
   role,
   workspaceBadge,
   navItems = [],
+  headerAction,
   children,
 }: PortalShellProps) {
   const pathname = usePathname();
@@ -39,9 +42,12 @@ export function PortalShell({
               <span className="size-1.5 rounded-full bg-primary" aria-hidden="true" />
               {workspaceBadge}
             </div>
-            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-muted text-muted-foreground border border-border uppercase tracking-wider">
-              Role: {role}
-            </span>
+            <div className="flex items-center gap-2">
+              {headerAction}
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-muted text-muted-foreground border border-border uppercase tracking-wider">
+                Role: {role}
+              </span>
+            </div>
           </div>
 
           <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground">
