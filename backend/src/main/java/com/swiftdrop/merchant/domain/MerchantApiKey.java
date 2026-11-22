@@ -43,6 +43,10 @@ public class MerchantApiKey {
     @Column(name = "last_used_at")
     private Instant lastUsedAt;
 
+    /** Encrypted signing secret (ADR 0004 section 7.4); null for keys created before signing existed. */
+    @Column(name = "signing_secret_encrypted", columnDefinition = "TEXT")
+    private String signingSecretEncrypted;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -97,6 +101,18 @@ public class MerchantApiKey {
 
     public Instant getCreatedAt() {
         return createdAt;
+    }
+
+    /** Attaches the encrypted signing secret. Set once, when the key is created. */
+    public void attachSigningSecret(String encrypted) {
+        if (this.signingSecretEncrypted != null) {
+            throw new IllegalStateException("A key has one signing secret");
+        }
+        this.signingSecretEncrypted = java.util.Objects.requireNonNull(encrypted, "encrypted");
+    }
+
+    public String getSigningSecretEncrypted() {
+        return signingSecretEncrypted;
     }
 }
 

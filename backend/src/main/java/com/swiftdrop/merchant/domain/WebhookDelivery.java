@@ -59,11 +59,25 @@ public class WebhookDelivery {
         // for JPA
     }
 
+    @Column(name = "manual_redeliveries", nullable = false)
+    private int manualRedeliveries;
+
+    @Column(name = "payload", columnDefinition = "TEXT")
+    private String payload;
+
     public WebhookDelivery(UUID endpointId, UUID merchantId, UUID parcelId, UUID eventId) {
+        this(endpointId, merchantId, parcelId, eventId, null);
+    }
+
+    /**
+     * @param payload the exact event body to send and sign on every attempt; no personal data
+     */
+    public WebhookDelivery(UUID endpointId, UUID merchantId, UUID parcelId, UUID eventId, String payload) {
         this.endpointId = Objects.requireNonNull(endpointId, "endpointId");
         this.merchantId = Objects.requireNonNull(merchantId, "merchantId");
         this.parcelId = Objects.requireNonNull(parcelId, "parcelId");
         this.eventId = Objects.requireNonNull(eventId, "eventId");
+        this.payload = payload;
         this.attemptCount = 0;
         this.status = "PENDING";
         Instant now = Instant.now();
@@ -96,6 +110,34 @@ public class WebhookDelivery {
         this.updatedAt = Instant.now();
     }
 
+    /** Most manual redeliveries one delivery may get (ADR 0004 section 7, Phase 4). */
+    public static final int MAX_MANUAL_REDELIVERIES = 3;
+
+    public boolean canRedeliver() {
+        return "FAILED".equals(status) && manualRedeliveries < MAX_MANUAL_REDELIVERIES;
+    }
+
+    /**
+     * Sends a failed delivery again: it is pending now, and gets a fresh series of automatic attempts.
+     * The body and event are unchanged, so the endpoint receives the same event.
+     *
+     * @throws IllegalStateException if the delivery is not failed or the manual limit is used up
+     */
+    public void redeliver(Instant now) {
+        if (!canRedeliver()) {
+            throw new IllegalStateException("Delivery cannot be redelivered");
+        }
+        this.manualRedeliveries++;
+        this.status = "PENDING";
+        this.attemptCount = 0;
+        this.nextAttemptAt = Objects.requireNonNull(now, "now");
+        this.updatedAt = now;
+    }
+
+    public int getManualRedeliveries() {
+        return manualRedeliveries;
+    }
+
     public UUID getId() {
         return id;
     }
@@ -110,6 +152,11 @@ public class WebhookDelivery {
 
     public UUID getParcelId() {
         return parcelId;
+    }
+
+    /** The exact event body, or {@code null} for a row created before bodies were stored. */
+    public String getPayload() {
+        return payload;
     }
 
     public UUID getEventId() {

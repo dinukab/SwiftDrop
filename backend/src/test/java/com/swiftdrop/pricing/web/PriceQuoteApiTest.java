@@ -102,11 +102,12 @@ class PriceQuoteApiTest {
     void customerGetsQuoteWithBreakdownAsStrings() throws Exception {
         quote(TestPrincipal.customer(), body(COLOMBO, KANDY, "\"MEDIUM\"", "2000"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.amount").value("650.00"))
+                // 2000 g = 1 extra kg × 100 → weight fee 100.00, medium surcharge 50.00, base 400.00
+                .andExpect(jsonPath("$.amount").value("550.00"))
                 .andExpect(jsonPath("$.currency").value("LKR"))
                 .andExpect(jsonPath("$.pricingRuleId").value(RULE_ID.toString()))
                 .andExpect(jsonPath("$.breakdown.baseFee").value("400.00"))
-                .andExpect(jsonPath("$.breakdown.weightFee").value("200.00"))
+                .andExpect(jsonPath("$.breakdown.weightFee").value("100.00"))
                 .andExpect(jsonPath("$.breakdown.sizeSurcharge").value("50.00"));
     }
 

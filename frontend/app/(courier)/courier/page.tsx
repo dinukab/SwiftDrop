@@ -55,8 +55,18 @@ export default function CourierPortalPage() {
 
     try {
       setUpdating(id);
-      await api.post(`/api/v1/parcels/${id}/status-changes`, { toStatus }, { token });
-      
+      if (toStatus === "HUB_ARRIVED") {
+        // The courier brings a picked-up parcel to the hub of the pickup zone
+        const hubId = parcels.find((p) => p.id === id)?.arrivalHubId;
+        if (!hubId) {
+          alert("This parcel has no pickup hub yet. Ask a dispatcher to check it.");
+          return;
+        }
+        await api.post(`/api/v1/parcels/${id}/hub-arrival`, { hubId }, { token });
+      } else {
+        await api.post(`/api/v1/parcels/${id}/status-changes`, { toStatus }, { token });
+      }
+
       // Refresh the parcel list to get updated status
       const data = await api.get<CourierParcelResponse[]>("/api/v1/courier/parcels", { token });
       setParcels(data);

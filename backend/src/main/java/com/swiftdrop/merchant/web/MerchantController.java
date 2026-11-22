@@ -14,12 +14,15 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
+
+import com.swiftdrop.identity.api.UserDirectory;
 
 import com.swiftdrop.merchant.application.MerchantOnboardingService;
 import com.swiftdrop.merchant.domain.Merchant;
@@ -33,9 +36,11 @@ import com.swiftdrop.shared.web.PageResponse;
  * <ul>
  *   <li>{@code POST /api/v1/merchants} — public registration (PENDING)</li>
  *   <li>{@code GET /api/v1/merchants/me} — own profile (MERCHANT)</li>
+ *   <li>{@code PUT /api/v1/merchants/me/pickup-address} — set or replace own pickup address (MERCHANT)</li>
  *   <li>{@code GET /api/v1/merchants} — admin directory</li>
  *   <li>{@code POST /api/v1/merchants/{id}/approval} — admin approve</li>
  *   <li>{@code POST /api/v1/merchants/{id}/rejection} — admin reject</li>
+ *   <li>{@code POST /api/v1/merchants/{id}/suspension} — admin suspend an approved merchant</li>
  * </ul>
  */
 @RestController
@@ -43,9 +48,11 @@ import com.swiftdrop.shared.web.PageResponse;
 class MerchantController {
 
     private final MerchantOnboardingService onboarding;
+    private final UserDirectory users;
 
-    MerchantController(MerchantOnboardingService onboarding) {
+    MerchantController(MerchantOnboardingService onboarding, UserDirectory users) {
         this.onboarding = onboarding;
+        this.users = users;
     }
 
     /** Public merchant registration. Creates MERCHANT user + PENDING merchant atomically. */
@@ -58,7 +65,20 @@ class MerchantController {
                 request.password(),
                 request.businessName(),
                 request.registrationNumber(),
-                request.contactPhone()));
+                request.contactPhone(),
+                request.pickupAddress().toDomain()));
+    }
+
+    /**
+     * Sets or replaces the merchant's own pickup (warehouse) address, in any status, so a merchant registered before
+     * the address was required can add it and a pending merchant can correct it.
+     */
+    @PutMapping("/me/pickup-address")
+    @PreAuthorize("hasRole('MERCHANT')")
+    MerchantResponse changePickupAddress(@AuthenticationPrincipal Jwt jwt,
+            @Valid @RequestBody MerchantPickupAddressRequest request) {
+        UUID userId = UUID.fromString(jwt.getSubject());
+        return MerchantResponse.from(onboarding.changePickupAddress(userId, request.toDomain()));
     }
 
     /** Authenticated merchant's own profile and approval status. */
@@ -80,7 +100,9 @@ class MerchantController {
         int pageNum = page != null ? Math.max(0, page) : PageLimit.DEFAULT_PAGE_NUMBER;
         int pageSize = size != null ? PageLimit.clampSize(size) : PageLimit.DEFAULT_PAGE_SIZE;
         Page<Merchant> merchantPage = onboarding.list(pageNum, pageSize, statusFilter);
+        // Merchants of deleted accounts are hidden. The total still counts them, so a page can hold fewer items.
         List<MerchantResponse> items = merchantPage.getContent().stream()
+                .filter(merchant -> users.findUser(merchant.getUserId()).isPresent())
                 .map(MerchantResponse::from)
                 .toList();
         return PageResponse.of(items, merchantPage.getNumber(), pageSize, merchantPage.getTotalElements());
@@ -105,6 +127,16 @@ class MerchantController {
             @AuthenticationPrincipal Jwt jwt) {
         UUID adminId = UUID.fromString(jwt.getSubject());
         return MerchantResponse.from(onboarding.reject(id, adminId, request.reason()));
+    }
+
+    /** Suspends an APPROVED merchant. Restricted to ADMIN. */
+    @PostMapping("/{id}/suspension")
+    @PreAuthorize("hasRole('ADMIN')")
+    MerchantResponse suspend(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal Jwt jwt) {
+        UUID adminId = UUID.fromString(jwt.getSubject());
+        return MerchantResponse.from(onboarding.suspend(id, adminId));
     }
 
     private static MerchantStatus parseStatus(String status) {

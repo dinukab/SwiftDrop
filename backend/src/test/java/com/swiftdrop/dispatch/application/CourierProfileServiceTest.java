@@ -3,6 +3,8 @@ package com.swiftdrop.dispatch.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -11,15 +13,21 @@ import static org.mockito.Mockito.when;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.ObjectFactory;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentCaptor;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.swiftdrop.dispatch.domain.CourierProfile;
@@ -42,7 +50,10 @@ class CourierProfileServiceTest {
     void setUp() {
         profiles = mock(CourierProfileRepository.class);
         userDirectory = mock(UserDirectory.class);
-        service = new CourierProfileService(profiles, userDirectory, Clock.fixed(NOW, ZoneOffset.UTC));
+        @SuppressWarnings("unchecked")
+        ObjectFactory<HubService> hubs = mock(ObjectFactory.class);
+        when(hubs.getObject()).thenReturn(mock(HubService.class));
+        service = new CourierProfileService(profiles, userDirectory, hubs, Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
     @Test
@@ -112,7 +123,7 @@ class CourierProfileServiceTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"CUSTOMER", "MERCHANT", "DISPATCHER_ADMIN"})
+    @ValueSource(strings = {"CUSTOMER", "MERCHANT", "DISPATCHER", "ADMIN"})
     void rejectsUsersWithoutCourierRole(String role) {
         UserSummary nonCourier = new UserSummary(USER_ID, "Nimal Silva", "nimal@swiftdrop.com", Set.of(role), true);
         when(userDirectory.findUser(USER_ID)).thenReturn(Optional.of(nonCourier));
@@ -121,6 +132,76 @@ class CourierProfileServiceTest {
                 .isInstanceOf(CourierUserNotEligibleException.class)
                 .hasMessage("User does not have the COURIER role");
         verify(profiles, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void listsAllProfilesWhenNoActiveFilter() {
+        Page<CourierProfile> page = new PageImpl<>(List.of(new CourierProfile(USER_ID, "+94771234567", VehicleType.CAR, NOW)));
+        when(profiles.findAll(any(Pageable.class))).thenReturn(page);
+
+        assertThat(service.listProfiles(0, 20, null)).isSameAs(page);
+        verify(profiles, never()).findByActive(anyBoolean(), any());
+    }
+
+    @Test
+    void listsOnlyMatchingProfilesWhenActiveFilterGiven() {
+        Page<CourierProfile> page = new PageImpl<>(List.of());
+        when(profiles.findByActive(eq(false), any(Pageable.class))).thenReturn(page);
+
+        assertThat(service.listProfiles(-1, 500, false)).isSameAs(page);
+        ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
+        verify(profiles).findByActive(eq(false), captor.capture());
+        assertThat(captor.getValue().getPageNumber()).isZero();
+        assertThat(captor.getValue().getPageSize()).isEqualTo(100);
+    }
+
+    @Test
+    void updatesPhoneAndKeepsVehicleWhenVehicleIsNull() {
+        CourierProfile existing = existingProfile();
+        when(profiles.findById(PROFILE_ID)).thenReturn(Optional.of(existing));
+        when(profiles.saveAndFlush(existing)).thenReturn(existing);
+
+        CourierProfile updated = service.updateProfile(PROFILE_ID, "+94770000000", null);
+
+        assertThat(updated.getPhone()).isEqualTo("+94770000000");
+        assertThat(updated.getVehicleType()).isEqualTo(VehicleType.CAR);
+    }
+
+    @Test
+    void rejectsInvalidPhoneOnUpdate() {
+        when(profiles.findById(PROFILE_ID)).thenReturn(Optional.of(existingProfile()));
+
+        assertThatThrownBy(() -> service.updateProfile(PROFILE_ID, "0771234567", null))
+                .isInstanceOf(IllegalArgumentException.class);
+        verify(profiles, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void deactivatesAndReactivatesProfile() {
+        CourierProfile existing = existingProfile();
+        when(profiles.findById(PROFILE_ID)).thenReturn(Optional.of(existing));
+        when(profiles.saveAndFlush(existing)).thenReturn(existing);
+
+        assertThat(service.deactivate(PROFILE_ID).isActive()).isFalse();
+        assertThat(service.activate(PROFILE_ID).isActive()).isTrue();
+    }
+
+    @Test
+    void unknownProfileIdIsNotFound() {
+        UUID unknown = UUID.randomUUID();
+        when(profiles.findById(unknown)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.updateProfile(unknown, "+94770000000", null))
+                .isInstanceOf(CourierProfileNotFoundException.class);
+        assertThatThrownBy(() -> service.deactivate(unknown)).isInstanceOf(CourierProfileNotFoundException.class);
+        assertThatThrownBy(() -> service.activate(unknown)).isInstanceOf(CourierProfileNotFoundException.class);
+        assertThatThrownBy(() -> service.getProfile(unknown)).isInstanceOf(CourierProfileNotFoundException.class);
+    }
+
+    private static CourierProfile existingProfile() {
+        CourierProfile profile = new CourierProfile(USER_ID, "+94771234567", VehicleType.CAR, NOW);
+        ReflectionTestUtils.setField(profile, "id", PROFILE_ID);
+        return profile;
     }
 
     @Test

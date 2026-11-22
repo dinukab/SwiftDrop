@@ -15,12 +15,17 @@ const STATUS_STYLES: Record<ParcelStatus, string> = {
   CREATED: "bg-muted text-muted-foreground",
   PICKED_UP: "bg-blue-100 text-blue-800",
   IN_TRANSIT: "bg-blue-100 text-blue-800",
+  HUB_ARRIVED: "bg-blue-100 text-blue-800",
+  HUB_SORTED: "bg-blue-100 text-blue-800",
   OUT_FOR_DELIVERY: "bg-amber-100 text-amber-800",
   DELIVERED: "bg-emerald-100 text-emerald-800",
   FAILED: "bg-red-100 text-red-800",
+  PAUSED: "bg-amber-100 text-amber-800",
+  CANCELLED: "bg-muted text-muted-foreground",
 };
 
 function formatStatus(status: ParcelStatus): string {
+  if (status === "PAUSED") return "ON HOLD";
   return status.replaceAll("_", " ");
 }
 

@@ -156,12 +156,13 @@ class ParcelTest {
         Instant later = NOW.plusSeconds(60);
 
         parcel.changeStatus(ParcelStatus.PICKED_UP, COURIER_ID, null, false, later);
-        parcel.changeStatus(ParcelStatus.IN_TRANSIT, COURIER_ID, null, false, later);
+        parcel.changeStatus(ParcelStatus.HUB_ARRIVED, COURIER_ID, null, false, later);
+        parcel.changeStatus(ParcelStatus.HUB_SORTED, COURIER_ID, null, false, later);
         parcel.changeStatus(ParcelStatus.OUT_FOR_DELIVERY, COURIER_ID, null, false, later);
         parcel.changeStatus(ParcelStatus.DELIVERED, COURIER_ID, null, true, later);
 
         assertThat(parcel.getStatus()).isEqualTo(ParcelStatus.DELIVERED);
-        assertThat(parcel.getLastSequence()).isEqualTo(5);
+        assertThat(parcel.getLastSequence()).isEqualTo(6);
         assertThat(parcel.getUpdatedAt()).isEqualTo(later);
         assertThat(parcel.getCreatedAt()).isEqualTo(NOW);
     }
@@ -234,7 +235,8 @@ class ParcelTest {
     private static Parcel outForDelivery() {
         Parcel parcel = assignedParcel();
         parcel.changeStatus(ParcelStatus.PICKED_UP, COURIER_ID, null, false, NOW);
-        parcel.changeStatus(ParcelStatus.IN_TRANSIT, COURIER_ID, null, false, NOW);
+        parcel.changeStatus(ParcelStatus.HUB_ARRIVED, COURIER_ID, null, false, NOW);
+        parcel.changeStatus(ParcelStatus.HUB_SORTED, COURIER_ID, null, false, NOW);
         parcel.changeStatus(ParcelStatus.OUT_FOR_DELIVERY, COURIER_ID, null, false, NOW);
         return parcel;
     }
@@ -264,6 +266,137 @@ class ParcelTest {
                 .isInstanceOf(ParcelConflictException.class)
                 .hasMessage("A courier can only be assigned before pickup");
         assertThat(parcel.getAssignedCourierId()).isEqualTo(COURIER_ID);
+    }
+
+    @Test
+    void merchantCanHoldReleaseAndCancelBeforePickupWithConsecutiveSequences() {
+        Parcel parcel = merchantParcel();
+        Instant later = NOW.plusSeconds(60);
+
+        parcel.pause(MERCHANT_ID, later);
+        assertThat(parcel.getStatus()).isEqualTo(ParcelStatus.PAUSED);
+        assertThat(parcel.getLastSequence()).isEqualTo(2);
+        assertThat(parcel.getUpdatedAt()).isEqualTo(later);
+
+        parcel.resume(MERCHANT_ID, later);
+        assertThat(parcel.getStatus()).isEqualTo(ParcelStatus.CREATED);
+        assertThat(parcel.getLastSequence()).isEqualTo(3);
+
+        parcel.pause(MERCHANT_ID, later);
+        parcel.cancel(MERCHANT_ID, later);
+        assertThat(parcel.getStatus()).isEqualTo(ParcelStatus.CANCELLED);
+        assertThat(parcel.getLastSequence()).isEqualTo(5);
+    }
+
+    @Test
+    void merchantCanCancelStraightFromCreated() {
+        Parcel parcel = merchantParcel();
+
+        parcel.cancel(MERCHANT_ID, NOW);
+
+        assertThat(parcel.getStatus()).isEqualTo(ParcelStatus.CANCELLED);
+        assertThat(parcel.getLastSequence()).isEqualTo(2);
+    }
+
+    @Test
+    void holdingAndReleasingKeepsTheAssignedCourier() {
+        Parcel parcel = merchantParcel();
+        parcel.assignCourier(COURIER_ID, NOW);
+
+        parcel.pause(MERCHANT_ID, NOW);
+        parcel.resume(MERCHANT_ID, NOW);
+
+        assertThat(parcel.getAssignedCourierId()).isEqualTo(COURIER_ID);
+        assertThat(parcel.getStatus()).isEqualTo(ParcelStatus.CREATED);
+    }
+
+    @Test
+    void aHeldParcelCanNeitherBePickedUpNorAssignedACourier() {
+        Parcel parcel = merchantParcel();
+        parcel.assignCourier(COURIER_ID, NOW);
+        parcel.pause(MERCHANT_ID, NOW);
+
+        assertThatThrownBy(() -> parcel.changeStatus(ParcelStatus.PICKED_UP, COURIER_ID, null, false, NOW))
+                .isInstanceOf(ParcelConflictException.class);
+        assertThatThrownBy(() -> parcel.assignCourier(UUID.randomUUID(), NOW))
+                .isInstanceOf(ParcelConflictException.class);
+        assertThat(parcel.getStatus()).isEqualTo(ParcelStatus.PAUSED);
+        assertThat(parcel.getLastSequence()).isEqualTo(2);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"PAUSED", "CANCELLED"})
+    void aCourierCannotPauseOrCancelEvenTheirOwnParcel(ParcelStatus target) {
+        Parcel parcel = merchantParcel();
+        parcel.assignCourier(COURIER_ID, NOW);
+
+        assertThatThrownBy(() -> parcel.changeStatus(target, COURIER_ID, null, false, NOW))
+                .isInstanceOf(ParcelConflictException.class)
+                .hasMessage("Illegal status transition");
+        assertThat(parcel.getStatus()).isEqualTo(ParcelStatus.CREATED);
+        assertThat(parcel.getLastSequence()).isEqualTo(1);
+    }
+
+    @Test
+    void aCancelledParcelIsFinalForEveryone() {
+        Parcel parcel = merchantParcel();
+        parcel.assignCourier(COURIER_ID, NOW);
+        parcel.cancel(MERCHANT_ID, NOW);
+
+        assertThatThrownBy(() -> parcel.resume(MERCHANT_ID, NOW)).isInstanceOf(ParcelConflictException.class);
+        assertThatThrownBy(() -> parcel.pause(MERCHANT_ID, NOW)).isInstanceOf(ParcelConflictException.class);
+        assertThatThrownBy(() -> parcel.cancel(MERCHANT_ID, NOW)).isInstanceOf(ParcelConflictException.class);
+        assertThatThrownBy(() -> parcel.changeStatus(ParcelStatus.PICKED_UP, COURIER_ID, null, false, NOW))
+                .isInstanceOf(ParcelConflictException.class)
+                .hasMessage("Parcel is already in a final status");
+        assertThat(parcel.getStatus()).isEqualTo(ParcelStatus.CANCELLED);
+        assertThat(parcel.getLastSequence()).isEqualTo(2);
+    }
+
+    @Test
+    void nothingCanBeHeldOrCancelledOncePickedUp() {
+        Parcel parcel = merchantParcel();
+        parcel.assignCourier(COURIER_ID, NOW);
+        parcel.changeStatus(ParcelStatus.PICKED_UP, COURIER_ID, null, false, NOW);
+
+        assertThatThrownBy(() -> parcel.pause(MERCHANT_ID, NOW))
+                .isInstanceOf(ParcelConflictException.class)
+                .hasMessage("A delivery can only be paused before pickup");
+        assertThatThrownBy(() -> parcel.cancel(MERCHANT_ID, NOW))
+                .isInstanceOf(ParcelConflictException.class)
+                .hasMessage("A delivery can only be cancelled before pickup");
+        assertThat(parcel.getStatus()).isEqualTo(ParcelStatus.PICKED_UP);
+        assertThat(parcel.getLastSequence()).isEqualTo(2);
+    }
+
+    @Test
+    void onlyAPausedParcelCanBeResumedAndOnlyACreatedOneCanBePaused() {
+        Parcel parcel = merchantParcel();
+
+        assertThatThrownBy(() -> parcel.resume(MERCHANT_ID, NOW))
+                .isInstanceOf(ParcelConflictException.class)
+                .hasMessage("Only a paused delivery can be resumed");
+
+        parcel.pause(MERCHANT_ID, NOW);
+        assertThatThrownBy(() -> parcel.pause(MERCHANT_ID, NOW)).isInstanceOf(ParcelConflictException.class);
+        assertThat(parcel.getLastSequence()).isEqualTo(2);
+    }
+
+    @Test
+    void anotherMerchantOrACustomerParcelLooksNotFound() {
+        Parcel merchantParcel = merchantParcel();
+        UUID otherMerchant = UUID.randomUUID();
+
+        assertThatThrownBy(() -> merchantParcel.pause(otherMerchant, NOW)).isInstanceOf(ParcelNotFoundException.class);
+        assertThatThrownBy(() -> merchantParcel.cancel(otherMerchant, NOW)).isInstanceOf(ParcelNotFoundException.class);
+        assertThatThrownBy(() -> customerParcel(1000).pause(MERCHANT_ID, NOW))
+                .isInstanceOf(ParcelNotFoundException.class);
+        assertThat(merchantParcel.getStatus()).isEqualTo(ParcelStatus.CREATED);
+    }
+
+    private static Parcel merchantParcel() {
+        return Parcel.forMerchant("SD7K3M9Q2XWB", MERCHANT_ID, "ORD-10045", address("Colombo"), address("Kandy"),
+                ParcelSize.SMALL, 1000, null, FEE, NOW);
     }
 
     private static Parcel assignedParcel() {

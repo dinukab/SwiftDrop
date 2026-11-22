@@ -6,6 +6,7 @@ import org.springframework.amqp.core.DirectExchange;
 import org.springframework.amqp.core.Queue;
 import org.springframework.amqp.core.QueueBuilder;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.util.Assert;
@@ -41,9 +42,18 @@ public class NotificationMessagingConfiguration {
         DirectExchange exchange = new DirectExchange(DEAD_LETTER_EXCHANGE, true, false);
 
         return new Declarables(source, deadLetters, exchange,
-                new Binding(QUEUE, Binding.DestinationType.QUEUE, "swiftdrop.events",
-                        ParcelStatusChanged.EVENT_TYPE, null),
                 new Binding(deadLetters.getName(), Binding.DestinationType.QUEUE,
                         DEAD_LETTER_EXCHANGE, QUEUE, null));
+    }
+
+    /**
+     * Binds the queue to the event exchange only when the consumer runs. A bound queue that nothing consumes would
+     * fill to its limit and make every publish to the exchange fail.
+     */
+    @Bean
+    @ConditionalOnProperty(name = "swiftdrop.notifications.enabled", havingValue = "true")
+    Declarables notificationParcelStatusBinding() {
+        return new Declarables(new Binding(QUEUE, Binding.DestinationType.QUEUE, "swiftdrop.events",
+                ParcelStatusChanged.EVENT_TYPE, null));
     }
 }
