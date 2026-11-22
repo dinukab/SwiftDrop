@@ -1,6 +1,6 @@
 # Connecting the ecommerce site to SwiftDrop (merchant integration)
 
-Status: **In progress**, last updated 2026-11-21 (flow review after the dispatcher hub work, section 8b). Branch `merchantandecommerce` (SwiftDrop) and
+Status: **In progress**, last updated 2026-11-22 (hub statuses, section 8b; merchant pickup address, section 8c). Branch `merchantandecommerce` (SwiftDrop) and
 branch `dev3` (ecommerce store). The work is committed and pushed on those branches (SwiftDrop
 latest: `33c1dbb`); merging to `DEV`/`main` is the team's decision.
 
@@ -330,23 +330,34 @@ yours; never commit them.
    - `SWIFTDROP_WEBHOOK_ALLOW_LOCAL=true` (development only; lets the store on `localhost` receive webhooks)
    - Then `.\mvnw.cmd spring-boot:run` from `backend/`. Migrations run at startup.
 3. **Merchant account.** Sign up the store as a merchant (`POST /api/v1/merchants`, or the merchant tab
-   on `/signup`), then an admin approves it (`POST /api/v1/merchants/{id}/approval`, or Admin → Users).
+   on `/signup`). Sign-up **requires the warehouse (pickup) address**, including its province: this is where the
+   courier collects the parcels (section 8c). Then an admin approves it (`POST /api/v1/merchants/{id}/approval`,
+   or Admin → Users, where the queue shows the address). A merchant registered earlier adds its address in the
+   merchant portal (card "Pickup address") or with `PUT /api/v1/merchants/me/pickup-address`.
 4. **Key and webhook.** The merchant logs in and creates an API key (`POST /api/v1/merchants/me/api-keys`).
    The response contains the key and the signing secret, **both shown once**. Register the webhook
    (`POST /api/v1/merchants/me/webhooks`) with URL `http://localhost:3100/api/webhooks/swiftdrop`
    (development) or an HTTPS URL, and a secret of 16+ characters; the store uses the same secret to check
    webhook signatures.
-5. **Pickup zone.** `GET /api/v1/zones` (logged in) lists the seeded zones; note the store's pickup zone id.
+5. **Zones.** `GET /api/v1/zones` is public and lists the nine provinces (id, code, name). `npm run zones:sync`
+   maps the store's districts to them. The pickup zone is no longer needed in the store when the merchant has a
+   registered address (step 6).
 6. **Store environment** (`.env` of the store; never commit it): `SWIFTDROP_MODE=live`,
    `SWIFTDROP_API_URL=http://localhost:8080`, `SWIFTDROP_API_KEY`, `SWIFTDROP_WEBHOOK_SECRET`,
-   `STORE_PICKUP_*`, `STORE_PICKUP_ZONE_ID`, `CRON_SECRET`, and `SWIFTDROP_MERCHANT_EMAIL` /
-   `SWIFTDROP_MERCHANT_PASSWORD` for the zone sync. `SWIFTDROP_SIGNING_SECRET` (the key's signing secret). Then `npm run zones:sync`, `npm run dev` (port 3100) and `npm run cron:local`.
+   `CRON_SECRET`, and `SWIFTDROP_MERCHANT_EMAIL` /
+   `SWIFTDROP_MERCHANT_PASSWORD` for the zone sync. `SWIFTDROP_SIGNING_SECRET` (the key's signing secret). The
+   `STORE_PICKUP_*` settings (name, phone, line 1, city and `STORE_PICKUP_ZONE_ID`; line 2 and postal code are
+   optional) are **optional as a group**: leave all unset and the store sends no `pickup`, so SwiftDrop uses the
+   registered address (recommended); set them and SwiftDrop checks that the zone is the registered province. Setting only
+   some of them stops the store at startup and names the missing ones. Then `npm run zones:sync`, `npm run dev` (port 3100) and
+   `npm run cron:local`.
 7. **Signatures.** Leave `SWIFTDROP_MERCHANT_API_REQUIRE_SIGNATURE=false` until the store signs its
    requests (done in the store code). Then set it to `true` and create new keys for the store.
 8. **Dispatch.** An admin creates dispatcher and courier accounts (staff endpoint), binds the dispatcher
    to a hub (`PUT /api/v1/dispatchers/{userId}/hub` with `{"hubCode":"LK-WP"}`), and creates a courier
    profile (`POST /api/v1/couriers` with `userId`, `phone`, `vehicleType`, `hubCode`). The store's orders
-   appear only for the dispatcher of the hub whose code equals the province code of `STORE_PICKUP_ZONE_ID`,
+   appear only for the dispatcher of the hub whose code equals the province code of the pickup zone (the
+   merchant's registered province, or `STORE_PICKUP_ZONE_ID` when set),
    and only couriers based at that hub (or with no hub) can be assigned. A delivery to another province also
    needs dispatchers at the Main Hub (`LK-WP`) and the destination hub for the transfers and the final leg.
 9. **Check.** Place an order on the store, then check the merchant portal and the dispatcher screen.
@@ -462,6 +473,42 @@ has one row per sequence. Courier assignments produce no event, as designed. Not
 **If deliveries failed before the store fix:** they recover through polling (the status API returns the full
 sequenced history); a merchant can also redeliver them
 (`POST /api/v1/merchants/me/webhook-deliveries/{id}/redeliveries`, at most 3 times).
+
+---
+
+## 8c. Merchant pickup address (2026-11-22)
+
+**Problem.** SwiftDrop did not know where a merchant's goods are. The pickup address arrived only inside each API order, copied
+by the store from its own settings, and was trusted blindly: a wrong zone would send the order to another hub's dispatcher and the
+courier to the wrong place, and an admin approved a merchant without seeing where it operates.
+
+**Change** (details in [merchant-module.md](merchant-module.md) section 4.2):
+- A merchant registers **one pickup address with a province** at sign-up (required) and can edit it in the portal; the admin
+  approval queue shows it. `GET /api/v1/zones` is public so sign-up can list the provinces.
+- API orders may **omit `pickup`** (the registered address is used) or send one in the **same province** (accepted as sent);
+  a pickup in another province is refused (`422`). Merchants without an address keep working unchecked until they add one.
+- The store makes `STORE_PICKUP_*` optional as a group and omits `pickup` when they are unset.
+
+**Checked live (backend with the change, store on `main`, 2026-11-22):**
+
+| Check | Result |
+|---|---|
+| Sign-up without address / with an unknown province | `400`; no login account left behind for the unknown province |
+| Sign-up with a Galle (Southern Province) address | `201`; the admin list shows it; approval `200` |
+| API order without `pickup` | `201`; parcel pickup = the registered warehouse |
+| API order with a Colombo pickup (merchant registered in Galle) | `422`, `invalidFields: ["pickup.zoneId"]`, no parcel |
+| API order with another Galle pickup | `201`, accepted as sent |
+| Browser: sign-up form, admin queue, portal card (edit, save, reload) | all as designed |
+| Store order, `STORE_PICKUP_*` set (Galle) | booked; SwiftDrop kept the store's pickup (province matches the registered one) |
+| Store order, `STORE_PICKUP_*` unset | booked; the parcel's pickup was the registered address (a marker in line 2 of the registered
+  address showed it) |
+
+Both orders went to the Southern hub dispatcher's queue; the courier of an assigned parcel sees the pickup address.
+
+**Limits.** The address is not validated beyond format and province (no map, no geocoding). One address per merchant; several
+warehouses would need a locations table. Existing merchants have no address until they add one, so their orders are not checked
+yet; making it mandatory for them would be a separate decision. The store's checkout label "pickup district" still comes from
+`STORE_PICKUP_DISTRICT` (display only).
 
 ---
 

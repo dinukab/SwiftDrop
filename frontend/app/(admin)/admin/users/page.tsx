@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useAuth } from "@/lib/auth-context";
 import {
   api,
@@ -19,6 +19,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useZones, zoneName } from "@/components/merchant/pickup-address-fields";
+import { UserDetailsDialog } from "@/components/admin/user-details-dialog";
 import {
   Plus,
   RefreshCw,
@@ -209,6 +211,9 @@ export default function AdminUsersPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+
+  // Province names for the merchants' pickup addresses
+  const { zones: pickupZones } = useZones();
 
   // Pending merchant applications (ADMIN approval queue)
   const [pendingMerchants, setPendingMerchants] = useState<MerchantResponse[]>([]);
@@ -664,6 +669,10 @@ export default function AdminUsersPage() {
   const [isStatusSubmitting, setIsStatusSubmitting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
+  // User details dialog, opened by clicking a user's name in the list
+  const [detailUser, setDetailUser] = useState<UserResponse | null>(null);
+  const closeUserDetails = useCallback(() => setDetailUser(null), [setDetailUser]);
+
   function handleOpenStatusModal(
     targetUser: UserResponse,
     newEnabled: boolean,
@@ -853,6 +862,9 @@ export default function AdminUsersPage() {
                       Business
                     </th>
                     <th scope="col" className="py-3 px-4">
+                      Pickup address
+                    </th>
+                    <th scope="col" className="py-3 px-4">
                       Status
                     </th>
                     <th scope="col" className="py-3 px-4">
@@ -874,6 +886,22 @@ export default function AdminUsersPage() {
                         <div className="text-xs text-muted-foreground mt-0.5">
                           User ID: {merchant.userId}
                         </div>
+                      </td>
+                      <td className="py-3.5 px-4 text-xs">
+                        {merchant.pickupAddress ? (
+                          <>
+                            <div className="text-foreground">
+                              {merchant.pickupAddress.line1}
+                              {merchant.pickupAddress.line2 ? `, ${merchant.pickupAddress.line2}` : ""}
+                            </div>
+                            <div className="text-muted-foreground mt-0.5">
+                              {merchant.pickupAddress.city} · {zoneName(pickupZones, merchant.pickupAddress.zoneId)}
+                            </div>
+                            <div className="text-muted-foreground mt-0.5">{merchant.pickupAddress.phone}</div>
+                          </>
+                        ) : (
+                          <span className="text-amber-700 dark:text-amber-400">No pickup address</span>
+                        )}
                       </td>
                       <td className="py-3.5 px-4">
                         <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20">
@@ -1086,7 +1114,14 @@ export default function AdminUsersPage() {
                             </div>
                             <div className="min-w-0">
                               <div className="flex items-center gap-2 font-medium text-foreground">
-                                <span className="truncate">{item.fullName}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => setDetailUser(item)}
+                                  aria-haspopup="dialog"
+                                  className="truncate rounded text-left hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                >
+                                  {item.fullName}
+                                </button>
                                 {isSelf && (
                                   <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-primary text-primary-foreground">
                                     You
@@ -1236,6 +1271,24 @@ export default function AdminUsersPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* User details, opened from a name in the user list */}
+      {detailUser && (
+        <UserDetailsDialog
+          key={detailUser.id}
+          user={detailUser}
+          onClose={closeUserDetails}
+          isSelf={detailUser.id === currentAdminId}
+          onDeleted={(deleted) => {
+            setDetailUser(null);
+            setNotification({
+              type: "success",
+              message: `${deleted.fullName} was deleted. The account is disabled and no longer appears in the user list.`,
+            });
+            handleRefresh();
+          }}
+        />
+      )}
 
       {/* Reject Merchant Application Modal */}
       <AccessibleModal

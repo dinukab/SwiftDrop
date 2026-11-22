@@ -54,11 +54,16 @@ export function Footer() {
           <p>
             &copy; {year} {FOOTER_COPY.brand}. {FOOTER_COPY.rights}
           </p>
-          {/* A bare "#" scrolls to the top of the page in every browser. */}
-          <a href="#" className={`${LINK_CLASS} inline-flex items-center gap-1.5 self-start sm:self-auto`}>
-            {FOOTER_COPY.backToTop}
-            <ArrowUp aria-hidden="true" className="size-4" />
-          </a>
+          <div className="flex items-center gap-6">
+            <Link href={FOOTER_COPY.staffPortal.href} className={LINK_CLASS}>
+              {FOOTER_COPY.staffPortal.label}
+            </Link>
+            {/* A bare "#" scrolls to the top of the page in every browser. */}
+            <a href="#" className={`${LINK_CLASS} inline-flex items-center gap-1.5`}>
+              {FOOTER_COPY.backToTop}
+              <ArrowUp aria-hidden="true" className="size-4" />
+            </a>
+          </div>
         </div>
       </div>
     </footer>

@@ -6,6 +6,7 @@ const CUSTOMER_NAV: PortalNavItem[] = [
   { href: "/customer", label: "Overview", exact: true },
   { href: "/customer/new", label: "Book Delivery", exact: true },
   { href: "/customer/history", label: "Delivery History", exact: true },
+  { href: "/customer/assistant", label: "Assistant", exact: true },
   { href: "/customer/notifications", label: "Notifications", exact: true },
 ];
 

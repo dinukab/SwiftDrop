@@ -169,8 +169,68 @@ class MigrationConventionTest {
                                 "pricing seed sri lanka provinces",
                                 "pricing/V202611142000__pricing_seed_sri_lanka_provinces.sql"),
                         tuple(
+                                "202611151000",
+                                "delivery add pause cancel statuses",
+                                "delivery/V202611151000__delivery_add_pause_cancel_statuses.sql"),
+                        tuple(
+                                "202611151100",
+                                "delivery mark existing outbox published",
+                                "delivery/V202611151100__delivery_mark_existing_outbox_published.sql"),
+                        tuple(
+                                "202611151110",
+                                "merchant webhook delivery payload",
+                                "merchant/V202611151110__merchant_webhook_delivery_payload.sql"),
+                        tuple(
+                                "202611151200",
+                                "delivery parcel order fingerprint",
+                                "delivery/V202611151200__delivery_parcel_order_fingerprint.sql"),
+                        tuple(
+                                "202611151210",
+                                "merchant api key signing secret",
+                                "merchant/V202611151210__merchant_api_key_signing_secret.sql"),
+                        tuple(
+                                "202611151220",
+                                "merchant webhook manual redeliveries",
+                                "merchant/V202611151220__merchant_webhook_manual_redeliveries.sql"),
+                        tuple(
                                 "202611152000",
                                 "pricing apply sri lanka tariff",
-                                "pricing/V202611152000__pricing_apply_sri_lanka_tariff.sql"));
+                                "pricing/V202611152000__pricing_apply_sri_lanka_tariff.sql"),
+                        tuple(
+                                "202611171000",
+                                "dispatch create hubs",
+                                "dispatch/V202611171000__dispatch_create_hubs.sql"),
+                        tuple(
+                                "202611171100",
+                                "dispatch add hub fields to couriers",
+                                "dispatch/V202611171100__dispatch_add_hub_fields_to_couriers.sql"),
+                        tuple(
+                                "202611171200",
+                                "delivery create shipment legs",
+                                "delivery/V202611171200__delivery_create_shipment_legs.sql"),
+                        tuple(
+                                "202611171300",
+                                "delivery add hub statuses",
+                                "delivery/V202611171300__delivery_add_hub_statuses.sql"),
+                        tuple(
+                                "202611181000",
+                                "dispatch create parcel assignments",
+                                "dispatch/V202611181000__dispatch_create_parcel_assignments.sql"),
+                        tuple(
+                                "202611181100",
+                                "delivery prepare shipment legs",
+                                "delivery/V202611181100__delivery_prepare_shipment_legs.sql"),
+                        tuple(
+                                "202611181200",
+                                "dispatch assignments per leg",
+                                "dispatch/V202611181200__dispatch_assignments_per_leg.sql"),
+                        tuple(
+                                "202611191000",
+                                "delivery add leg transfers",
+                                "delivery/V202611191000__delivery_add_leg_transfers.sql"),
+                        tuple(
+                                "202611211200",
+                                "merchant add pickup address",
+                                "merchant/V202611211200__merchant_add_pickup_address.sql"));
     }
 }

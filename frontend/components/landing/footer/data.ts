@@ -9,6 +9,7 @@ export const FOOTER_COPY = {
   brand: "SwiftDrop",
   rights: "All rights reserved.",
   backToTop: "Back to top",
+  staffPortal: { label: "Staff portal", href: "/staff" },
 };
 
 export type FooterColumn = {

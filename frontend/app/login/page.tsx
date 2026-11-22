@@ -10,6 +10,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SiteNavbar } from "@/components/landing/site-navbar";
+
+const STAFF_PORTAL_PATHS = ["/admin", "/dispatcher", "/courier"];
 
 function LoginForm() {
   const router = useRouter();
@@ -25,8 +28,17 @@ function LoginForm() {
   const expired = searchParams.get("expired") === "true";
   const redirectParam = searchParams.get("redirect");
 
-  // Google button is enabled only when explicitly configured via environment flag (AC-2)
+  // A sign-in that returns to a staff portal (from the staff page or a portal's sign-in
+  // redirect) is a staff sign-in. This only changes what the form offers; roles still come
+  // from the backend after sign-in.
+  const isStaffSignIn = STAFF_PORTAL_PATHS.some((path) =>
+    sanitizeInternalRedirect(redirectParam, "").startsWith(path)
+  );
+
+  // Google button is enabled only when explicitly configured via environment flag (AC-2),
+  // and only for customers: Google sign-in creates or finds customer accounts, never staff.
   const isGoogleLoginEnabled = process.env.NEXT_PUBLIC_ENABLE_GOOGLE_LOGIN === "true";
+  const showGoogleLogin = isGoogleLoginEnabled && !isStaffSignIn;
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -146,7 +158,7 @@ function LoginForm() {
             {isLoading ? "Signing in..." : "Sign in"}
           </Button>
 
-          {isGoogleLoginEnabled && (
+          {showGoogleLogin && (
             <div className="pt-2">
               <div className="relative flex items-center justify-center my-3 text-xs uppercase text-muted-foreground">
                 <span className="w-full border-t border-border" />
@@ -177,15 +189,19 @@ function LoginForm() {
         </CardContent>
 
         <CardFooter className="flex flex-col gap-2 pt-2 border-t border-border/60 text-center text-xs text-muted-foreground">
-          <p>
-            Don&apos;t have an account?{" "}
-            <Link
-              href="/signup"
-              className="font-semibold text-primary underline-offset-4 hover:underline"
-            >
-              Sign up
-            </Link>
-          </p>
+          {isStaffSignIn ? (
+            <p>Staff accounts are created by an administrator.</p>
+          ) : (
+            <p>
+              Don&apos;t have an account?{" "}
+              <Link
+                href="/signup"
+                className="font-semibold text-primary underline-offset-4 hover:underline"
+              >
+                Sign up
+              </Link>
+            </p>
+          )}
         </CardFooter>
       </form>
     </Card>
@@ -194,10 +210,13 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <main className="container mx-auto flex-1 flex items-center justify-center px-4 py-12 min-h-[calc(100vh-3.5rem)]">
-      <Suspense fallback={<div className="h-96 w-full max-w-md animate-pulse rounded-xl bg-card border border-border" />}>
-        <LoginForm />
-      </Suspense>
-    </main>
+    <>
+      <SiteNavbar />
+      <main className="container mx-auto flex-1 flex items-center justify-center px-4 py-12 min-h-[calc(100vh-4rem)]">
+        <Suspense fallback={<div className="h-96 w-full max-w-md animate-pulse rounded-xl bg-card border border-border" />}>
+          <LoginForm />
+        </Suspense>
+      </main>
+    </>
   );
 }

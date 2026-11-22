@@ -21,4 +21,5 @@ export const ADMIN_NAV: PortalNavItem[] = [
   { href: "/admin/pricing", label: "Pricing Rules", exact: true },
   { href: "/admin/fee-simulator", label: "Fee Simulator", exact: true },
   { href: "/admin/reports", label: "Reports", exact: true },
+  { href: "/admin/dead-letters", label: "Dead Letters", exact: true },
 ];

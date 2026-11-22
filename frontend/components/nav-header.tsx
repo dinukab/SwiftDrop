@@ -5,12 +5,14 @@ import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { Button, buttonVariants } from "@/components/ui/button";
 
+const MARKETING_NAV_PATHS = ["/", "/staff", "/login", "/signup", "/track"];
+
 export function NavHeader() {
   const { user, isAuthenticated, isLoading, logout, hasRole } = useAuth();
   const pathname = usePathname();
 
-  // The landing page renders its own marketing navbar (components/landing/site-navbar.tsx).
-  if (pathname === "/") {
+  // These pages render the marketing navbar (components/landing/site-navbar.tsx) instead.
+  if (MARKETING_NAV_PATHS.includes(pathname)) {
     return null;
   }
 

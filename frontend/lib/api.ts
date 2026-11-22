@@ -244,6 +244,24 @@ export interface ParcelHistoryItem {
   updatedAt: string;
 }
 
+/** Delivery receipt (GET /api/v1/parcels/{id}/receipt, CUS-5). */
+export interface DeliveryReceipt {
+  parcelId: string;
+  trackingNumber: string;
+  status: ParcelStatus;
+  createdAt: string;
+  pickup: AddressResponse;
+  dropoff: AddressResponse;
+  size: ParcelSize;
+  weightGrams: number;
+  description: string | null;
+  fee: { amount: string; currency: string };
+  deliveredAt: string | null;
+  recipientName: string | null;
+  failedAt: string | null;
+  failureReason: FailureReason | null;
+}
+
 // Proof of Delivery API types
 export interface ProofResponse {
   parcelId: string;
@@ -341,16 +359,31 @@ export async function getProofPhoto(parcelId: string, token: string): Promise<Bl
 
 export type MerchantStatus = "PENDING_APPROVAL" | "APPROVED" | "REJECTED" | "SUSPENDED";
 
+/** The merchant's one pickup (warehouse) address: where couriers collect its parcels. */
+export interface MerchantPickupAddress {
+  contactName: string;
+  phone: string;
+  line1: string;
+  line2: string | null;
+  city: string;
+  postalCode: string | null;
+  zoneId: string;
+}
+
 export interface MerchantResponse {
   id: string;
   userId: string;
   businessName: string;
+  registrationNumber?: string;
+  contactEmail?: string;
   contactPhone: string | null;
   status: MerchantStatus;
   rejectionReason: string | null;
   createdAt: string;
   reviewedAt: string | null;
   reviewedBy: string | null;
+  /** Null for merchants registered before the address was required. */
+  pickupAddress: MerchantPickupAddress | null;
 }
 
 export interface RegisterMerchantRequest {
