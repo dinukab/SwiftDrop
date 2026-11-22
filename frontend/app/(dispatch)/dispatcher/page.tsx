@@ -259,7 +259,7 @@ export default function DispatcherPage() {
           </CardHeader>
           <CardContent>
             {workloads.length === 0 && !loading && (
-              <p className="text-sm text-muted-foreground">No active couriers yet.</p>
+              <p className="text-sm text-muted-foreground">No active couriers are based at your hub yet.</p>
             )}
             <ul className="space-y-2">
               {workloads.map((courier) => (

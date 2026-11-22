@@ -20,13 +20,16 @@ function LoginForm() {
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [accountType, setAccountType] = useState<"customer" | "staff">("customer");
 
   const registered = searchParams.get("registered") === "true";
   const expired = searchParams.get("expired") === "true";
   const redirectParam = searchParams.get("redirect");
 
-  // Google button is enabled only when explicitly configured via environment flag (AC-2)
+  // Google button is enabled only when explicitly configured via environment flag (AC-2),
+  // and only for customers: Google sign-in creates or finds customer accounts, never staff.
   const isGoogleLoginEnabled = process.env.NEXT_PUBLIC_ENABLE_GOOGLE_LOGIN === "true";
+  const showGoogleLogin = isGoogleLoginEnabled && accountType === "customer";
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -79,6 +82,29 @@ function LoginForm() {
 
       <form onSubmit={handleSubmit} noValidate>
         <CardContent className="space-y-4">
+          <div
+            role="group"
+            aria-label="Account type"
+            className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1 text-sm font-medium"
+          >
+            {(["customer", "staff"] as const).map((type) => (
+              <button
+                key={type}
+                type="button"
+                aria-pressed={accountType === type}
+                disabled={isLoading}
+                onClick={() => setAccountType(type)}
+                className={`rounded-md px-3 py-1.5 transition ${
+                  accountType === type
+                    ? "bg-background text-foreground shadow-xs"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {type === "customer" ? "Customer" : "Staff"}
+              </button>
+            ))}
+          </div>
+
           {registered && (
             <div
               role="status"
@@ -146,7 +172,7 @@ function LoginForm() {
             {isLoading ? "Signing in..." : "Sign in"}
           </Button>
 
-          {isGoogleLoginEnabled && (
+          {showGoogleLogin && (
             <div className="pt-2">
               <div className="relative flex items-center justify-center my-3 text-xs uppercase text-muted-foreground">
                 <span className="w-full border-t border-border" />
@@ -177,15 +203,19 @@ function LoginForm() {
         </CardContent>
 
         <CardFooter className="flex flex-col gap-2 pt-2 border-t border-border/60 text-center text-xs text-muted-foreground">
-          <p>
-            Don&apos;t have an account?{" "}
-            <Link
-              href="/signup"
-              className="font-semibold text-primary underline-offset-4 hover:underline"
-            >
-              Sign up
-            </Link>
-          </p>
+          {accountType === "customer" ? (
+            <p>
+              Don&apos;t have an account?{" "}
+              <Link
+                href="/signup"
+                className="font-semibold text-primary underline-offset-4 hover:underline"
+              >
+                Sign up
+              </Link>
+            </p>
+          ) : (
+            <p>Staff accounts are created by an administrator.</p>
+          )}
         </CardFooter>
       </form>
     </Card>

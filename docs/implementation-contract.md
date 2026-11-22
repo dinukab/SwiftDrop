@@ -163,7 +163,8 @@ user (JWT), `MKEY` merchant API key, `COU` Courier, `ADM` Dispatcher/Admin, `PUB
 | `GET /api/v1/unassigned-parcels` | dispatch | ADM | Unassigned parcels (paged) | ADM-1 |
 | `POST /api/v1/parcel-assignments` | dispatch | ADM | Assign / reassign courier (**D-06**) | ADM-1 |
 | `GET /api/v1/courier-workloads` | dispatch | ADM | Active deliveries per courier | ADM-2 |
-| `POST /api/v1/merchants` | merchant | PUB | Register merchant (pending) (**D-22**) | MER-1 |
+| `POST /api/v1/merchants` | merchant | PUB | Register merchant (pending) (**D-22**). **Amended 2026-11-22:** also requires `pickupAddress` (contact, phone, lines, city, postal code, `zoneId`); see [merchant-module.md](merchant-module.md) 4.2 | MER-1 |
+| `PUT /api/v1/merchants/me/pickup-address` | merchant | MER | Set or replace the merchant's pickup address (added 2026-11-22) | MER-1, MER-2 |
 | `GET /api/v1/merchants`, `POST /api/v1/merchants/{id}/approval`, `.../rejection`, `.../suspension` | merchant | ADM | Review; suspend an approved merchant | MER-1, ADM-3 |
 | `GET /api/v1/merchants/me` | merchant | MER | Own merchant profile and status | MER-1 |
 | `GET/POST /api/v1/merchants/me/api-keys`, `DELETE .../{id}` | merchant | approved MER | API keys (**D-03**) | MER-2 |
@@ -302,7 +303,7 @@ Eligibility: user enabled **and** has `COURIER` role (via `identity.api`) **and*
 
 | Table | Columns | Constraints |
 |---|---|---|
-| `merchants` | `id`; `user_id UUID` FK users; `business_name VARCHAR(200)`; `contact_phone VARCHAR(20)` PII; `status VARCHAR(20)` (`PENDING`,`APPROVED`,`REJECTED`,`SUSPENDED`); `reviewed_by UUID` null; `reviewed_at` null; `rejection_reason VARCHAR(500)` null; `created_at`; `version` | unique user_id |
+| `merchants` | `id`; `user_id UUID` FK users; `business_name VARCHAR(200)`; `contact_phone VARCHAR(20)` PII; `status VARCHAR(20)` (`PENDING`,`APPROVED`,`REJECTED`,`SUSPENDED`); `reviewed_by UUID` null; `reviewed_at` null; `rejection_reason VARCHAR(500)` null; `created_at`; `version`; **added 2026-11-22:** `pickup_contact_name`, `pickup_phone`, `pickup_line1`, `pickup_line2`, `pickup_city`, `pickup_postal_code` (PII, all null until set) and `pickup_zone_id UUID` FK zones (V202611211200) | unique user_id; required pickup parts all set or all null |
 | `merchant_api_keys` | `id`; `merchant_id` FK; `key_prefix VARCHAR(16)`; `key_hash VARCHAR(255)`; `label VARCHAR(100)`; `created_at`; `last_used_at` null; `revoked_at` null | unique key_prefix |
 | `webhook_endpoints` | `id`; `merchant_id` FK; `url VARCHAR(2048)`; `active BOOLEAN`; `secret_key_id VARCHAR(40)`; `secret_nonce BYTEA`; `secret_ciphertext BYTEA`; `created_at`, `updated_at` | unique merchant_id (one endpoint, **D-17**) |
 | `webhook_deliveries` | `id`; `endpoint_id` FK; `event_id UUID`; `parcel_id UUID`; `sequence INTEGER`; `payload JSONB`; `status VARCHAR(30)` (`PENDING`,`IN_PROGRESS`,`SUCCEEDED`,`FAILED`,`SECRET_UNAVAILABLE`); `attempts INTEGER`; `next_attempt_at`; `manual_redeliveries INTEGER`; `created_at` | unique (event_id, endpoint_id) |

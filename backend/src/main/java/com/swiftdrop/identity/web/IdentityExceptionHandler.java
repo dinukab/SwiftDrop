@@ -17,6 +17,7 @@ import com.swiftdrop.identity.application.InvalidCredentialsException;
 import com.swiftdrop.identity.application.InvalidExchangeCodeException;
 import com.swiftdrop.identity.application.InvalidPasswordException;
 import com.swiftdrop.identity.application.InvalidRoleException;
+import com.swiftdrop.identity.application.SelfDeletionException;
 import com.swiftdrop.identity.application.SelfDisablingException;
 
 /**
@@ -65,6 +66,11 @@ class IdentityExceptionHandler {
 
     @ExceptionHandler(SelfDisablingException.class)
     ProblemDetail selfDisabling(SelfDisablingException e) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, e.getMessage());
+    }
+
+    @ExceptionHandler(SelfDeletionException.class)
+    ProblemDetail selfDeletion(SelfDeletionException e) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, e.getMessage());
     }
 

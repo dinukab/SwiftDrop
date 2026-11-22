@@ -1,5 +1,6 @@
 package com.swiftdrop.merchant.application;
 
+import java.util.Objects;
 import java.util.UUID;
 
 import org.springframework.dao.DataIntegrityViolationException;
@@ -15,6 +16,7 @@ import org.springframework.web.server.ResponseStatusException;
 import com.swiftdrop.identity.api.EmailTakenException;
 import com.swiftdrop.identity.api.UserDirectory;
 import com.swiftdrop.merchant.domain.Merchant;
+import com.swiftdrop.merchant.domain.MerchantPickupAddress;
 import com.swiftdrop.merchant.domain.MerchantRepository;
 import com.swiftdrop.merchant.domain.MerchantStatus;
 import com.swiftdrop.shared.web.PageLimit;
@@ -26,6 +28,9 @@ import com.swiftdrop.shared.web.PageLimit;
 @Service
 public class MerchantOnboardingService {
 
+    /** The foreign key that checks the pickup zone exists (merchant may not ask pricing, ADR 0003). */
+    static final String PICKUP_ZONE_CONSTRAINT = "fk_merchants_pickup_zone";
+
     private final MerchantRepository merchants;
     private final UserDirectory userDirectory;
 
@@ -35,12 +40,15 @@ public class MerchantOnboardingService {
     }
 
     /**
-     * Registers a merchant account. The identity user receives the MERCHANT role immediately; merchant
-     * capabilities remain blocked until an administrator approves the profile.
+     * Registers a merchant account with its pickup (warehouse) address. The identity user receives the MERCHANT
+     * role immediately; merchant capabilities remain blocked until an administrator approves the profile.
+     *
+     * @throws InvalidPickupZoneException if the address names a zone that does not exist (nothing is created)
      */
     @Transactional
     public Merchant register(String fullName, String email, String rawPassword, String businessName,
-            String registrationNumber, String contactPhone) {
+            String registrationNumber, String contactPhone, MerchantPickupAddress pickupAddress) {
+        Objects.requireNonNull(pickupAddress, "pickupAddress");
         // Checked before the login user is created so a duplicate leaves no account behind; the unique
         // constraint below still catches a concurrent duplicate.
         if (merchants.existsByRegistrationNumber(registrationNumber.trim())) {
@@ -54,11 +62,41 @@ public class MerchantOnboardingService {
         }
 
         Merchant merchant = new Merchant(userId, businessName, registrationNumber, email, contactPhone);
+        merchant.changePickupAddress(pickupAddress);
         try {
             return merchants.saveAndFlush(merchant);
         } catch (DataIntegrityViolationException e) {
+            // Thrown inside the transaction, so the login user created above is rolled back too
+            if (violates(e, PICKUP_ZONE_CONSTRAINT)) {
+                throw new InvalidPickupZoneException();
+            }
             throw new MerchantConflictException("A merchant profile already exists for this account");
         }
+    }
+
+    /**
+     * Sets or replaces the authenticated merchant's pickup address, in any status (a pending merchant may correct it
+     * before review).
+     *
+     * @throws InvalidPickupZoneException if the address names a zone that does not exist
+     */
+    @Transactional
+    public Merchant changePickupAddress(UUID userId, MerchantPickupAddress pickupAddress) {
+        Merchant merchant = requireOwnMerchant(userId);
+        merchant.changePickupAddress(pickupAddress);
+        try {
+            return merchants.saveAndFlush(merchant);
+        } catch (DataIntegrityViolationException e) {
+            if (violates(e, PICKUP_ZONE_CONSTRAINT)) {
+                throw new InvalidPickupZoneException();
+            }
+            throw e;
+        }
+    }
+
+    private static boolean violates(DataIntegrityViolationException e, String constraint) {
+        String message = e.getMostSpecificCause().getMessage();
+        return message != null && message.contains(constraint);
     }
 
     /** Returns the merchant profile for the authenticated merchant user. */

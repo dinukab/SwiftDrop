@@ -168,8 +168,8 @@ class IdentityAuthorizationMatrixTest {
         when(users.findById(DISABLED_USER_ID)).thenReturn(Optional.of(disabled));
         when(users.findById(NON_EXISTENT_USER_ID)).thenReturn(Optional.empty());
 
-        when(users.findAll()).thenReturn(List.of(customer, merchant, courier, admin));
-        when(users.findAll(any(Pageable.class))).thenReturn(new PageImpl<>(List.of(customer, merchant, courier, admin), PageRequest.of(0, 20), 4));
+        when(users.findByDeletedAtIsNull()).thenReturn(List.of(customer, merchant, courier, admin));
+        when(users.findByDeletedAtIsNull(any(Pageable.class))).thenReturn(new PageImpl<>(List.of(customer, merchant, courier, admin), PageRequest.of(0, 20), 4));
         when(users.findByRole(eq(Role.COURIER), any(Pageable.class))).thenReturn(new PageImpl<>(List.of(courier), PageRequest.of(0, 20), 1));
 
         when(users.findByEmailIgnoringCase(any())).thenCallRealMethod();
