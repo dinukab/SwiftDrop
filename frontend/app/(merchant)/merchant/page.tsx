@@ -2,10 +2,11 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { api, formatApiError } from "@/lib/api";
+import { api, formatApiError, type MerchantPickupAddress, type MerchantResponse } from "@/lib/api";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "cn";
+import { PickupAddressCard } from "@/components/merchant/pickup-address-card";
 
 const cardLinkClass = cn(
   buttonVariants({ variant: "ghost", size: "sm" }),
@@ -21,6 +22,7 @@ interface MerchantProfile {
   status: string;
   rejectionReason?: string;
   createdAt: string;
+  pickupAddress: MerchantPickupAddress | null;
 }
 
 export default function MerchantPortalPage() {
@@ -100,6 +102,13 @@ export default function MerchantPortalPage() {
         </div>
       )}
 
+      {profile && (
+        <PickupAddressCard
+          address={profile.pickupAddress}
+          onSaved={(saved: MerchantResponse) => setProfile({ ...profile, pickupAddress: saved.pickupAddress })}
+        />
+      )}
+
       {/* Navigation Quick Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card className="hover:border-primary/50 transition-colors">
@@ -159,7 +168,8 @@ export default function MerchantPortalPage() {
         <CardHeader>
           <CardTitle className="text-base">Quick Start: Automated Order Intake (MER-2)</CardTitle>
           <CardDescription className="text-xs">
-            Submit new parcels from your online checkout using your secret API key.
+            Submit new parcels from your online checkout using your secret API key. Leave out <code>pickup</code> to
+            use your registered pickup address; a pickup you send must be in the same province.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -169,13 +179,6 @@ export default function MerchantPortalPage() {
   -H "Content-Type: application/json" \\
   -d '{
     "merchantOrderReference": "STORE-9921",
-    "pickup": {
-      "contactName": "Warehouse Hub",
-      "phone": "+94771234567",
-      "line1": "100 Warehouse Way",
-      "city": "Colombo",
-      "zoneId": "00000000-0000-0000-0000-000000000001"
-    },
     "dropoff": {
       "contactName": "Customer Name",
       "phone": "+94779876543",

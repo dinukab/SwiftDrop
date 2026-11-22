@@ -17,7 +17,9 @@ public record MerchantResponse(
         Instant reviewedAt,
         String rejectionReason,
         Instant createdAt,
-        Instant updatedAt
+        Instant updatedAt,
+        /** {@code null} for merchants registered before the address was required. */
+        MerchantPickupAddressResponse pickupAddress
 ) {
     public static MerchantResponse from(Merchant merchant) {
         return new MerchantResponse(
@@ -32,7 +34,8 @@ public record MerchantResponse(
                 merchant.getReviewedAt(),
                 merchant.getRejectionReason(),
                 merchant.getCreatedAt(),
-                merchant.getUpdatedAt()
+                merchant.getUpdatedAt(),
+                MerchantPickupAddressResponse.from(merchant.getPickupAddress())
         );
     }
 }

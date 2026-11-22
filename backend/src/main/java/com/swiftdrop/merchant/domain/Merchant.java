@@ -5,6 +5,7 @@ import java.util.Objects;
 import java.util.UUID;
 
 import jakarta.persistence.Column;
+import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -54,6 +55,10 @@ public class Merchant {
     @Column(name = "rejection_reason")
     private String rejectionReason;
 
+    /** Where couriers collect this merchant's parcels; null for merchants registered before it was required. */
+    @Embedded
+    private MerchantPickupAddress pickupAddress;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -102,6 +107,17 @@ public class Merchant {
 
     public boolean isApproved() {
         return this.status == MerchantStatus.APPROVED;
+    }
+
+    /** Sets or replaces the pickup address. Allowed in any status: a pending merchant may correct it before review. */
+    public void changePickupAddress(MerchantPickupAddress address) {
+        this.pickupAddress = Objects.requireNonNull(address, "address");
+        this.updatedAt = Instant.now();
+    }
+
+    /** The registered pickup address, or {@code null} if the merchant has not added one yet. */
+    public MerchantPickupAddress getPickupAddress() {
+        return pickupAddress;
     }
 
     public UUID getId() {

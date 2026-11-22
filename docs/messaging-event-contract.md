@@ -90,7 +90,13 @@ and malformed payloads must not be interpreted as successful events; follow ADR 
 for rejection and recovery. Missing nullable fields and their deserialization defaults need
 confirmation during contract implementation.
 
-Accepted statuses: CREATED, PICKED_UP, IN_TRANSIT, OUT_FOR_DELIVERY, DELIVERED, FAILED.
+Accepted statuses: CREATED, PICKED_UP, HUB_ARRIVED, HUB_SORTED, IN_TRANSIT, OUT_FOR_DELIVERY,
+DELIVERED, FAILED, PAUSED, CANCELLED (`delivery.api.ParcelStatus`; hub statuses from
+[ADR 0007](adr/0007-multi-leg-shipments-and-hub-handover.md), PAUSED and CANCELLED from ADR 0006 §1A).
+Since the hub workflow every parcel passes `HUB_ARRIVED` after `PICKED_UP`, and dispatchers (actor
+`DISPATCHER`) produce `IN_TRANSIT` and `HUB_ARRIVED` for hub-to-hub transfers. External consumers such as a
+merchant's store should accept a status they do not know (acknowledge and skip it) rather than reject
+the event, so a new status cannot stop delivery of later ones.
 Consumers react to delivery's facts; they do not independently authorize lifecycle transitions.
 
 No names, addresses, phone numbers, free-text notes, proof, credentials or secrets are permitted

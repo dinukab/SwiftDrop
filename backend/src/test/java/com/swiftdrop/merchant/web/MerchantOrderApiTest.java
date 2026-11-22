@@ -1,6 +1,8 @@
 package com.swiftdrop.merchant.web;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -11,6 +13,8 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
+
+import org.mockito.ArgumentCaptor;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -23,6 +27,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 
 import com.swiftdrop.delivery.api.CreatedParcel;
+import com.swiftdrop.delivery.api.NewMerchantParcel;
 import com.swiftdrop.delivery.api.ParcelCreation;
 import com.swiftdrop.delivery.api.ParcelStatus;
 import com.swiftdrop.delivery.domain.DeliveryProofRepository;
@@ -33,6 +38,7 @@ import com.swiftdrop.identity.domain.ExternalIdentityRepository;
 import com.swiftdrop.identity.domain.GoogleLoginCodeRepository;
 import com.swiftdrop.identity.domain.UserRepository;
 import com.swiftdrop.merchant.domain.Merchant;
+import com.swiftdrop.merchant.domain.MerchantPickupAddress;
 import com.swiftdrop.merchant.domain.MerchantApiKey;
 import com.swiftdrop.merchant.domain.MerchantApiKeyRepository;
 import com.swiftdrop.merchant.domain.MerchantRepository;
@@ -167,6 +173,97 @@ class MerchantOrderApiTest {
                                 }
                                 """))
                 .andExpect(status().isUnauthorized());
+    }
+
+    private static final UUID SOUTHERN = UUID.fromString("00000000-0000-0000-0000-00000000000a");
+    private static final String DROPOFF_ONLY_ORDER = """
+            {
+                "merchantOrderReference": "REF-HUB-1",
+                "dropoff": {
+                    "contactName": "Customer Name",
+                    "phone": "+94779876543",
+                    "line1": "45 Park Rd",
+                    "city": "Badulla",
+                    "zoneId": "00000000-0000-0000-0000-000000000002"
+                },
+                "size": "SMALL",
+                "weightGrams": 500
+            }
+            """;
+
+    /** An approved merchant whose API key is {@link #VALID_KEY}, with or without a registered pickup address. */
+    private UUID approvedMerchant(MerchantPickupAddress address) {
+        UUID merchantId = UUID.randomUUID();
+        Merchant merchant = new Merchant(UUID.randomUUID(), "Shop", "REG-1", "s@s.com", "+94771234567");
+        ReflectionTestUtils.setField(merchant, "id", merchantId);
+        merchant.approve(UUID.randomUUID());
+        if (address != null) {
+            merchant.changePickupAddress(address);
+        }
+        MerchantApiKey apiKey = new MerchantApiKey(merchantId, PREFIX, passwordEncoder.encode(VALID_KEY), "Live Key");
+        when(apiKeys.findByKeyPrefixAndActiveTrue(PREFIX)).thenReturn(Optional.of(apiKey));
+        when(merchants.findById(merchantId)).thenReturn(Optional.of(merchant));
+        return merchantId;
+    }
+
+    private static MerchantPickupAddress galleWarehouse() {
+        return new MerchantPickupAddress("StrideLK Warehouse", "+94912234567", "12 Warehouse Rd", null, "Galle",
+                "80000", SOUTHERN);
+    }
+
+    @Test
+    void orderWithoutPickupUsesTheRegisteredAddress() throws Exception {
+        approvedMerchant(galleWarehouse());
+        when(parcelCreation.createMerchantParcel(any())).thenReturn(new CreatedParcel(
+                UUID.randomUUID(), "SD1234567890", ParcelStatus.CREATED, new BigDecimal("700.00"), "LKR",
+                Instant.now(), true));
+
+        mvc.perform(post("/api/v1/merchant-api/orders")
+                        .header("X-API-Key", VALID_KEY)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(DROPOFF_ONLY_ORDER))
+                .andExpect(status().isCreated());
+
+        ArgumentCaptor<NewMerchantParcel> captor = ArgumentCaptor.forClass(NewMerchantParcel.class);
+        verify(parcelCreation).createMerchantParcel(captor.capture());
+        org.assertj.core.api.Assertions.assertThat(captor.getValue().pickup().city()).isEqualTo("Galle");
+        org.assertj.core.api.Assertions.assertThat(captor.getValue().pickup().zoneId()).isEqualTo(SOUTHERN);
+    }
+
+    @Test
+    void pickupInAnotherProvinceReturns422AndCreatesNothing() throws Exception {
+        approvedMerchant(galleWarehouse());
+
+        mvc.perform(post("/api/v1/merchant-api/orders")
+                        .header("X-API-Key", VALID_KEY)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(DROPOFF_ONLY_ORDER.replace("\"dropoff\"", """
+                                "pickup": {
+                                    "contactName": "Warehouse Hub",
+                                    "phone": "+94771234567",
+                                    "line1": "123 Main St",
+                                    "city": "Colombo",
+                                    "zoneId": "00000000-0000-0000-0000-000000000001"
+                                },
+                                "dropoff\"""")))
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.invalidFields[0]").value("pickup.zoneId"));
+
+        verify(parcelCreation, never()).createMerchantParcel(any());
+    }
+
+    @Test
+    void merchantWithoutAddressAndWithoutPickupGets400() throws Exception {
+        approvedMerchant(null);
+
+        mvc.perform(post("/api/v1/merchant-api/orders")
+                        .header("X-API-Key", VALID_KEY)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(DROPOFF_ONLY_ORDER))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.invalidFields[0]").value("pickup"));
+
+        verify(parcelCreation, never()).createMerchantParcel(any());
     }
 }
 

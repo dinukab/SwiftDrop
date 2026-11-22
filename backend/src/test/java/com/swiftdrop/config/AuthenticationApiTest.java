@@ -338,7 +338,7 @@ void everyUserRoleCanLoginAndReceivesTheCorrectRoleInItsToken() throws Exception
         User admin = withId(new User("admin@swiftdrop.com", "{bcrypt}hash1", "Admin", Set.of(Role.ADMIN)));
         User courier = withId(new User("courier@swiftdrop.com", "{bcrypt}hash2", "Courier Bob", Set.of(Role.COURIER)));
         User customer = withId(new User("customer@swiftdrop.com", "{bcrypt}hash3", "Customer Alice", Set.of(Role.CUSTOMER)));
-        when(users.findAll()).thenReturn(List.of(admin, courier, customer));
+        when(users.findByDeletedAtIsNull()).thenReturn(List.of(admin, courier, customer));
 
         listUsers(adminToken())
                 .andExpect(status().isOk())

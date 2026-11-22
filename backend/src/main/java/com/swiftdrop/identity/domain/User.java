@@ -48,6 +48,10 @@ public class User {
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
+    /** Set when an administrator deletes the account; such accounts are anonymised and hidden. */
+    @Column(name = "deleted_at")
+    private Instant deletedAt;
+
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "user_roles", joinColumns = @JoinColumn(name = "user_id"))
     @Column(name = "role_name", nullable = false, length = 50)
@@ -97,6 +101,23 @@ public class User {
 
     public void setEnabled(boolean enabled) {
         this.enabled = enabled;
+    }
+
+    public boolean isDeleted() {
+        return deletedAt != null;
+    }
+
+    /**
+     * Soft-deletes the account. The email is replaced by a unique placeholder so the real address can be
+     * registered again, the name and password are removed, and the account is disabled. The roles stay, so
+     * the record still shows what the user was.
+     */
+    public void markDeleted(Instant now) {
+        this.deletedAt = Objects.requireNonNull(now, "now");
+        this.enabled = false;
+        this.email = "deleted-" + id + "@deleted.invalid";
+        this.fullName = "Deleted user";
+        this.passwordHash = null;
     }
 
     public Instant getCreatedAt() {

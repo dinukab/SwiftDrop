@@ -17,12 +17,14 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.swiftdrop.identity.api.EmailTakenException;
 import com.swiftdrop.identity.api.UserDirectory;
 import com.swiftdrop.merchant.domain.Merchant;
+import com.swiftdrop.merchant.domain.MerchantPickupAddress;
 import com.swiftdrop.merchant.domain.MerchantRepository;
 import com.swiftdrop.merchant.domain.MerchantStatus;
 
@@ -32,6 +34,9 @@ class MerchantOnboardingServiceTest {
     private static final UUID USER_ID = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
     private static final UUID MERCHANT_ID = UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
     private static final UUID ADMIN_ID = UUID.fromString("cccccccc-cccc-cccc-cccc-cccccccccccc");
+    private static final UUID ZONE_ID = UUID.fromString("dddddddd-dddd-dddd-dddd-dddddddddddd");
+    private static final MerchantPickupAddress ADDRESS = new MerchantPickupAddress(
+            "Ada Warehouse", "+94912234567", "12 Warehouse Rd", null, "Galle", "80000", ZONE_ID);
 
     @Mock
     private MerchantRepository merchants;
@@ -55,7 +60,7 @@ class MerchantOnboardingServiceTest {
             return merchant;
         });
 
-        Merchant created = service.register("Ada", "ada@shop.example", "password12", "Ada's Shop", "REG-ADA-1", "0770000000");
+        Merchant created = service.register("Ada", "ada@shop.example", "password12", "Ada's Shop", "REG-ADA-1", "0770000000", ADDRESS);
 
         assertThat(created.getId()).isEqualTo(MERCHANT_ID);
         assertThat(created.getUserId()).isEqualTo(USER_ID);
@@ -67,13 +72,69 @@ class MerchantOnboardingServiceTest {
         ArgumentCaptor<Merchant> captor = ArgumentCaptor.forClass(Merchant.class);
         verify(merchants).saveAndFlush(captor.capture());
         assertThat(captor.getValue().getContactPhone()).isEqualTo("0770000000");
+        assertThat(captor.getValue().getPickupAddress()).isSameAs(ADDRESS);
+    }
+
+    @Test
+    void registerMapsUnknownPickupZoneToInvalidZone() {
+        when(userDirectory.createMerchantUser(any(), any(), any())).thenReturn(USER_ID);
+        when(merchants.saveAndFlush(any(Merchant.class))).thenThrow(new DataIntegrityViolationException(
+                "insert into merchants violates foreign key constraint \"fk_merchants_pickup_zone\""));
+
+        // The exception escapes the transactional method, so the login user is rolled back with it
+        assertThatThrownBy(() -> service.register("Ada", "ada@shop.example", "password12", "Shop", "REG-ADA-3",
+                "0770000000", ADDRESS))
+                .isInstanceOf(InvalidPickupZoneException.class);
+    }
+
+    @Test
+    void registerStillMapsOtherIntegrityViolationsToConflict() {
+        when(userDirectory.createMerchantUser(any(), any(), any())).thenReturn(USER_ID);
+        when(merchants.saveAndFlush(any(Merchant.class))).thenThrow(new DataIntegrityViolationException(
+                "duplicate key value violates unique constraint \"merchants_user_id_key\""));
+
+        assertThatThrownBy(() -> service.register("Ada", "ada@shop.example", "password12", "Shop", "REG-ADA-4",
+                "0770000000", ADDRESS))
+                .isInstanceOf(MerchantConflictException.class);
+    }
+
+    @Test
+    void pendingMerchantCanChangeItsPickupAddress() {
+        Merchant merchant = new Merchant(USER_ID, "Ada's Shop", "REG-ADA-1", "ada@shop.example", "0770000000");
+        when(merchants.findByUserId(USER_ID)).thenReturn(Optional.of(merchant));
+        when(merchants.saveAndFlush(merchant)).thenReturn(merchant);
+
+        Merchant changed = service.changePickupAddress(USER_ID, ADDRESS);
+
+        assertThat(changed.getStatus()).isEqualTo(MerchantStatus.PENDING_APPROVAL);
+        assertThat(changed.getPickupAddress()).isSameAs(ADDRESS);
+    }
+
+    @Test
+    void changePickupAddressMapsUnknownZone() {
+        Merchant merchant = new Merchant(USER_ID, "Ada's Shop", "REG-ADA-1", "ada@shop.example", "0770000000");
+        when(merchants.findByUserId(USER_ID)).thenReturn(Optional.of(merchant));
+        when(merchants.saveAndFlush(merchant)).thenThrow(new DataIntegrityViolationException(
+                "violates foreign key constraint \"fk_merchants_pickup_zone\""));
+
+        assertThatThrownBy(() -> service.changePickupAddress(USER_ID, ADDRESS))
+                .isInstanceOf(InvalidPickupZoneException.class);
+    }
+
+    @Test
+    void changePickupAddressNeedsAMerchantProfile() {
+        when(merchants.findByUserId(USER_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.changePickupAddress(USER_ID, ADDRESS))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("Merchant profile not found");
     }
 
     @Test
     void registerMapsDuplicateEmailToConflict() {
         when(userDirectory.createMerchantUser(any(), any(), any())).thenThrow(new EmailTakenException());
 
-        assertThatThrownBy(() -> service.register("Ada", "ada@shop.example", "password12", "Shop", "REG-ADA-2", "0770000000"))
+        assertThatThrownBy(() -> service.register("Ada", "ada@shop.example", "password12", "Shop", "REG-ADA-2", "0770000000", ADDRESS))
                 .isInstanceOf(MerchantConflictException.class)
                 .hasMessageContaining("already registered");
     }
@@ -82,7 +143,7 @@ class MerchantOnboardingServiceTest {
     void registerRejectsDuplicateRegistrationNumberBeforeCreatingUser() {
         when(merchants.existsByRegistrationNumber("REG-ADA-1")).thenReturn(true);
 
-        assertThatThrownBy(() -> service.register("Ada", "ada@shop.example", "password12", "Shop", " REG-ADA-1 ", "0770000000"))
+        assertThatThrownBy(() -> service.register("Ada", "ada@shop.example", "password12", "Shop", " REG-ADA-1 ", "0770000000", ADDRESS))
                 .isInstanceOf(RegistrationNumberAlreadyRegisteredException.class)
                 .hasMessageContaining("REG-ADA-1");
         verifyNoInteractions(userDirectory);

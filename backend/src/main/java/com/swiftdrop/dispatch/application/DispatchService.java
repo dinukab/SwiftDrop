@@ -334,14 +334,21 @@ public class DispatchService {
      * picker never offers a courier that {@link #assign} would refuse. Eligible means the same as for
      * assignment ({@link CourierEligibility#isEligible}): enabled account, {@code COURIER} role and an
      * active profile. A courier with no active parcels counts as 0.
+     * <p>
+     * Only couriers based at the dispatcher's hub are listed: the courier's home hub or current hub is
+     * that hub. This is the zone the dispatcher works in; couriers from other zones are not offered.
+     *
+     * @throws DispatcherHubNotAssignedException if the dispatcher has no hub
      */
     @Transactional(readOnly = true)
-    public List<CourierWorkload> workloads() {
+    public List<CourierWorkload> workloads(UUID dispatcherUserId) {
+        UUID hubId = requireHub(dispatcherUserId).getId();
         Map<UUID, Long> active = parcelQueries.countActiveParcelsByCourier();
         List<CourierProfile> activeProfiles = profiles.findByActive(true,
                 org.springframework.data.domain.PageRequest.of(0, MAX_COURIERS)).getContent();
 
         return activeProfiles.stream()
+                .filter(profile -> hubId.equals(profile.getHomeHubId()) || hubId.equals(profile.getCurrentHubId()))
                 .map(profile -> {
                     UserSummary user = users.findUser(profile.getUserId()).orElse(null);
                     if (!CourierEligibility.isEligible(user, profile)) {
