@@ -42,22 +42,32 @@ export default function MerchantApiKeysPage() {
   // Revoking state
   const [revokingId, setRevokingId] = useState<string | null>(null);
 
-  const fetchKeys = async () => {
+  // Bumped to load the list again (Refresh, and after a key is created or revoked)
+  const [reloadKey, setReloadKey] = useState(0);
+  const fetchKeys = () => {
     setLoading(true);
     setError(null);
-    try {
-      const data = await api.get<ApiKeyItem[]>("/api/v1/merchants/me/api-keys");
-      setKeys(data);
-    } catch (err) {
-      setError(formatApiError(err));
-    } finally {
-      setLoading(false);
-    }
+    setReloadKey((key) => key + 1);
   };
 
+  // State is only set inside the promise callbacks, after the fetch
   useEffect(() => {
-    fetchKeys();
-  }, []);
+    let current = true;
+    api
+      .get<ApiKeyItem[]>("/api/v1/merchants/me/api-keys")
+      .then((data) => {
+        if (current) setKeys(data);
+      })
+      .catch((err: unknown) => {
+        if (current) setError(formatApiError(err));
+      })
+      .finally(() => {
+        if (current) setLoading(false);
+      });
+    return () => {
+      current = false;
+    };
+  }, [reloadKey]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();

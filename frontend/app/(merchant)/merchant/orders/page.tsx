@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { api, formatApiError, type PageResponse } from "@/lib/api";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -66,31 +66,51 @@ export default function MerchantOrdersPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [dialog, setDialog] = useState<{ order: MerchantOrder; action: "PAUSE" | "CANCEL" } | null>(null);
 
-  const fetchOrders = useCallback(async () => {
+  // Bumped to load the list again (Refresh, and after an order action)
+  const [reloadKey, setReloadKey] = useState(0);
+
+  /** Loads the list again, showing the spinner. Keeps the current error when asked, so a failed action stays visible. */
+  const fetchOrders = (clearError = true) => {
+    setLoading(true);
+    if (clearError) setError(null);
+    setReloadKey((key) => key + 1);
+  };
+
+  /** Changes what is listed (filter or page): shows the spinner and clears the old error; the effect loads it. */
+  const showList = (change: () => void) => {
     setLoading(true);
     setError(null);
-    try {
-      const params = new URLSearchParams({
-        page: page.toString(),
-        size: "10",
-      });
-      if (statusFilter !== "ALL") {
-        params.set("status", statusFilter);
-      }
-      const data = await api.get<PageResponse<MerchantOrder>>(`/api/v1/merchants/me/orders?${params.toString()}`);
-      setOrders(data.items);
-      setTotalPages(data.totalPages);
-      setTotalItems(data.totalItems);
-    } catch (err) {
-      setError(formatApiError(err));
-    } finally {
-      setLoading(false);
-    }
-  }, [page, statusFilter]);
+    change();
+  };
 
+  // State is only set inside the promise callbacks, after the fetch
   useEffect(() => {
-    fetchOrders();
-  }, [fetchOrders]);
+    let current = true;
+    const params = new URLSearchParams({
+      page: page.toString(),
+      size: "10",
+    });
+    if (statusFilter !== "ALL") {
+      params.set("status", statusFilter);
+    }
+    api
+      .get<PageResponse<MerchantOrder>>(`/api/v1/merchants/me/orders?${params.toString()}`)
+      .then((data) => {
+        if (!current) return;
+        setOrders(data.items);
+        setTotalPages(data.totalPages);
+        setTotalItems(data.totalItems);
+      })
+      .catch((err: unknown) => {
+        if (current) setError(formatApiError(err));
+      })
+      .finally(() => {
+        if (current) setLoading(false);
+      });
+    return () => {
+      current = false;
+    };
+  }, [page, statusFilter, reloadKey]);
 
   /** Runs one action on one order, then reloads so the list shows what the server now says. */
   const runAction = async (order: MerchantOrder, action: OrderAction, reason?: string) => {
@@ -106,12 +126,12 @@ export default function MerchantOrdersPage() {
         await api.post(orderUrl(order, "cancellations"), body);
       }
       setDialog(null);
-      await fetchOrders();
+      fetchOrders();
     } catch (err) {
       // A conflict (for example the courier picked it up first) arrives with its own message
       setDialog(null);
       setError(formatApiError(err));
-      await fetchOrders();
+      fetchOrders(false); // reload, but keep that message on screen
     } finally {
       setBusyId(null);
     }
@@ -148,7 +168,7 @@ export default function MerchantOrdersPage() {
             cancel an order until the courier picks it up.
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={fetchOrders} disabled={loading}>
+        <Button variant="outline" size="sm" onClick={() => fetchOrders()} disabled={loading}>
           <RefreshCw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} />
           Refresh
         </Button>
@@ -166,10 +186,12 @@ export default function MerchantOrdersPage() {
         {STATUS_FILTERS.map((s) => (
           <button
             key={s}
-            onClick={() => {
-              setStatusFilter(s);
-              setPage(0);
-            }}
+            onClick={() =>
+              showList(() => {
+                setStatusFilter(s);
+                setPage(0);
+              })
+            }
             className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors whitespace-nowrap ${
               statusFilter === s
                 ? "bg-primary text-primary-foreground"
@@ -303,7 +325,7 @@ export default function MerchantOrdersPage() {
                     variant="outline"
                     size="sm"
                     disabled={page === 0 || loading}
-                    onClick={() => setPage((p) => Math.max(0, p - 1))}
+                    onClick={() => showList(() => setPage((p) => Math.max(0, p - 1)))}
                   >
                     <ChevronLeft className="w-4 h-4 mr-1" />
                     Previous
@@ -312,7 +334,7 @@ export default function MerchantOrdersPage() {
                     variant="outline"
                     size="sm"
                     disabled={page + 1 >= totalPages || loading}
-                    onClick={() => setPage((p) => p + 1)}
+                    onClick={() => showList(() => setPage((p) => p + 1))}
                   >
                     Next
                     <ChevronRight className="w-4 h-4 ml-1" />
