@@ -10,131 +10,144 @@ import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
- * Answers customer questions through Gemini function calling. The model decides when to call
- * {@code get_parcel_status} or {@code get_price_quote}; this service executes those calls against
- * the real delivery and pricing modules and feeds the results back until the model replies in
- * natural language. Stateless: each request is a single-turn conversation.
+ * Answers customer questions through Groq function calling (OpenAI-compatible API). The model
+ * decides when to call {@code get_parcel_status} or {@code get_price_quote}; this service
+ * executes those calls against the real delivery and pricing modules and feeds the results back
+ * as {@code tool} messages until the model replies in natural language. Stateless: each request
+ * is a single-turn conversation.
  */
 @Service
 public class AssistantService {
 
     private static final int MAX_TOOL_ROUNDS = 5;
 
-    private final GeminiClient gemini;
+    private final GroqClient groq;
     private final AssistantTools tools;
     private final JsonMapper mapper = JsonMapper.builder().build();
 
-    AssistantService(GeminiClient gemini, AssistantTools tools) {
-        this.gemini = gemini;
+    AssistantService(GroqClient groq, AssistantTools tools) {
+        this.groq = groq;
         this.tools = tools;
     }
 
     public String chat(String message) {
-        if (!gemini.isConfigured()) {
+        if (!groq.isConfigured()) {
             return "The AI assistant is not configured yet. Please try again later.";
         }
 
-        ArrayNode contents = mapper.createArrayNode();
-        contents.add(userContent(message));
+        ArrayNode messages = mapper.createArrayNode();
+        messages.add(userMessage(message));
         ArrayNode toolDeclarations = toolDeclarations();
 
         for (int round = 0; round < MAX_TOOL_ROUNDS; round++) {
-            JsonNode content = gemini.generateContent(contents, toolDeclarations);
-            contents.add(content.deepCopy());
+            JsonNode reply = groq.chatCompletion(messages, toolDeclarations);
+            messages.add(reply.deepCopy());
 
-            JsonNode parts = content.path("parts");
-            if (!parts.isArray()) {
-                break;
+            JsonNode toolCalls = reply.path("tool_calls");
+            if (!toolCalls.isArray() || toolCalls.isEmpty()) {
+                String text = reply.path("content").asText("").trim();
+                return text.isEmpty()
+                        ? "I could not come up with an answer. Please try rephrasing."
+                        : text;
             }
 
-            StringBuilder text = new StringBuilder();
-            JsonNode functionCall = null;
-            for (JsonNode part : parts) {
-                if (part.has("text")) {
-                    text.append(part.path("text").asText());
+            // Execute every requested tool and return each result as a tool message
+            for (JsonNode call : toolCalls) {
+                String callId = call.path("id").asText("");
+                JsonNode function = call.path("function");
+                String name = function.path("name").asText("");
+                JsonNode args = parseArguments(function.path("arguments").asText("{}"));
+
+                Map<String, Object> result;
+                try {
+                    result = tools.execute(name, args);
+                } catch (RuntimeException e) {
+                    result = Map.of("error", "Tool execution failed: " + e.getMessage());
                 }
-                if (part.has("functionCall") && functionCall == null) {
-                    functionCall = part.path("functionCall");
+
+                ObjectNode toolMessage = mapper.createObjectNode();
+                toolMessage.put("role", "tool");
+                toolMessage.put("tool_call_id", callId);
+                try {
+                    toolMessage.put("content", mapper.writeValueAsString(result));
+                } catch (RuntimeException e) {
+                    toolMessage.put("content", "{\"error\":\"result serialization failed\"}");
                 }
+                messages.add(toolMessage);
             }
-
-            if (functionCall == null) {
-                String reply = text.toString().trim();
-                return reply.isEmpty() ? "I could not come up with an answer. Please try rephrasing." : reply;
-            }
-
-            // Execute the requested tool and send the result back as a functionResponse turn
-            String name = functionCall.path("name").asText("");
-            JsonNode args = functionCall.path("args");
-            Map<String, Object> result;
-            try {
-                result = tools.execute(name, args);
-            } catch (RuntimeException e) {
-                result = Map.of("error", "Tool execution failed: " + e.getMessage());
-            }
-
-            ObjectNode functionTurn = mapper.createObjectNode();
-            functionTurn.put("role", "user");
-            ArrayNode responseParts = functionTurn.putArray("parts");
-            ObjectNode functionResponse = responseParts.addObject().putObject("functionResponse");
-            functionResponse.put("name", name);
-            functionResponse.set("response", mapper.valueToTree(result));
-            contents.add(functionTurn);
         }
 
         return "Sorry, I could not complete that request. Please try again.";
     }
 
-    private ObjectNode userContent(String message) {
-        ObjectNode content = mapper.createObjectNode();
-        content.put("role", "user");
-        ArrayNode parts = content.putArray("parts");
-        parts.addObject().put("text", message);
-        return content;
+    private JsonNode parseArguments(String arguments) {
+        try {
+            return mapper.readTree(arguments);
+        } catch (RuntimeException e) {
+            return mapper.createObjectNode();
+        }
+    }
+
+    private ObjectNode userMessage(String message) {
+        ObjectNode msg = mapper.createObjectNode();
+        msg.put("role", "user");
+        msg.put("content", message);
+        return msg;
     }
 
     private ArrayNode toolDeclarations() {
-        ArrayNode declarationsWrapper = mapper.createArrayNode();
-        ObjectNode tool = declarationsWrapper.addObject();
-        ArrayNode declarations = tool.putArray("functionDeclarations");
+        ArrayNode declarations = mapper.createArrayNode();
 
-        ObjectNode track = declarations.addObject();
-        track.put("name", "get_parcel_status");
-        track.put("description",
-                "Get the current status and location of a parcel by its tracking number "
-                        + "(for example SWD-XXXX). Use when the customer asks where their parcel is.");
-        ObjectNode trackParams = track.putObject("parameters");
-        trackParams.put("type", "OBJECT");
+        // get_parcel_status(trackingNumber)
+        ObjectNode trackParams = mapper.createObjectNode();
+        trackParams.put("type", "object");
         ObjectNode trackProps = trackParams.putObject("properties");
         trackProps.putObject("trackingNumber")
-                .put("type", "STRING")
+                .put("type", "string")
                 .put("description", "The parcel tracking number");
         trackParams.putArray("required").add("trackingNumber");
+        declarations.add(functionTool("get_parcel_status",
+                "Get the current status and location of a parcel by its tracking number "
+                        + "(for example SWD-XXXX). Use when the customer asks where their parcel is.",
+                trackParams));
 
-        ObjectNode quote = declarations.addObject();
-        quote.put("name", "get_price_quote");
-        quote.put("description",
-                "Calculate the delivery fee for a parcel. Use when the customer asks how much "
-                        + "it costs to send a parcel. Active delivery zones: "
-                        + String.join(", ", tools.zoneNames()) + ".");
-        ObjectNode quoteParams = quote.putObject("parameters");
-        quoteParams.put("type", "OBJECT");
+        // get_price_quote(weightGrams, size, pickupZone, dropoffZone)
+        ObjectNode quoteParams = mapper.createObjectNode();
+        quoteParams.put("type", "object");
         ObjectNode quoteProps = quoteParams.putObject("properties");
         quoteProps.putObject("weightGrams")
-                .put("type", "INTEGER")
-                .put("description", "Parcel weight in grams (1-30000). 1 kg = 1000 grams.");
+                .put("type", "integer")
+                .put("description", "Parcel weight in grams (1-30000). 1 kg = 1000 grams.")
+                .put("minimum", 1)
+                .put("maximum", 30000);
         quoteProps.putObject("size")
-                .put("type", "STRING")
-                .put("description", "Parcel size category: SMALL, MEDIUM or LARGE");
+                .put("type", "string")
+                .put("description", "Parcel size category")
+                .putArray("enum").add("SMALL").add("MEDIUM").add("LARGE");
         quoteProps.putObject("pickupZone")
-                .put("type", "STRING")
+                .put("type", "string")
                 .put("description", "Pickup zone name, e.g. Colombo. Ask the customer if unknown.");
         quoteProps.putObject("dropoffZone")
-                .put("type", "STRING")
+                .put("type", "string")
                 .put("description", "Delivery zone name, e.g. Kandy. Ask the customer if unknown.");
         quoteParams.putArray("required")
                 .add("weightGrams").add("size").add("pickupZone").add("dropoffZone");
+        declarations.add(functionTool("get_price_quote",
+                "Calculate the delivery fee for a parcel. Use when the customer asks how much "
+                        + "it costs to send a parcel. Active delivery zones: "
+                        + String.join(", ", tools.zoneNames()) + ".",
+                quoteParams));
 
-        return declarationsWrapper;
+        return declarations;
+    }
+
+    private ObjectNode functionTool(String name, String description, JsonNode parameters) {
+        ObjectNode tool = mapper.createObjectNode();
+        tool.put("type", "function");
+        ObjectNode function = tool.putObject("function");
+        function.put("name", name);
+        function.put("description", description);
+        function.set("parameters", parameters);
+        return tool;
     }
 }

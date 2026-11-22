@@ -25,7 +25,16 @@ function formatStatus(status: ParcelStatus): string {
 }
 
 function formatDate(value: string): string {
-  return new Date(value).toLocaleString();
+  if (!value) return "—";
+  const date = new Date(value);
+  if (isNaN(date.getTime())) return value;
+  
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const year = date.getFullYear();
+  const time = date.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+  
+  return `${day}/${month}/${year}, ${time}`;
 }
 
 const STATUS_OPTIONS: { value: ParcelStatus | ""; label: string }[] = [
@@ -115,7 +124,7 @@ export default function CustomerHistoryPage() {
         </div>
 
         {/* Filters */}
-        <div className="flex flex-col gap-2 border-b px-4 py-3 sm:flex-row sm:items-center sm:px-6">
+        <div className="flex flex-col gap-3 border-b px-4 py-3 sm:flex-row sm:items-center sm:px-6">
           <div className="relative flex-1">
             <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -132,7 +141,7 @@ export default function CustomerHistoryPage() {
               setStatusFilter(e.target.value as ParcelStatus | "");
               setPage(0);
             }}
-            className="h-8 rounded-lg border border-border bg-background px-2.5 text-sm"
+            className="h-9 rounded-lg border border-border bg-background px-2.5 text-sm"
             aria-label="Filter by status"
           >
             {STATUS_OPTIONS.map((opt) => (
@@ -141,20 +150,29 @@ export default function CustomerHistoryPage() {
               </option>
             ))}
           </select>
-          <Input
-            type="date"
-            value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
-            className="sm:w-40"
-            aria-label="Date from"
-          />
-          <Input
-            type="date"
-            value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
-            className="sm:w-40"
-            aria-label="Date to"
-          />
+          
+          <div className="flex items-center gap-2">
+            <div className="flex flex-col">
+              <span className="text-[10px] font-medium text-muted-foreground px-1">From Date:</span>
+              <Input
+                type="date"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+                className="h-9 sm:w-36 text-xs"
+                aria-label="From Date"
+              />
+            </div>
+            <div className="flex flex-col">
+              <span className="text-[10px] font-medium text-muted-foreground px-1">To Date:</span>
+              <Input
+                type="date"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+                className="h-9 sm:w-36 text-xs"
+                aria-label="To Date"
+              />
+            </div>
+          </div>
         </div>
 
         {loading ? (

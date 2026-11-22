@@ -1,5 +1,6 @@
 import React from "react";
 import { PortalShell, type PortalNavItem } from "@/components/portal/portal-shell";
+import { CustomerChatProvider } from "@/components/customer/assistant/chat-context";
 
 const CUSTOMER_NAV: PortalNavItem[] = [
   { href: "/customer", label: "Overview", exact: true },
@@ -16,7 +17,7 @@ export default function CustomerPortalLayout({ children }: { children: React.Rea
       workspaceBadge="Customer Workspace · WS2"
       navItems={CUSTOMER_NAV}
     >
-      {children}
+      <CustomerChatProvider>{children}</CustomerChatProvider>
     </PortalShell>
   );
 }

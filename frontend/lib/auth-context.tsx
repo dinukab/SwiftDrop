@@ -26,6 +26,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const clearAuth = useCallback(() => {
     if (typeof window !== "undefined") {
       window.sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+      // Signing out starts a fresh assistant chat history for the next login
+      window.sessionStorage.removeItem("swiftdrop_assistant_chats");
     }
     setToken(null);
     setUser(null);

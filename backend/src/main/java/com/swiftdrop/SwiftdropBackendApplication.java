@@ -2,12 +2,10 @@ package com.swiftdrop;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
-
-import com.swiftdrop.assistant.application.GeminiProperties;
+import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 
 @SpringBootApplication
-@EnableConfigurationProperties(GeminiProperties.class)
+@ConfigurationPropertiesScan
 public class SwiftdropBackendApplication {
 
     public static void main(String[] args) {
