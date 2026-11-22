@@ -2,9 +2,16 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { api, formatApiError } from "@/lib/api";
+import { api, formatApiError, type MerchantPickupAddress, type MerchantResponse } from "@/lib/api";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
+import { cn } from "cn";
+import { PickupAddressCard } from "@/components/merchant/pickup-address-card";
+
+const cardLinkClass = cn(
+  buttonVariants({ variant: "ghost", size: "sm" }),
+  "p-0 text-primary hover:bg-transparent gap-1 font-medium"
+);
 import { Package, Key, Webhook, ArrowRight, ShieldCheck, Clock, AlertTriangle, Loader2 } from "lucide-react";
 
 interface MerchantProfile {
@@ -15,6 +22,7 @@ interface MerchantProfile {
   status: string;
   rejectionReason?: string;
   createdAt: string;
+  pickupAddress: MerchantPickupAddress | null;
 }
 
 export default function MerchantPortalPage() {
@@ -94,6 +102,13 @@ export default function MerchantPortalPage() {
         </div>
       )}
 
+      {profile && (
+        <PickupAddressCard
+          address={profile.pickupAddress}
+          onSaved={(saved: MerchantResponse) => setProfile({ ...profile, pickupAddress: saved.pickupAddress })}
+        />
+      )}
+
       {/* Navigation Quick Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card className="hover:border-primary/50 transition-colors">
@@ -107,11 +122,9 @@ export default function MerchantPortalPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button variant="ghost" size="sm" asChild className="p-0 text-primary hover:bg-transparent">
-              <Link href="/merchant/orders" className="flex items-center gap-1 text-sm font-medium">
-                View orders <ArrowRight className="w-4 h-4" />
-              </Link>
-            </Button>
+            <Link href="/merchant/orders" className={cardLinkClass}>
+              View orders <ArrowRight className="w-4 h-4" />
+            </Link>
           </CardContent>
         </Card>
 
@@ -126,11 +139,9 @@ export default function MerchantPortalPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button variant="ghost" size="sm" asChild className="p-0 text-primary hover:bg-transparent">
-              <Link href="/merchant/api-keys" className="flex items-center gap-1 text-sm font-medium">
-                Manage keys <ArrowRight className="w-4 h-4" />
-              </Link>
-            </Button>
+            <Link href="/merchant/api-keys" className={cardLinkClass}>
+              Manage keys <ArrowRight className="w-4 h-4" />
+            </Link>
           </CardContent>
         </Card>
 
@@ -145,11 +156,9 @@ export default function MerchantPortalPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button variant="ghost" size="sm" asChild className="p-0 text-primary hover:bg-transparent">
-              <Link href="/merchant/webhooks" className="flex items-center gap-1 text-sm font-medium">
-                Configure webhooks <ArrowRight className="w-4 h-4" />
-              </Link>
-            </Button>
+            <Link href="/merchant/webhooks" className={cardLinkClass}>
+              Configure webhooks <ArrowRight className="w-4 h-4" />
+            </Link>
           </CardContent>
         </Card>
       </div>
@@ -159,7 +168,8 @@ export default function MerchantPortalPage() {
         <CardHeader>
           <CardTitle className="text-base">Quick Start: Automated Order Intake (MER-2)</CardTitle>
           <CardDescription className="text-xs">
-            Submit new parcels from your online checkout using your secret API key.
+            Submit new parcels from your online checkout using your secret API key. Leave out <code>pickup</code> to
+            use your registered pickup address; a pickup you send must be in the same province.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -169,13 +179,6 @@ export default function MerchantPortalPage() {
   -H "Content-Type: application/json" \\
   -d '{
     "merchantOrderReference": "STORE-9921",
-    "pickup": {
-      "contactName": "Warehouse Hub",
-      "phone": "+94771234567",
-      "line1": "100 Warehouse Way",
-      "city": "Colombo",
-      "zoneId": "00000000-0000-0000-0000-000000000001"
-    },
     "dropoff": {
       "contactName": "Customer Name",
       "phone": "+94779876543",

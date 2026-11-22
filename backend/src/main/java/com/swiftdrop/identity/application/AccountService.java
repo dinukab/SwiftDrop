@@ -1,6 +1,7 @@
 package com.swiftdrop.identity.application;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
@@ -16,12 +17,14 @@ import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.swiftdrop.shared.web.PageLimit;
 
 import com.swiftdrop.identity.api.UserDirectory;
 import com.swiftdrop.identity.api.UserSummary;
+import com.swiftdrop.identity.domain.ExternalIdentityRepository;
 import com.swiftdrop.identity.domain.Role;
 import com.swiftdrop.identity.domain.User;
 import com.swiftdrop.identity.domain.UserRepository;
@@ -34,13 +37,15 @@ public class AccountService implements UserDirectory {
     static final int MAX_PASSWORD_BYTES = 72;
 
     private final UserRepository users;
+    private final ExternalIdentityRepository identities;
     private final PasswordEncoder passwordEncoder;
     /** Checked when the account does not exist, so both cases take similar time. */
     private final String dummyHash;
 
-    AccountService(UserRepository users, PasswordEncoder passwordEncoder) {
+    AccountService(UserRepository users, PasswordEncoder passwordEncoder, ExternalIdentityRepository identities) {
         this.users = users;
         this.passwordEncoder = passwordEncoder;
+        this.identities = identities;
         this.dummyHash = passwordEncoder.encode(UUID.randomUUID().toString());
     }
 
@@ -109,7 +114,7 @@ public class AccountService implements UserDirectory {
 
     /** Returns all users for administrative management. */
     public List<User> findAllUsers() {
-        return users.findAll();
+        return users.findByDeletedAtIsNull();
     }
 
     /** Returns a paged list of users, optionally filtered by role. */
@@ -120,7 +125,7 @@ public class AccountService implements UserDirectory {
         if (roleFilter != null) {
             return users.findByRole(roleFilter, pageable);
         }
-        return users.findAll(pageable);
+        return users.findByDeletedAtIsNull(pageable);
     }
 
     /** Enables or disables a user account. An administrator cannot disable their own account. */
@@ -129,14 +134,34 @@ public class AccountService implements UserDirectory {
             throw new SelfDisablingException("An administrator cannot disable their own account");
         }
         User user = users.findById(targetUserId)
+                .filter(found -> !found.isDeleted())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
         user.setEnabled(enabled);
         return users.saveAndFlush(user);
     }
 
+    /**
+     * Soft-deletes a user account: the account is disabled and anonymised, its external sign-in links are
+     * removed, and it disappears from the user directory. Parcels and history that reference the user are kept.
+     * An administrator cannot delete their own account.
+     */
+    @Transactional
+    public void deleteUser(UUID targetUserId, UUID actingAdminId) {
+        if (targetUserId.equals(actingAdminId)) {
+            throw new SelfDeletionException("An administrator cannot delete their own account");
+        }
+        User user = users.findById(targetUserId)
+                .filter(found -> !found.isDeleted())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+        identities.deleteByUserId(targetUserId);
+        user.markDeleted(Instant.now());
+        users.saveAndFlush(user);
+    }
+
     @Override
     public Optional<UserSummary> findUser(UUID id) {
-        return users.findById(id).map(AccountService::toSummary);
+        // Deleted accounts are unknown to other modules: their profiles and history stay, but without a name
+        return users.findById(id).filter(user -> !user.isDeleted()).map(AccountService::toSummary);
     }
 
     private static UserSummary toSummary(User user) {

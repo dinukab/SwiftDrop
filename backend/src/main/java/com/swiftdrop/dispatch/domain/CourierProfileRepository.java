@@ -1,5 +1,6 @@
 package com.swiftdrop.dispatch.domain;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -17,5 +18,7 @@ public interface CourierProfileRepository extends JpaRepository<CourierProfile, 
     Optional<CourierProfile> findByUserId(UUID userId);
 
     Page<CourierProfile> findByActive(boolean active, Pageable pageable);
+
+    List<CourierProfile> findByActiveTrue();
 }
 

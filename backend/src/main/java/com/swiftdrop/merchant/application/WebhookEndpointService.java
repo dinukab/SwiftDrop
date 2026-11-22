@@ -1,8 +1,5 @@
 package com.swiftdrop.merchant.application;
 
-import java.net.URI;
-import java.nio.charset.StandardCharsets;
-import java.util.Base64;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -27,13 +24,19 @@ public class WebhookEndpointService {
 
     private final WebhookEndpointRepository webhookRepository;
     private final MerchantRepository merchantRepository;
+    private final WebhookSecretCipher cipher;
+    private final WebhookUrlPolicy urlPolicy;
 
     public WebhookEndpointService(
             WebhookEndpointRepository webhookRepository,
-            MerchantRepository merchantRepository
+            MerchantRepository merchantRepository,
+            WebhookSecretCipher cipher,
+            WebhookUrlPolicy urlPolicy
     ) {
         this.webhookRepository = webhookRepository;
         this.merchantRepository = merchantRepository;
+        this.cipher = cipher;
+        this.urlPolicy = urlPolicy;
     }
 
     @Transactional
@@ -49,16 +52,18 @@ public class WebhookEndpointService {
             throw new MerchantNotApprovedException(merchantId);
         }
 
-        validateUrl(url.trim());
+        // Same rules as at send time (ADR 0004 section 7.3); the sender re-checks before every attempt
+        String normalizedUrl = urlPolicy.requireAllowed(url).toString();
 
         if (webhookRepository.countByMerchantIdAndActiveTrue(merchantId) >= MAX_WEBHOOK_ENDPOINTS) {
             throw new IllegalArgumentException("Maximum of " + MAX_WEBHOOK_ENDPOINTS + " active webhook endpoints reached");
         }
 
-        // Encode secret for storage (ADR 0004 §7.2)
-        String secretEncrypted = Base64.getEncoder().encodeToString(rawSecret.trim().getBytes(StandardCharsets.UTF_8));
+        // The sender needs the plain secret to sign, so it is encrypted, never hashed or left in clear
+        // (ADR 0004 section 7.4). Refuses to store anything until a key is configured.
+        String secretEncrypted = cipher.encrypt(rawSecret.trim(), merchantId);
 
-        WebhookEndpoint endpoint = new WebhookEndpoint(merchantId, url.trim(), secretEncrypted);
+        WebhookEndpoint endpoint = new WebhookEndpoint(merchantId, normalizedUrl, secretEncrypted);
         return webhookRepository.save(endpoint);
     }
 
@@ -80,19 +85,5 @@ public class WebhookEndpointService {
         return webhookRepository.findByMerchantIdAndActiveTrue(merchantId);
     }
 
-    private void validateUrl(String url) {
-        try {
-            URI uri = URI.create(url);
-            String scheme = uri.getScheme();
-            if (scheme == null || (!scheme.equalsIgnoreCase("http") && !scheme.equalsIgnoreCase("https"))) {
-                throw new IllegalArgumentException("Webhook URL must have http or https scheme");
-            }
-            if (uri.getHost() == null || uri.getHost().isBlank()) {
-                throw new IllegalArgumentException("Webhook URL must contain a valid host");
-            }
-        } catch (Exception e) {
-            throw new IllegalArgumentException("Invalid webhook URL: " + e.getMessage());
-        }
-    }
 }
 

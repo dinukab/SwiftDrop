@@ -48,10 +48,11 @@ class ZonePairFeeCalculatorTest {
     void quoteContainsBreakdownTotalCurrencyAndRule() {
         FeeQuote quote = calculator.calculateFee(COLOMBO, KANDY, ParcelSize.MEDIUM, 2000);
 
+        // 2000 g = 1 extra kg above the included first kg, so weight fee = 100 × 1
         assertThat(quote.baseFee()).isEqualByComparingTo("400.00");
-        assertThat(quote.weightFee()).isEqualByComparingTo("200.00");
+        assertThat(quote.weightFee()).isEqualByComparingTo("100.00");
         assertThat(quote.sizeFee()).isEqualByComparingTo("50.00");
-        assertThat(quote.totalFee()).isEqualByComparingTo("650.00");
+        assertThat(quote.totalFee()).isEqualByComparingTo("550.00");
         assertThat(quote.totalFee().scale()).isEqualTo(2);
         assertThat(quote.currency()).isEqualTo("LKR");
         assertThat(quote.pricingRuleId()).isEqualTo(RULE_ID);
@@ -59,17 +60,18 @@ class ZonePairFeeCalculatorTest {
 
     @ParameterizedTest
     @CsvSource({
-        "1, 1",
-        "999, 1",
-        "1000, 1",
-        "1001, 2",
-        "2500, 3",
-        "30000, 30"
+        // The first kilogram is included in the base fee, so only kilograms above it are charged.
+        "1, 0",
+        "999, 0",
+        "1000, 0",
+        "1001, 1",
+        "2500, 2",
+        "30000, 29"
     })
-    void everyStartedKilogramIsCharged(int weightGrams, int chargeableKg) {
+    void onlyKilogramsAboveTheFirstAreCharged(int weightGrams, int extraKg) {
         FeeQuote quote = calculator.calculateFee(COLOMBO, KANDY, ParcelSize.SMALL, weightGrams);
 
-        assertThat(quote.weightFee()).isEqualByComparingTo(new BigDecimal("100.00").multiply(BigDecimal.valueOf(chargeableKg)));
+        assertThat(quote.weightFee()).isEqualByComparingTo(new BigDecimal("100.00").multiply(BigDecimal.valueOf(extraKg)));
     }
 
     @ParameterizedTest
@@ -82,6 +84,27 @@ class ZonePairFeeCalculatorTest {
         FeeQuote quote = calculator.calculateFee(COLOMBO, KANDY, size, 1000);
 
         assertThat(quote.sizeFee()).isEqualByComparingTo(expectedSurcharge);
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+        // Same-province tariff: base 200, +100 per extra kg (user spec).
+        "200.00, 100.00, 1000, 200.00",
+        "200.00, 100.00, 2000, 300.00",
+        "200.00, 100.00, 3000, 400.00",
+        "200.00, 100.00, 5000, 600.00",
+        // Cross-province tariff: base 500, +150 per extra kg.
+        "500.00, 150.00, 1000, 500.00",
+        "500.00, 150.00, 2000, 650.00",
+        "500.00, 150.00, 3000, 800.00",
+        "500.00, 150.00, 5000, 1100.00"
+    })
+    void matchesTheSriLankaTariffTable(String baseFee, String perKgFee, int weightGrams, String expectedTotal) {
+        givenRule(new PricingRule(COLOMBO, KANDY, new BigDecimal(baseFee), new BigDecimal(perKgFee)));
+
+        FeeQuote quote = calculator.calculateFee(COLOMBO, KANDY, ParcelSize.SMALL, weightGrams);
+
+        assertThat(quote.totalFee()).isEqualByComparingTo(expectedTotal);
     }
 
     @Test

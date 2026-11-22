@@ -126,7 +126,7 @@ class ParcelAuthorizationMatrixIT {
 
         delivered = booking.bookForCustomer(ownerId, booking());
         assignment.assignCourier(delivered.getId(), courierId, UUID.randomUUID());
-        for (ParcelStatus step : List.of(ParcelStatus.PICKED_UP, ParcelStatus.IN_TRANSIT, ParcelStatus.OUT_FOR_DELIVERY)) {
+        for (ParcelStatus step : List.of(ParcelStatus.PICKED_UP, ParcelStatus.HUB_ARRIVED, ParcelStatus.OUT_FOR_DELIVERY)) {
             statuses.changeStatus(delivered.getId(), new StatusChange(step, null, null), Actor.courier(courierId));
         }
         proofs.capture(delivered.getId(), Actor.courier(courierId), "Kumari Silva", JPEG);

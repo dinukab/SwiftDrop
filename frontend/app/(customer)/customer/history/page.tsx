@@ -1,10 +1,13 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { Download, Search } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { api, formatApiError, type PageResponse, type ParcelHistoryItem, type ParcelStatus } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { ReceiptModal } from "@/components/customer/receipt-modal";
 
 const PAGE_SIZE = 20;
 
@@ -12,23 +15,52 @@ const STATUS_STYLES: Record<ParcelStatus, string> = {
   CREATED: "bg-muted text-muted-foreground",
   PICKED_UP: "bg-blue-100 text-blue-800",
   IN_TRANSIT: "bg-blue-100 text-blue-800",
+  HUB_ARRIVED: "bg-blue-100 text-blue-800",
+  HUB_SORTED: "bg-blue-100 text-blue-800",
   OUT_FOR_DELIVERY: "bg-amber-100 text-amber-800",
   DELIVERED: "bg-emerald-100 text-emerald-800",
   FAILED: "bg-red-100 text-red-800",
+  PAUSED: "bg-amber-100 text-amber-800",
+  CANCELLED: "bg-muted text-muted-foreground",
 };
 
 function formatStatus(status: ParcelStatus): string {
+  if (status === "PAUSED") return "ON HOLD";
   return status.replaceAll("_", " ");
 }
 
 function formatDate(value: string): string {
-  return new Date(value).toLocaleString();
+  if (!value) return "—";
+  const date = new Date(value);
+  if (isNaN(date.getTime())) return value;
+  
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const year = date.getFullYear();
+  const time = date.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+  
+  return `${day}/${month}/${year}, ${time}`;
 }
+
+const STATUS_OPTIONS: { value: ParcelStatus | ""; label: string }[] = [
+  { value: "", label: "All Statuses" },
+  { value: "CREATED", label: "Booked" },
+  { value: "PICKED_UP", label: "Picked Up" },
+  { value: "IN_TRANSIT", label: "In Transit" },
+  { value: "OUT_FOR_DELIVERY", label: "Out for Delivery" },
+  { value: "DELIVERED", label: "Delivered" },
+  { value: "FAILED", label: "Failed" },
+];
 
 export default function CustomerHistoryPage() {
   const { token, isAuthenticated } = useAuth();
   const [history, setHistory] = useState<PageResponse<ParcelHistoryItem> | null>(null);
   const [page, setPage] = useState(0);
+  const [statusFilter, setStatusFilter] = useState<ParcelStatus | "">("");
+  const [search, setSearch] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [receiptParcel, setReceiptParcel] = useState<ParcelHistoryItem | null>(null);
   const [requestError, setRequestError] = useState<{ page: number; message: string } | null>(null);
   const error = requestError?.page === page ? requestError.message : null;
   const loading = Boolean(isAuthenticated && token && !error && (!history || history.page !== page));
@@ -40,8 +72,10 @@ export default function CustomerHistoryPage() {
 
     let cancelled = false;
 
+    const statusParam = statusFilter ? `&status=${statusFilter}` : "";
+
     api
-      .get<PageResponse<ParcelHistoryItem>>(`/api/v1/parcels?page=${page}&size=${PAGE_SIZE}`, { token })
+      .get<PageResponse<ParcelHistoryItem>>(`/api/v1/parcels?page=${page}&size=${PAGE_SIZE}${statusParam}`, { token })
       .then((result) => {
         if (!cancelled) setHistory(result);
       })
@@ -52,7 +86,22 @@ export default function CustomerHistoryPage() {
     return () => {
       cancelled = true;
     };
-  }, [isAuthenticated, page, token]);
+  }, [isAuthenticated, page, statusFilter, token]);
+
+  const items = useMemo(() => {
+    let result = history?.items ?? [];
+    const term = search.trim().toLowerCase();
+    if (term) {
+      result = result.filter((p) => p.trackingNumber.toLowerCase().includes(term));
+    }
+    if (dateFrom) {
+      result = result.filter((p) => p.createdAt.slice(0, 10) >= dateFrom);
+    }
+    if (dateTo) {
+      result = result.filter((p) => p.createdAt.slice(0, 10) <= dateTo);
+    }
+    return result;
+  }, [history, search, dateFrom, dateTo]);
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -79,6 +128,58 @@ export default function CustomerHistoryPage() {
           )}
         </div>
 
+        {/* Filters */}
+        <div className="flex flex-col gap-3 border-b px-4 py-3 sm:flex-row sm:items-center sm:px-6">
+          <div className="relative flex-1">
+            <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search tracking number…"
+              className="pl-8"
+              aria-label="Search tracking number"
+            />
+          </div>
+          <select
+            value={statusFilter}
+            onChange={(e) => {
+              setStatusFilter(e.target.value as ParcelStatus | "");
+              setPage(0);
+            }}
+            className="h-9 rounded-lg border border-border bg-background px-2.5 text-sm"
+            aria-label="Filter by status"
+          >
+            {STATUS_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+          
+          <div className="flex items-center gap-2">
+            <div className="flex flex-col">
+              <span className="text-[10px] font-medium text-muted-foreground px-1">From Date:</span>
+              <Input
+                type="date"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+                className="h-9 sm:w-36 text-xs"
+                aria-label="From Date"
+              />
+            </div>
+            <div className="flex flex-col">
+              <span className="text-[10px] font-medium text-muted-foreground px-1">To Date:</span>
+              <Input
+                type="date"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+                className="h-9 sm:w-36 text-xs"
+                aria-label="To Date"
+              />
+            </div>
+          </div>
+        </div>
+
         {loading ? (
           <p className="px-4 py-10 text-center text-sm text-muted-foreground sm:px-6">Loading delivery history...</p>
         ) : !history || history.items.length === 0 ? (
@@ -88,6 +189,10 @@ export default function CustomerHistoryPage() {
               Book a delivery
             </Link>
           </div>
+        ) : items.length === 0 ? (
+          <p className="px-4 py-10 text-center text-sm text-muted-foreground sm:px-6">
+            No deliveries match the current filters.
+          </p>
         ) : (
           <>
             <div className="overflow-x-auto">
@@ -99,10 +204,11 @@ export default function CustomerHistoryPage() {
                     <th scope="col" className="px-4 py-3">Status</th>
                     <th scope="col" className="px-4 py-3">Fee</th>
                     <th scope="col" className="px-4 py-3">Last updated</th>
+                    <th scope="col" className="px-4 py-3">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {history.items.map((parcel) => (
+                  {items.map((parcel) => (
                     <tr key={parcel.id} className="align-top">
                       <td className="px-4 py-4 sm:px-6">
                         <Link
@@ -129,6 +235,16 @@ export default function CustomerHistoryPage() {
                       </td>
                       <td className="whitespace-nowrap px-4 py-4 text-muted-foreground">
                         {formatDate(parcel.updatedAt)}
+                      </td>
+                      <td className="px-4 py-4">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setReceiptParcel(parcel)}
+                        >
+                          <Download data-icon="inline-start" />
+                          Receipt
+                        </Button>
                       </td>
                     </tr>
                   ))}
@@ -164,6 +280,14 @@ export default function CustomerHistoryPage() {
           </>
         )}
       </section>
+
+      {token && (
+        <ReceiptModal
+          parcel={receiptParcel}
+          token={token}
+          onClose={() => setReceiptParcel(null)}
+        />
+      )}
     </div>
   );
 }

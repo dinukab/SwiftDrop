@@ -13,6 +13,7 @@ import com.swiftdrop.delivery.api.DeliveryContact;
 import com.swiftdrop.delivery.api.NewMerchantParcel;
 import com.swiftdrop.delivery.domain.Parcel;
 import com.swiftdrop.delivery.domain.ParcelAddress;
+import com.swiftdrop.delivery.domain.OrderFingerprint;
 import com.swiftdrop.delivery.domain.ParcelRepository;
 import com.swiftdrop.delivery.domain.TrackingNumberGenerator;
 import com.swiftdrop.pricing.api.FeeCalculator;
@@ -81,6 +82,7 @@ public class ParcelBookingService {
         Parcel parcel = Parcel.forMerchant(nextTrackingNumber(), order.merchantId(), order.merchantOrderReference(),
                 checked.pickup(), checked.dropoff(), booking.size(), booking.weightGrams(), booking.description(),
                 fee(checked, booking), now);
+        parcel.recordOrderFingerprint(OrderFingerprint.of(order));
         return saveAndRecord(parcel, Actor.merchantApi(), now);
     }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useAuth } from "@/lib/auth-context";
 import {
   api,
@@ -11,11 +11,16 @@ import {
   type CreateStaffUserRequest,
   type UpdateUserStatusRequest,
   type MerchantResponse,
+  type CourierProfileResponse,
+  type VehicleType,
 } from "@/lib/api";
+import { assignDispatcherHub, getHubs, type Hub } from "@/lib/dispatch";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useZones, zoneName } from "@/components/merchant/pickup-address-fields";
+import { UserDetailsDialog } from "@/components/admin/user-details-dialog";
 import {
   Plus,
   RefreshCw,
@@ -41,6 +46,15 @@ import {
 const PAGE_SIZE = 10;
 const ROLE_FILTERS = ["ALL", "CUSTOMER", "MERCHANT", "COURIER", "DISPATCHER", "ADMIN"] as const;
 type RoleFilter = (typeof ROLE_FILTERS)[number];
+
+/** Matches the backend's courier phone rule (E.164), e.g. +94771234567. */
+const E164_PHONE = /^\+[1-9][0-9]{7,14}$/;
+
+const VEHICLE_TYPES: { value: VehicleType; label: string }[] = [
+  { value: "BIKE", label: "Bike" },
+  { value: "CAR", label: "Car" },
+  { value: "VAN", label: "Van" },
+];
 
 const STAFF_ROLES = [
   {
@@ -198,6 +212,9 @@ export default function AdminUsersPage() {
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
+  // Province names for the merchants' pickup addresses
+  const { zones: pickupZones } = useZones();
+
   // Pending merchant applications (ADMIN approval queue)
   const [pendingMerchants, setPendingMerchants] = useState<MerchantResponse[]>([]);
   const [pendingMerchantsError, setPendingMerchantsError] = useState<string | null>(null);
@@ -273,7 +290,7 @@ export default function AdminUsersPage() {
         const params = new URLSearchParams();
         params.set("page", "0");
         params.set("size", "50");
-        params.set("status", "PENDING");
+        params.set("status", "PENDING_APPROVAL");
         const response = await api.get<PageResponse<MerchantResponse>>(
           `/api/v1/merchants?${params.toString()}`
         );
@@ -410,6 +427,31 @@ export default function AdminUsersPage() {
   const [staffFormErrors, setStaffFormErrors] = useState<Record<string, string>>({});
   const [staffFormGeneralError, setStaffFormGeneralError] = useState<string | null>(null);
   const [isSubmittingStaff, setIsSubmittingStaff] = useState(false);
+  // Courier dispatch details, saved as a courier profile after the login is created
+  const [staffPhone, setStaffPhone] = useState("");
+  const [staffVehicle, setStaffVehicle] = useState<VehicleType>("BIKE");
+  // Set when the courier login exists but its profile failed; a retry then only saves the profile
+  const [pendingCourier, setPendingCourier] = useState<UserResponse | null>(null);
+  // Same for a dispatcher whose zone (hub) could not be saved
+  const [pendingDispatcher, setPendingDispatcher] = useState<UserResponse | null>(null);
+  const accountLocked = pendingCourier !== null || pendingDispatcher !== null;
+  const [staffZone, setStaffZone] = useState("");
+  const [zones, setZones] = useState<Hub[]>([]);
+  const [zonesError, setZonesError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getHubs()
+      .then((hubs) => {
+        if (!cancelled) setZones(hubs);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setZonesError(formatApiError(err));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   function resetStaffForm() {
     setStaffFullName("");
@@ -419,6 +461,60 @@ export default function AdminUsersPage() {
     setShowPassword(false);
     setStaffFormErrors({});
     setStaffFormGeneralError(null);
+    setStaffPhone("");
+    setStaffVehicle("BIKE");
+    setStaffZone("");
+    setPendingCourier(null);
+    setPendingDispatcher(null);
+  }
+
+  function finishStaffCreation(createdUser: UserResponse, detail: string) {
+    setIsCreateModalOpen(false);
+    resetStaffForm();
+    setNotification({
+      type: "success",
+      message: `Staff account for ${createdUser.fullName} (${createdUser.email}) was successfully created as ${createdUser.roles.join(", ")}${detail}.`,
+    });
+    // Make new account discoverable by switching filter to match or ALL, and reset to page 0
+    const createdRole = createdUser.roles[0];
+    setIsLoading(true);
+    setFetchError(null);
+    setRoleFilter((prev) => (prev === "ALL" || prev === createdRole ? prev : "ALL"));
+    setPage(0);
+    setRefreshKey((k) => k + 1);
+  }
+
+  /** Saves the courier profile. Returns false (with the error shown) if it failed. */
+  async function createCourierProfile(courier: UserResponse): Promise<boolean> {
+    try {
+      await api.post<CourierProfileResponse>("/api/v1/couriers", {
+        userId: courier.id,
+        phone: staffPhone.trim(),
+        vehicleType: staffVehicle,
+        hubCode: staffZone,
+      });
+      return true;
+    } catch (err: unknown) {
+      setPendingCourier(courier);
+      setStaffFormGeneralError(
+        `The courier login for ${courier.email} was created, but the dispatch details were not saved: ${formatApiError(err)} Correct the phone, vehicle or zone and click "Save Courier Details".`
+      );
+      return false;
+    }
+  }
+
+  /** Binds the new dispatcher to their zone's hub. Returns false (with the error shown) if it failed. */
+  async function assignDispatcherZone(dispatcher: UserResponse): Promise<boolean> {
+    try {
+      await assignDispatcherHub(dispatcher.id, staffZone);
+      return true;
+    } catch (err: unknown) {
+      setPendingDispatcher(dispatcher);
+      setStaffFormGeneralError(
+        `The dispatcher login for ${dispatcher.email} was created, but the zone was not saved: ${formatApiError(err)} Choose the zone again and click "Save Zone".`
+      );
+      return false;
+    }
   }
 
   function handleOpenCreateModal() {
@@ -469,12 +565,53 @@ export default function AdminUsersPage() {
       errors.role = "Role must be COURIER, DISPATCHER or ADMIN.";
     }
 
+    if (staffRole === "COURIER") {
+      if (!staffPhone.trim()) {
+        errors.phone = "Phone number is required for couriers.";
+      } else if (!E164_PHONE.test(staffPhone.trim())) {
+        errors.phone = "Use international format, for example +94771234567.";
+      }
+    }
+
+    if ((staffRole === "COURIER" || staffRole === "DISPATCHER") && !staffZone) {
+      errors.zone = "Choose the zone this person works in.";
+    }
+
+    // Retrying only the courier profile: the login already exists, so skip its checks
+    if (accountLocked) {
+      delete errors.fullName;
+      delete errors.email;
+      delete errors.password;
+    }
+
     if (Object.keys(errors).length > 0) {
       setStaffFormErrors(errors);
       return;
     }
 
     setIsSubmittingStaff(true);
+
+    if (pendingCourier) {
+      try {
+        if (await createCourierProfile(pendingCourier)) {
+          finishStaffCreation(pendingCourier, " with its courier profile");
+        }
+      } finally {
+        setIsSubmittingStaff(false);
+      }
+      return;
+    }
+
+    if (pendingDispatcher) {
+      try {
+        if (await assignDispatcherZone(pendingDispatcher)) {
+          finishStaffCreation(pendingDispatcher, " with its zone");
+        }
+      } finally {
+        setIsSubmittingStaff(false);
+      }
+      return;
+    }
 
     const payload: CreateStaffUserRequest = {
       fullName: trimmedName,
@@ -486,22 +623,20 @@ export default function AdminUsersPage() {
     try {
       const createdUser = await api.post<UserResponse>("/api/v1/staff-users", payload);
 
-      // Successfully created staff account
-      setIsCreateModalOpen(false);
-      resetStaffForm();
-
-      // Show notification
-      setNotification({
-        type: "success",
-        message: `Staff account for ${createdUser.fullName} (${createdUser.email}) was successfully created as ${createdUser.roles.join(", ")}.`,
-      });
-
-      // Make new account discoverable by switching filter to match or ALL, and reset to page 0
-      setIsLoading(true);
-      setFetchError(null);
-      setRoleFilter((prev) => (prev === "ALL" || prev === staffRole ? prev : "ALL"));
-      setPage(0);
-      setRefreshKey((k) => k + 1);
+      if (staffRole === "COURIER") {
+        // A courier also needs a dispatch profile (phone, vehicle) to be assignable
+        if (await createCourierProfile(createdUser)) {
+          finishStaffCreation(createdUser, " with its courier profile");
+        }
+        return;
+      }
+      if (staffRole === "DISPATCHER") {
+        if (await assignDispatcherZone(createdUser)) {
+          finishStaffCreation(createdUser, " with its zone");
+        }
+        return;
+      }
+      finishStaffCreation(createdUser, "");
     } catch (err: unknown) {
       if (err instanceof ApiError) {
         if (err.status === 409) {
@@ -533,6 +668,10 @@ export default function AdminUsersPage() {
   } | null>(null);
   const [isStatusSubmitting, setIsStatusSubmitting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+
+  // User details dialog, opened by clicking a user's name in the list
+  const [detailUser, setDetailUser] = useState<UserResponse | null>(null);
+  const closeUserDetails = useCallback(() => setDetailUser(null), [setDetailUser]);
 
   function handleOpenStatusModal(
     targetUser: UserResponse,
@@ -723,6 +862,9 @@ export default function AdminUsersPage() {
                       Business
                     </th>
                     <th scope="col" className="py-3 px-4">
+                      Pickup address
+                    </th>
+                    <th scope="col" className="py-3 px-4">
                       Status
                     </th>
                     <th scope="col" className="py-3 px-4">
@@ -744,6 +886,22 @@ export default function AdminUsersPage() {
                         <div className="text-xs text-muted-foreground mt-0.5">
                           User ID: {merchant.userId}
                         </div>
+                      </td>
+                      <td className="py-3.5 px-4 text-xs">
+                        {merchant.pickupAddress ? (
+                          <>
+                            <div className="text-foreground">
+                              {merchant.pickupAddress.line1}
+                              {merchant.pickupAddress.line2 ? `, ${merchant.pickupAddress.line2}` : ""}
+                            </div>
+                            <div className="text-muted-foreground mt-0.5">
+                              {merchant.pickupAddress.city} · {zoneName(pickupZones, merchant.pickupAddress.zoneId)}
+                            </div>
+                            <div className="text-muted-foreground mt-0.5">{merchant.pickupAddress.phone}</div>
+                          </>
+                        ) : (
+                          <span className="text-amber-700 dark:text-amber-400">No pickup address</span>
+                        )}
                       </td>
                       <td className="py-3.5 px-4">
                         <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20">
@@ -956,7 +1114,14 @@ export default function AdminUsersPage() {
                             </div>
                             <div className="min-w-0">
                               <div className="flex items-center gap-2 font-medium text-foreground">
-                                <span className="truncate">{item.fullName}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => setDetailUser(item)}
+                                  aria-haspopup="dialog"
+                                  className="truncate rounded text-left hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                >
+                                  {item.fullName}
+                                </button>
                                 {isSelf && (
                                   <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-primary text-primary-foreground">
                                     You
@@ -1107,6 +1272,24 @@ export default function AdminUsersPage() {
         </CardContent>
       </Card>
 
+      {/* User details, opened from a name in the user list */}
+      {detailUser && (
+        <UserDetailsDialog
+          key={detailUser.id}
+          user={detailUser}
+          onClose={closeUserDetails}
+          isSelf={detailUser.id === currentAdminId}
+          onDeleted={(deleted) => {
+            setDetailUser(null);
+            setNotification({
+              type: "success",
+              message: `${deleted.fullName} was deleted. The account is disabled and no longer appears in the user list.`,
+            });
+            handleRefresh();
+          }}
+        />
+      )}
+
       {/* Reject Merchant Application Modal */}
       <AccessibleModal
         isOpen={Boolean(rejectTarget)}
@@ -1245,7 +1428,7 @@ export default function AdminUsersPage() {
                 placeholder="e.g. Ruwan Wickramasinghe"
                 value={staffFullName}
                 onChange={(e) => setStaffFullName(e.target.value)}
-                disabled={isSubmittingStaff}
+                disabled={isSubmittingStaff || accountLocked}
                 required
                 aria-required="true"
                 aria-invalid={Boolean(staffFormErrors.fullName)}
@@ -1268,7 +1451,7 @@ export default function AdminUsersPage() {
                 placeholder="e.g. ruwan@swiftdrop.com"
                 value={staffEmail}
                 onChange={(e) => setStaffEmail(e.target.value)}
-                disabled={isSubmittingStaff}
+                disabled={isSubmittingStaff || accountLocked}
                 required
                 aria-required="true"
                 aria-invalid={Boolean(staffFormErrors.email)}
@@ -1293,7 +1476,7 @@ export default function AdminUsersPage() {
                   autoComplete="new-password"
                   value={staffPassword}
                   onChange={(e) => setStaffPassword(e.target.value)}
-                  disabled={isSubmittingStaff}
+                  disabled={isSubmittingStaff || accountLocked}
                   required
                   aria-required="true"
                   aria-invalid={Boolean(staffFormErrors.password)}
@@ -1345,7 +1528,7 @@ export default function AdminUsersPage() {
                         isSelected
                           ? "border-primary bg-primary/5 ring-1 ring-primary shadow-xs"
                           : "border-border bg-card hover:bg-muted/30"
-                      } ${isSubmittingStaff ? "opacity-50 pointer-events-none" : ""}`}
+                      } ${isSubmittingStaff || accountLocked ? "opacity-50 pointer-events-none" : ""}`}
                     >
                       <input
                         type="radio"
@@ -1353,8 +1536,8 @@ export default function AdminUsersPage() {
                         name="staff-role"
                         value={r.value}
                         checked={isSelected}
-                        onChange={() => !isSubmittingStaff && setStaffRole(r.value)}
-                        disabled={isSubmittingStaff}
+                        onChange={() => !isSubmittingStaff && !accountLocked && setStaffRole(r.value)}
+                        disabled={isSubmittingStaff || accountLocked}
                         className="sr-only"
                       />
                       <div className="flex items-center justify-between mb-2">
@@ -1390,6 +1573,110 @@ export default function AdminUsersPage() {
                 </p>
               )}
             </div>
+
+            {(staffRole === "COURIER" || staffRole === "DISPATCHER") && (
+              <div className="space-y-1.5">
+                <Label htmlFor="staff-zone">Zone</Label>
+                <select
+                  id="staff-zone"
+                  value={staffZone}
+                  onChange={(e) => setStaffZone(e.target.value)}
+                  disabled={isSubmittingStaff}
+                  aria-invalid={Boolean(staffFormErrors.zone)}
+                  aria-describedby={staffFormErrors.zone ? "staff-zone-error" : undefined}
+                  className={`h-9 w-full rounded-md border bg-background px-3 text-sm ${
+                    staffFormErrors.zone ? "border-destructive" : "border-input"
+                  }`}
+                >
+                  <option value="">Select a zone</option>
+                  {zones.map((zone) => (
+                    <option key={zone.code} value={zone.code}>
+                      {zone.name}
+                    </option>
+                  ))}
+                </select>
+                {staffFormErrors.zone ? (
+                  <p id="staff-zone-error" className="text-[11px] text-destructive font-medium" role="alert">
+                    {staffFormErrors.zone}
+                  </p>
+                ) : zonesError ? (
+                  <p className="text-[11px] text-destructive font-medium" role="alert">
+                    Could not load zones: {zonesError}
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-muted-foreground">
+                    The provincial hub this {staffRole === "COURIER" ? "courier" : "dispatcher"} works from.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Courier dispatch details: saved as the courier profile used for assignment */}
+            {staffRole === "COURIER" && (
+              <fieldset className="space-y-4 rounded-xl border border-border p-4">
+                <legend className="px-1 text-xs font-semibold text-foreground">Courier details</legend>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="staff-phone">Phone Number</Label>
+                  <Input
+                    id="staff-phone"
+                    type="tel"
+                    autoComplete="off"
+                    placeholder="+94771234567"
+                    value={staffPhone}
+                    onChange={(e) => setStaffPhone(e.target.value)}
+                    disabled={isSubmittingStaff}
+                    maxLength={20}
+                    required
+                    aria-required="true"
+                    aria-invalid={Boolean(staffFormErrors.phone)}
+                    aria-describedby={staffFormErrors.phone ? "staff-phone-error" : "staff-phone-hint"}
+                    className={staffFormErrors.phone ? "border-destructive focus-visible:ring-destructive" : ""}
+                  />
+                  {staffFormErrors.phone ? (
+                    <p id="staff-phone-error" className="text-[11px] text-destructive font-medium" role="alert">
+                      {staffFormErrors.phone}
+                    </p>
+                  ) : (
+                    <p id="staff-phone-hint" className="text-[11px] text-muted-foreground">
+                      International format with country code.
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label id="staff-vehicle-label">Vehicle</Label>
+                  <div role="radiogroup" aria-labelledby="staff-vehicle-label" className="grid grid-cols-3 gap-2">
+                    {VEHICLE_TYPES.map((v) => {
+                      const isSelected = staffVehicle === v.value;
+                      return (
+                        <label
+                          key={v.value}
+                          htmlFor={`staff-vehicle-${v.value}`}
+                          className={`cursor-pointer rounded-lg border px-3 py-2 text-center text-xs font-semibold transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-primary ${
+                            isSelected
+                              ? "border-primary bg-primary/5 text-foreground ring-1 ring-primary"
+                              : "border-border text-muted-foreground hover:bg-muted/30"
+                          } ${isSubmittingStaff ? "opacity-50 pointer-events-none" : ""}`}
+                        >
+                          <input
+                            type="radio"
+                            id={`staff-vehicle-${v.value}`}
+                            name="staff-vehicle"
+                            value={v.value}
+                            checked={isSelected}
+                            onChange={() => setStaffVehicle(v.value)}
+                            disabled={isSubmittingStaff}
+                            className="sr-only"
+                          />
+                          {v.label}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              </fieldset>
+            )}
           </div>
 
           <div className="flex items-center justify-end gap-2 p-4 border-t border-border bg-muted/20">
@@ -1412,8 +1699,10 @@ export default function AdminUsersPage() {
               {isSubmittingStaff ? (
                 <>
                   <Loader2 className="size-3.5 animate-spin mr-1.5" />
-                  Creating...
+                  {accountLocked ? "Saving..." : "Creating..."}
                 </>
+              ) : accountLocked ? (
+                pendingDispatcher ? "Save Zone" : "Save Courier Details"
               ) : (
                 "Create Staff"
               )}

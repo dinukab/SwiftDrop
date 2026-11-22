@@ -35,6 +35,22 @@ export interface CreateStaffUserRequest {
   role?: "COURIER" | "DISPATCHER" | "ADMIN";
 }
 
+export type VehicleType = "BIKE" | "CAR" | "VAN";
+
+/** Courier dispatch profile from /api/v1/couriers (admin only). */
+export interface CourierProfileResponse {
+  id: string;
+  userId: string;
+  fullName: string | null;
+  email: string | null;
+  accountEnabled: boolean;
+  phone: string;
+  vehicleType: VehicleType;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface UpdateUserStatusRequest {
   enabled: boolean;
 }
@@ -46,7 +62,18 @@ export interface AccessTokenResponse {
 }
 
 // Courier API types
-export type ParcelStatus = "CREATED" | "PICKED_UP" | "IN_TRANSIT" | "OUT_FOR_DELIVERY" | "DELIVERED" | "FAILED";
+export type ParcelStatus =
+  | "CREATED"
+  | "PICKED_UP"
+  | "IN_TRANSIT"
+  | "HUB_ARRIVED"
+  | "HUB_SORTED"
+  | "OUT_FOR_DELIVERY"
+  | "DELIVERED"
+  | "FAILED"
+  // A merchant can hold (PAUSED) or cancel (CANCELLED) a parcel before it is picked up.
+  | "PAUSED"
+  | "CANCELLED";
 
 export type FailureReason = "RECIPIENT_UNAVAILABLE" | "ADDRESS_NOT_FOUND" | "REFUSED" | "DAMAGED" | "OTHER";
 
@@ -75,6 +102,8 @@ export interface CourierParcelResponse {
   proofCaptured: boolean;
   assignedAt: string | null;
   updatedAt: string;
+  /** Hub of the pickup address's zone: where a picked-up parcel is taken. Null otherwise. */
+  arrivalHubId: string | null;
 }
 
 export interface StatusChangeRequest {
@@ -88,6 +117,47 @@ export interface ZoneResponse {
   id: string;
   code: string;
   name: string;
+}
+
+// Admin zone maintenance (ADM-3, sub-part 8.4): includes inactive zones
+export interface AdminZoneResponse {
+  id: string;
+  code: string;
+  name: string;
+  active: boolean;
+}
+
+export interface AdminZoneRequest {
+  code: string;
+  name: string;
+  active: boolean;
+}
+
+// Admin pricing rules (ADM-3, sub-part 8.4). Amounts arrive as strings such as "300.00".
+export interface PricingRuleResponse {
+  id: string;
+  originZoneId: string;
+  destinationZoneId: string;
+  baseFee: string;
+  perKgFee: string;
+  smallSizeSurcharge: string;
+  mediumSizeSurcharge: string;
+  largeSizeSurcharge: string;
+  currency: string;
+  active: boolean;
+  version: number;
+}
+
+export interface PricingRuleRequest {
+  originZoneId: string;
+  destinationZoneId: string;
+  baseFee: string;
+  perKgFee: string;
+  smallSizeSurcharge: string;
+  mediumSizeSurcharge: string;
+  largeSizeSurcharge: string;
+  currency: string;
+  active: boolean;
 }
 
 export interface BookingAddress {
@@ -149,6 +219,24 @@ export interface ParcelHistoryItem {
   fee: { amount: string; currency: string };
   createdAt: string;
   updatedAt: string;
+}
+
+/** Delivery receipt (GET /api/v1/parcels/{id}/receipt, CUS-5). */
+export interface DeliveryReceipt {
+  parcelId: string;
+  trackingNumber: string;
+  status: ParcelStatus;
+  createdAt: string;
+  pickup: AddressResponse;
+  dropoff: AddressResponse;
+  size: ParcelSize;
+  weightGrams: number;
+  description: string | null;
+  fee: { amount: string; currency: string };
+  deliveredAt: string | null;
+  recipientName: string | null;
+  failedAt: string | null;
+  failureReason: FailureReason | null;
 }
 
 // Proof of Delivery API types
@@ -246,18 +334,33 @@ export async function getProofPhoto(parcelId: string, token: string): Promise<Bl
   return await response.blob();
 }
 
-export type MerchantStatus = "PENDING" | "APPROVED" | "REJECTED" | "SUSPENDED";
+export type MerchantStatus = "PENDING_APPROVAL" | "APPROVED" | "REJECTED" | "SUSPENDED";
+
+/** The merchant's one pickup (warehouse) address: where couriers collect its parcels. */
+export interface MerchantPickupAddress {
+  contactName: string;
+  phone: string;
+  line1: string;
+  line2: string | null;
+  city: string;
+  postalCode: string | null;
+  zoneId: string;
+}
 
 export interface MerchantResponse {
   id: string;
   userId: string;
   businessName: string;
+  registrationNumber?: string;
+  contactEmail?: string;
   contactPhone: string | null;
   status: MerchantStatus;
   rejectionReason: string | null;
   createdAt: string;
   reviewedAt: string | null;
   reviewedBy: string | null;
+  /** Null for merchants registered before the address was required. */
+  pickupAddress: MerchantPickupAddress | null;
 }
 
 export interface RegisterMerchantRequest {

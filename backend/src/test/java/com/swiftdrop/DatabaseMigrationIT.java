@@ -79,7 +79,7 @@ class DatabaseMigrationIT {
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(
                 "SELECT version, description, type, script, success FROM flyway_schema_history ORDER BY installed_rank ASC");
 
-        assertThat(rows).hasSize(17);
+        assertThat(rows).hasSize(33);
 
         assertThat(rows.get(0))
                 .containsEntry("version", "202610251600")
@@ -164,6 +164,41 @@ class DatabaseMigrationIT {
                 .containsEntry("description", "pricing seed sri lanka provinces")
                 .containsEntry("type", "SQL")
                 .containsEntry("script", "pricing/V202611142000__pricing_seed_sri_lanka_provinces.sql")
+                .containsEntry("success", true);
+
+        assertThat(rows.get(17))
+                .containsEntry("version", "202611151000")
+                .containsEntry("description", "delivery add pause cancel statuses")
+                .containsEntry("type", "SQL")
+                .containsEntry("script", "delivery/V202611151000__delivery_add_pause_cancel_statuses.sql")
+                .containsEntry("success", true);
+
+        assertThat(rows.get(18))
+                .containsEntry("version", "202611151100")
+                .containsEntry("description", "delivery mark existing outbox published")
+                .containsEntry("type", "SQL")
+                .containsEntry("script", "delivery/V202611151100__delivery_mark_existing_outbox_published.sql")
+                .containsEntry("success", true);
+
+        assertThat(rows.get(19))
+                .containsEntry("version", "202611151110")
+                .containsEntry("description", "merchant webhook delivery payload")
+                .containsEntry("type", "SQL")
+                .containsEntry("script", "merchant/V202611151110__merchant_webhook_delivery_payload.sql")
+                .containsEntry("success", true);
+
+        assertThat(rows.get(20))
+                .containsEntry("version", "202611151200")
+                .containsEntry("description", "delivery parcel order fingerprint")
+                .containsEntry("type", "SQL")
+                .containsEntry("script", "delivery/V202611151200__delivery_parcel_order_fingerprint.sql")
+                .containsEntry("success", true);
+
+        assertThat(rows.get(21))
+                .containsEntry("version", "202611151210")
+                .containsEntry("description", "merchant api key signing secret")
+                .containsEntry("type", "SQL")
+                .containsEntry("script", "merchant/V202611151210__merchant_api_key_signing_secret.sql")
                 .containsEntry("success", true);
 
         // Assert tables exist in the isolated test database

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.entry;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -14,6 +15,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -36,6 +38,7 @@ import com.swiftdrop.delivery.domain.ParcelAddress;
 import com.swiftdrop.delivery.domain.ParcelRepository;
 import com.swiftdrop.delivery.domain.ParcelStatusHistoryEntry;
 import com.swiftdrop.delivery.domain.ParcelStatusHistoryRepository;
+import com.swiftdrop.pricing.api.ZoneDirectory;
 import com.swiftdrop.pricing.api.ParcelSize;
 
 class ParcelQueryServiceTest {
@@ -46,6 +49,7 @@ class ParcelQueryServiceTest {
 
     private ParcelRepository parcels;
     private ParcelStatusHistoryRepository history;
+    private ZoneDirectory zones;
     private ParcelQueryService service;
     private Parcel parcel;
 
@@ -53,7 +57,8 @@ class ParcelQueryServiceTest {
     void setUp() {
         parcels = mock(ParcelRepository.class);
         history = mock(ParcelStatusHistoryRepository.class);
-        service = new ParcelQueryService(parcels, history);
+        zones = mock(ZoneDirectory.class);
+        service = new ParcelQueryService(parcels, history, zones);
         parcel = Parcel.forMerchant("SD7K3M9Q2XWB", MERCHANT_ID, "ORD-1",
                 new ParcelAddress("Nimal Perera", "+94771234567", "12 Temple Rd", null, "Colombo", UUID.randomUUID(),
                         "00500"),
@@ -92,7 +97,9 @@ class ParcelQueryServiceTest {
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Collection<ParcelStatus>> terminal = ArgumentCaptor.forClass(Collection.class);
         verify(parcels).countActiveByCourier(terminal.capture());
-        assertThat(terminal.getValue()).containsExactlyInAnyOrder(ParcelStatus.DELIVERED, ParcelStatus.FAILED);
+        // A cancelled parcel no longer counts toward a courier's workload; a paused one still does
+        assertThat(terminal.getValue())
+                .containsExactlyInAnyOrder(ParcelStatus.DELIVERED, ParcelStatus.FAILED, ParcelStatus.CANCELLED);
     }
 
     @Test
@@ -153,5 +160,92 @@ class ParcelQueryServiceTest {
 
     private static Sort.Order sortOf(Pageable pageable) {
         return pageable.getSort().getOrderFor("createdAt");
+    }
+
+    @Test
+    void summariesCarryThePickupAndDropoffProvinceCodes() {
+        UUID pickupZone = parcel.getPickup().getZoneId();
+        UUID dropoffZone = parcel.getDropoff().getZoneId();
+        when(parcels.findByStatusAndAssignedCourierIdIsNull(eq(ParcelStatus.CREATED), any()))
+                .thenReturn(new PageImpl<>(List.of(parcel)));
+        when(zones.findCodes(anyCollection())).thenReturn(Map.of(pickupZone, "LK-UP", dropoffZone, "LK-SP"));
+
+        ParcelSummary summary = service.findUnassignedParcels(new PageRequest(0, 10)).items().get(0);
+
+        assertThat(summary.pickupProvinceCode()).isEqualTo("LK-UP");
+        assertThat(summary.dropoffProvinceCode()).isEqualTo("LK-SP");
+    }
+
+    @Test
+    void aZoneThatNoLongerExistsGivesNullProvinceCodes() {
+        when(parcels.findByStatusAndAssignedCourierIdIsNull(eq(ParcelStatus.CREATED), any()))
+                .thenReturn(new PageImpl<>(List.of(parcel)));
+        when(zones.findCodes(anyCollection())).thenReturn(Map.of());
+
+        ParcelSummary summary = service.findUnassignedParcels(new PageRequest(0, 10)).items().get(0);
+
+        assertThat(summary.pickupProvinceCode()).isNull();
+        assertThat(summary.dropoffProvinceCode()).isNull();
+    }
+
+    @Test
+    void unassignedParcelsCanBeFilteredByPickupProvince() {
+        UUID uvaZone = UUID.randomUUID();
+        when(zones.findZoneIdByCode("LK-UP")).thenReturn(Optional.of(uvaZone));
+        when(parcels.findUnassignedByPickupZone(eq(ParcelStatus.CREATED), eq(uvaZone), any()))
+                .thenReturn(new PageImpl<>(List.of(parcel), org.springframework.data.domain.PageRequest.of(0, 5), 1));
+        when(zones.findCodes(anyCollection())).thenReturn(Map.of());
+
+        PageResult<ParcelSummary> result = service.findUnassignedParcels(new PageRequest(0, 5), "LK-UP");
+
+        assertThat(result.items()).extracting(ParcelSummary::id).containsExactly(PARCEL_ID);
+        ArgumentCaptor<Pageable> pageable = ArgumentCaptor.forClass(Pageable.class);
+        verify(parcels).findUnassignedByPickupZone(eq(ParcelStatus.CREATED), eq(uvaZone), pageable.capture());
+        assertThat(pageable.getValue().getSort()).isEqualTo(Sort.by(Sort.Direction.ASC, "createdAt"));
+        verify(parcels, never()).findByStatusAndAssignedCourierIdIsNull(any(), any());
+    }
+
+    @Test
+    void anUnknownProvinceGivesAnEmptyPageWithoutQueryingParcels() {
+        when(zones.findZoneIdByCode("LK-XX")).thenReturn(Optional.empty());
+
+        PageResult<ParcelSummary> result = service.findUnassignedParcels(new PageRequest(0, 5), "LK-XX");
+
+        assertThat(result.items()).isEmpty();
+        assertThat(result.totalItems()).isZero();
+        verify(parcels, never()).findUnassignedByPickupZone(any(), any(), any());
+        verify(parcels, never()).findByStatusAndAssignedCourierIdIsNull(any(), any());
+    }
+
+    @Test
+    void aBlankProvinceMeansNoFilter() {
+        when(parcels.findByStatusAndAssignedCourierIdIsNull(eq(ParcelStatus.CREATED), any()))
+                .thenReturn(new PageImpl<>(List.of(parcel)));
+        when(zones.findCodes(anyCollection())).thenReturn(Map.of());
+
+        assertThat(service.findUnassignedParcels(new PageRequest(0, 5), "  ").items()).hasSize(1);
+        assertThat(service.findUnassignedParcels(new PageRequest(0, 5), null).items()).hasSize(1);
+        verify(parcels, never()).findUnassignedByPickupZone(any(), any(), any());
+    }
+
+    @Test
+    void aParcelCanBeFoundByIdWithItsProvinceCodes() {
+        when(parcels.findById(PARCEL_ID)).thenReturn(Optional.of(parcel));
+        when(zones.findCodes(anyCollection())).thenReturn(
+                Map.of(parcel.getPickup().getZoneId(), "LK-UP", parcel.getDropoff().getZoneId(), "LK-SP"));
+
+        ParcelSummary summary = service.findParcelById(PARCEL_ID).orElseThrow();
+
+        assertThat(summary.id()).isEqualTo(PARCEL_ID);
+        assertThat(summary.pickupProvinceCode()).isEqualTo("LK-UP");
+        assertThat(summary.dropoffProvinceCode()).isEqualTo("LK-SP");
+    }
+
+    @Test
+    void anUnknownOrNullParcelIdFindsNothing() {
+        when(parcels.findById(PARCEL_ID)).thenReturn(Optional.empty());
+
+        assertThat(service.findParcelById(PARCEL_ID)).isEmpty();
+        assertThat(service.findParcelById(null)).isEmpty();
     }
 }

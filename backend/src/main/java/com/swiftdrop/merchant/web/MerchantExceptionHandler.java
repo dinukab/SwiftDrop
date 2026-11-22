@@ -10,11 +10,18 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
+import com.swiftdrop.delivery.api.ParcelConflictException;
+import com.swiftdrop.delivery.api.ParcelNotFoundException;
 import com.swiftdrop.identity.api.PasswordRejectedException;
 import com.swiftdrop.merchant.application.ApiKeyLimitExceededException;
+import com.swiftdrop.merchant.application.InvalidPickupZoneException;
+import com.swiftdrop.merchant.application.MerchantConflictException;
 import com.swiftdrop.merchant.application.MerchantNotApprovedException;
 import com.swiftdrop.merchant.application.MerchantNotFoundException;
+import com.swiftdrop.merchant.application.PickupAddressRequiredException;
+import com.swiftdrop.merchant.application.PickupZoneMismatchException;
 import com.swiftdrop.merchant.application.RegistrationNumberAlreadyRegisteredException;
+import com.swiftdrop.merchant.application.WebhookDeliveryNotRedeliverableException;
 
 /**
  * Safe RFC 9457 ProblemDetail bodies for merchant module endpoints.
@@ -38,9 +45,56 @@ class MerchantExceptionHandler {
         return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, e.getMessage());
     }
 
+    @ExceptionHandler(MerchantConflictException.class)
+    ProblemDetail conflict(MerchantConflictException e) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, e.getMessage());
+    }
+
+    /** The zone in the pickup address does not exist; names the field only. */
+    @ExceptionHandler(InvalidPickupZoneException.class)
+    ProblemDetail invalidPickupZone(InvalidPickupZoneException e) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, e.getMessage());
+        problem.setProperty("invalidFields", List.of("pickupAddress.zoneId"));
+        return problem;
+    }
+
+    /** The order's pickup is in another province than the registered pickup address. */
+    @ExceptionHandler(PickupZoneMismatchException.class)
+    ProblemDetail pickupZoneMismatch(PickupZoneMismatchException e) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.UNPROCESSABLE_CONTENT, e.getMessage());
+        problem.setProperty("invalidFields", List.of("pickup.zoneId"));
+        return problem;
+    }
+
+    /** No pickup sent and none registered. */
+    @ExceptionHandler(PickupAddressRequiredException.class)
+    ProblemDetail pickupRequired(PickupAddressRequiredException e) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, e.getMessage());
+        problem.setProperty("invalidFields", List.of("pickup"));
+        return problem;
+    }
+
     @ExceptionHandler(MerchantNotApprovedException.class)
     ProblemDetail notApproved(MerchantNotApprovedException e) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.FORBIDDEN, e.getMessage());
+    }
+
+    /** The order is not the caller's, or does not exist: the same answer, so it cannot be probed. */
+    @ExceptionHandler(ParcelNotFoundException.class)
+    ProblemDetail orderNotFound(ParcelNotFoundException e) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, "Order not found");
+    }
+
+    /** The message names the broken lifecycle rule only, never order data. */
+    /** The rule that refused the redelivery; the message names only that rule. */
+    @ExceptionHandler(WebhookDeliveryNotRedeliverableException.class)
+    ProblemDetail notRedeliverable(WebhookDeliveryNotRedeliverableException e) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, e.getMessage());
+    }
+
+    @ExceptionHandler(ParcelConflictException.class)
+    ProblemDetail orderConflict(ParcelConflictException e) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, e.getMessage());
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

@@ -38,6 +38,11 @@ public interface ParcelRepository extends JpaRepository<Parcel, UUID> {
     /** Parcels waiting for a courier (ADM-1); uses the partial index {@code ix_parcels_unassigned}. */
     Page<Parcel> findByStatusAndAssignedCourierIdIsNull(ParcelStatus status, Pageable pageable);
 
+    /** Parcels waiting for a courier whose pickup is in one zone (hub-scoped dispatch queue). */
+    @Query("SELECT p FROM Parcel p WHERE p.status = :status AND p.assignedCourierId IS NULL AND p.pickup.zoneId = :zoneId")
+    Page<Parcel> findUnassignedByPickupZone(@Param("status") ParcelStatus status, @Param("zoneId") UUID zoneId,
+            Pageable pageable);
+
     /** A merchant's parcels (MER-4); always scoped by merchant, never across merchants. */
     Page<Parcel> findByMerchantId(UUID merchantId, Pageable pageable);
 
@@ -73,4 +78,14 @@ public interface ParcelRepository extends JpaRepository<Parcel, UUID> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT p FROM Parcel p WHERE p.id = :id")
     Optional<Parcel> findByIdForUpdate(@Param("id") UUID id);
+
+    /**
+     * Like {@link #findByIdForUpdate} but finds the parcel by a merchant's own order reference, in a
+     * single locked read. Looking the parcel up first without a lock and locking it second would let
+     * a change that commits in between show up as two versions of one entity.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT p FROM Parcel p WHERE p.merchantId = :merchantId AND p.merchantOrderReference = :reference")
+    Optional<Parcel> findByMerchantIdAndMerchantOrderReferenceForUpdate(@Param("merchantId") UUID merchantId,
+            @Param("reference") String reference);
 }

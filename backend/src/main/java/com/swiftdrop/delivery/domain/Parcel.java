@@ -61,6 +61,10 @@ public class Parcel {
     @Column(name = "merchant_order_reference", length = 100)
     private String merchantOrderReference;
 
+    /** SHA-256 hex of the merchant order's fields; null for parcels created before fingerprints. */
+    @Column(name = "order_fingerprint", length = 64)
+    private String orderFingerprint;
+
     @Embedded
     @AttributeOverrides({
         @AttributeOverride(name = "contactName", column = @Column(name = "pickup_contact_name", nullable = false, length = 200)),
@@ -207,6 +211,60 @@ public class Parcel {
     }
 
     /**
+     * Hands the parcel to the courier of the next leg (ADR 0007). Allowed only while the parcel waits at a hub
+     * ({@code HUB_ARRIVED} or {@code HUB_SORTED}). Not a status change: the sequence stays the same. The caller
+     * must hold a lock on the parcel row.
+     *
+     * @throws ParcelConflictException if the parcel is not waiting at a hub
+     */
+    public void handOverTo(UUID courierUserId, Instant now) {
+        Objects.requireNonNull(courierUserId, "courierUserId");
+        Objects.requireNonNull(now, "now");
+        if (status != ParcelStatus.HUB_ARRIVED && status != ParcelStatus.HUB_SORTED) {
+            throw new ParcelConflictException("The parcel is not waiting at a hub");
+        }
+        this.assignedCourierId = courierUserId;
+        this.assignedAt = now;
+        this.updatedAt = now;
+    }
+
+    /**
+     * The sending hub's dispatcher sends the parcel to the next hub (ADR 0007, direct hub-to-hub transfer): it must
+     * wait at a hub, becomes {@code IN_TRANSIT}, and has no courier while it travels, so the previous courier loses
+     * access. A status change by a dispatcher, not a courier, so it does not go through
+     * {@link #changeStatus}. The caller must hold a lock on the parcel row.
+     *
+     * @throws ParcelConflictException if the parcel is not waiting at a hub
+     */
+    public void transferOut(Instant now) {
+        Objects.requireNonNull(now, "now");
+        if (status != ParcelStatus.HUB_ARRIVED && status != ParcelStatus.HUB_SORTED) {
+            throw new ParcelConflictException("The parcel is not waiting at a hub");
+        }
+        this.status = ParcelStatus.IN_TRANSIT;
+        this.assignedCourierId = null;
+        this.assignedAt = null;
+        this.lastSequence++;
+        this.updatedAt = now;
+    }
+
+    /**
+     * The receiving hub's dispatcher confirms the parcel arrived: {@code IN_TRANSIT} becomes {@code HUB_ARRIVED}.
+     * The parcel still has no courier. The caller must hold a lock on the parcel row.
+     *
+     * @throws ParcelConflictException if the parcel is not in transit between hubs
+     */
+    public void receiveAtHub(Instant now) {
+        Objects.requireNonNull(now, "now");
+        if (status != ParcelStatus.IN_TRANSIT) {
+            throw new ParcelConflictException("The parcel is not in transit between hubs");
+        }
+        this.status = ParcelStatus.HUB_ARRIVED;
+        this.lastSequence++;
+        this.updatedAt = now;
+    }
+
+    /**
      * Moves the parcel to {@code target} on behalf of a courier and takes the next sequence number
      * (ADR 0006 §1, ADR 0004 §4.1). The caller must hold a lock on the parcel row.
      *
@@ -241,6 +299,54 @@ public class Parcel {
         }
         if (target == ParcelStatus.DELIVERED && !proofCaptured) {
             throw new ParcelConflictException("Proof of delivery is required");
+        }
+        this.status = target;
+        this.lastSequence++;
+        this.updatedAt = now;
+    }
+
+    /**
+     * Holds the parcel before pickup, for example while the merchant is still preparing the goods.
+     * A held parcel cannot be picked up or assigned a courier until it is resumed. Takes the next
+     * sequence number. The caller must hold a lock on the parcel row.
+     *
+     * @throws ParcelNotFoundException if this is not a parcel of {@code merchantId}
+     * @throws ParcelConflictException if the parcel is not in {@code CREATED}
+     */
+    public void pause(UUID merchantId, Instant now) {
+        holdMove(merchantId, ParcelStatus.PAUSED, now, "A delivery can only be paused before pickup");
+    }
+
+    /**
+     * Releases a held parcel back to {@code CREATED}. Its assigned courier, if any, is kept.
+     *
+     * @throws ParcelNotFoundException if this is not a parcel of {@code merchantId}
+     * @throws ParcelConflictException if the parcel is not {@code PAUSED}
+     */
+    public void resume(UUID merchantId, Instant now) {
+        holdMove(merchantId, ParcelStatus.CREATED, now, "Only a paused delivery can be resumed");
+    }
+
+    /**
+     * Cancels the parcel before pickup. Final: a cancelled parcel is never reopened.
+     *
+     * @throws ParcelNotFoundException if this is not a parcel of {@code merchantId}
+     * @throws ParcelConflictException if the parcel is past {@code CREATED}/{@code PAUSED}
+     */
+    public void cancel(UUID merchantId, Instant now) {
+        holdMove(merchantId, ParcelStatus.CANCELLED, now, "A delivery can only be cancelled before pickup");
+    }
+
+    private void holdMove(UUID merchantId, ParcelStatus target, Instant now, String conflictMessage) {
+        Objects.requireNonNull(merchantId, "merchantId");
+        Objects.requireNonNull(now, "now");
+        // Not the owner (or not a merchant parcel): same answer as a missing parcel, so a merchant
+        // cannot learn whether another merchant's order exists (ADR 0006 §7).
+        if (source != ParcelSource.MERCHANT || !merchantId.equals(this.merchantId)) {
+            throw new ParcelNotFoundException();
+        }
+        if (!ParcelLifecycle.canHoldMove(status, target)) {
+            throw new ParcelConflictException(conflictMessage);
         }
         this.status = target;
         this.lastSequence++;
@@ -288,6 +394,18 @@ public class Parcel {
 
     public UUID getMerchantId() {
         return merchantId;
+    }
+
+    /** Records the fingerprint of the order this parcel was created from. Set once, at booking. */
+    public void recordOrderFingerprint(String fingerprint) {
+        if (this.orderFingerprint != null) {
+            throw new IllegalStateException("The order fingerprint is recorded once");
+        }
+        this.orderFingerprint = Objects.requireNonNull(fingerprint, "fingerprint");
+    }
+
+    public String getOrderFingerprint() {
+        return orderFingerprint;
     }
 
     public String getMerchantOrderReference() {

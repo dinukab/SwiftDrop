@@ -6,6 +6,7 @@ import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,15 +27,17 @@ class ParcelAssignmentService implements ParcelAssignment {
     private static final Logger log = LoggerFactory.getLogger(ParcelAssignmentService.class);
 
     private final ParcelRepository parcels;
+    private final ObjectFactory<LegProgress> legs;
     private final Clock clock;
 
     @Autowired
-    ParcelAssignmentService(ParcelRepository parcels) {
-        this(parcels, Clock.systemUTC());
+    ParcelAssignmentService(ParcelRepository parcels, ObjectFactory<LegProgress> legs) {
+        this(parcels, legs, Clock.systemUTC());
     }
 
-    ParcelAssignmentService(ParcelRepository parcels, Clock clock) {
+    ParcelAssignmentService(ParcelRepository parcels, ObjectFactory<LegProgress> legs, Clock clock) {
         this.parcels = parcels;
+        this.legs = legs;
         this.clock = clock;
     }
 
@@ -45,7 +48,10 @@ class ParcelAssignmentService implements ParcelAssignment {
         Objects.requireNonNull(courierUserId, "courierUserId");
         Objects.requireNonNull(dispatcherUserId, "dispatcherUserId");
         Parcel parcel = parcels.findByIdForUpdate(parcelId).orElseThrow(ParcelNotFoundException::new);
-        parcel.assignCourier(courierUserId, clock.instant());
+        var now = clock.instant();
+        parcel.assignCourier(courierUserId, now);
+        // A parcel with legs: the pickup courier also holds the first leg (ADR 0007)
+        legs.getObject().syncPickupCourier(parcelId, courierUserId, now);
         // IDs only: no personal data in logs
         log.info("Parcel {} assigned to courier {} by dispatcher {}", parcelId, courierUserId, dispatcherUserId);
     }

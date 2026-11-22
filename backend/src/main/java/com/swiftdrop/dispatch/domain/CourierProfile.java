@@ -56,6 +56,12 @@ public class CourierProfile {
     @Column(name = "version", nullable = false)
     private long version;
 
+    @Column(name = "home_hub_id")
+    private UUID homeHubId;
+
+    @Column(name = "current_hub_id")
+    private UUID currentHubId;
+
     protected CourierProfile() {
         // for JPA
     }
@@ -145,6 +151,26 @@ public class CourierProfile {
 
     public long getVersion() {
         return version;
+    }
+
+    public UUID getHomeHubId() {
+        return homeHubId;
+    }
+
+    public UUID getCurrentHubId() {
+        return currentHubId;
+    }
+
+    /** Assigns a courier to their home hub. */
+    public void assignHomeHub(UUID hubId, Instant now) {
+        this.homeHubId = Objects.requireNonNull(hubId, "hubId must not be null");
+        this.updatedAt = Objects.requireNonNull(now, "now must not be null");
+    }
+
+    /** Moves courier to a new hub location (for multi-hub operations). */
+    public void moveToHub(UUID hubId, Instant now) {
+        this.currentHubId = Objects.requireNonNull(hubId, "hubId must not be null");
+        this.updatedAt = Objects.requireNonNull(now, "now must not be null");
     }
 
     /** Never includes phone numbers or other personal data. */
