@@ -16,6 +16,7 @@ import org.springframework.web.multipart.support.MissingServletRequestPartExcept
 
 import com.swiftdrop.delivery.api.ParcelConflictException;
 import com.swiftdrop.delivery.api.ParcelNotFoundException;
+import com.swiftdrop.delivery.application.InvalidReportRangeException;
 
 /**
  * Safe RFC 9457 bodies for delivery's own endpoints (ADR 0006 §7). Limited to this package; other
@@ -35,6 +36,12 @@ class DeliveryExceptionHandler {
     @ExceptionHandler(ParcelConflictException.class)
     ProblemDetail conflict(ParcelConflictException e) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, e.getMessage());
+    }
+
+    /** A reversed or too long report range; the message names the rule only. */
+    @ExceptionHandler(InvalidReportRangeException.class)
+    ProblemDetail invalidRange(InvalidReportRangeException e) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, e.getMessage());
     }
 
     /** Domain validation that passed the request annotations; the message is not echoed. */
