@@ -40,7 +40,7 @@ export const FOOTER_COLUMNS: FooterColumn[] = [
     links: [
       { label: "Log in", href: "/login" },
       { label: "Create an account", href: "/signup" },
-      { label: "My deliveries", href: "/customer" },
+      { label: "My deliveries", href: "/customer/history" },
     ],
   },
 ];

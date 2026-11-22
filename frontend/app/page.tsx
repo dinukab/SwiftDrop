@@ -1,4 +1,6 @@
+import { Suspense } from "react";
 import { SiteNavbar } from "@/components/landing/site-navbar";
+import { ChatWidget } from "@/components/landing/assistant/ChatWidget";
 import { Hero } from "@/components/landing/hero/Hero";
 import { ServicesSection } from "@/components/landing/services/ServicesSection";
 import { HowItWorks } from "@/components/landing/how-it-works/HowItWorks";
@@ -17,6 +19,10 @@ export default function Home() {
         <AudienceCta />
       </main>
       <Footer />
+      {/* The widget reads ?chat=open from the URL, which needs a Suspense boundary. */}
+      <Suspense fallback={null}>
+        <ChatWidget />
+      </Suspense>
     </div>
   );
 }

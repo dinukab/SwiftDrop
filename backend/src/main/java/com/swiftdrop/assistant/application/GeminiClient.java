@@ -1,8 +1,12 @@
 package com.swiftdrop.assistant.application;
 
+import java.time.Duration;
+
 import org.springframework.http.MediaType;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ArrayNode;
@@ -24,7 +28,12 @@ class GeminiClient {
     private final GeminiProperties properties;
 
     GeminiClient(GeminiProperties properties) {
-        this.http = RestClient.builder().baseUrl(BASE_URL).build();
+        // Bounded waits: a stuck call must not hold a request thread, and each tool round can
+        // call Gemini again.
+        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(Duration.ofSeconds(5));
+        requestFactory.setReadTimeout(Duration.ofSeconds(30));
+        this.http = RestClient.builder().baseUrl(BASE_URL).requestFactory(requestFactory).build();
         this.properties = properties;
     }
 
@@ -46,15 +55,21 @@ class GeminiClient {
 
         JsonNode response;
         try {
+            // The key goes in a header, never the URL: Spring's I/O error messages and access
+            // logs include the full request URL.
             response = http.post()
-                    .uri("/v1beta/models/{model}:generateContent?key={key}",
-                            properties.model(), properties.apiKey())
+                    .uri("/v1beta/models/{model}:generateContent", properties.model())
+                    .header("x-goog-api-key", properties.apiKey())
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(body)
                     .retrieve()
                     .body(JsonNode.class);
+        } catch (RestClientResponseException e) {
+            // Status only: the response body can echo request details.
+            throw new AssistantUnavailableException("Gemini returned HTTP " + e.getStatusCode().value());
         } catch (RuntimeException e) {
-            throw new AssistantUnavailableException("Gemini request failed: " + e.getMessage());
+            // Class name only: the message of a connection error contains the request URL.
+            throw new AssistantUnavailableException("Gemini request failed (" + e.getClass().getSimpleName() + ")");
         }
 
         JsonNode content = response != null ? response.path("candidates").path(0).path("content") : null;
@@ -64,7 +79,7 @@ class GeminiClient {
         return content;
     }
 
-    /** Static failure so the controller can map it without leaking provider details. */
+    /** Gemini could not answer (overloaded, rate limited, unreachable). Its message never carries the key or URL. */
     static final class AssistantUnavailableException extends RuntimeException {
         AssistantUnavailableException(String message) {
             super(message);
